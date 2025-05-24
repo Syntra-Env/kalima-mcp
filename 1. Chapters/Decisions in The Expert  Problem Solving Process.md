@@ -1,6 +1,6 @@
 # Decisions in The Expert Problem Solving Process
 
-![alt text](<../4. References/image.png>)
+![alt text](<../3. References/image.png>)
 
 ## Figure 1 - Problem-solving Decisions by Categories
 

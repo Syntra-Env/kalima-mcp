@@ -1,2 +1,0 @@
-# StretchText by Ted Nelson
-
