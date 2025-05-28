@@ -28,4 +28,5 @@
     1.  current law
     2.  voltage law: wouldn't you have different voltages for parallel elemennts if one of the parallel paths has more resistors than the other?
 24. why must circuit be powered off to use the multimeter? What does it measure?
-25. 
+25. A node in circuit theory is not a “point.” It’s an equipotential region of ideal conductors that are assumed to have zero resistance.
+26. when you have an open circuit why is the voltage at a point the same as the source

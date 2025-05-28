@@ -194,8 +194,14 @@
      26. <xmp>
      27. <section>
      28. <article>
- 72. Advantages of Semantic Markup
+72. Advantages of Semantic Markup
      1.  maintainability
      2.  faster
      3.  accessibility
      4.  search engine optimization
+## Bootstrap
+- framework
+- MaxCDN
+- provides classes with predefined css rules?
+- spans
+- 
