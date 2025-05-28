@@ -31,9 +31,9 @@
 - [ ] (6 Jun, 11:30 pm) Lab Week 4 – Assignment 1C
 
 ## C Language
-- [ ] (June 2) Lab 2: Foundational Programming in C
 - [x] Lecture 2: C Primer
 - [x] (Week 4) Hybrid Quiz 1
+- [ ] (June 2) Lab 2: Foundational Programming in C
 
 ## Web Programming
 - [x]  Reading

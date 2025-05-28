@@ -59,9 +59,34 @@
 32. queues
 33. priority queues
 34. efficiency
-35. [36]/[38]
-36. [37]/[39]
-37. Data structures [0] are not stored in memory, they are only created when the program starts running to enable efficient processing
-38. ## multidimensional arrays
+35. Data structures [0] are not stored in memory, they are only created when the program starts running to enable efficient processing
+36. ## multidimensional arrays
     1.  the outer loop for a 2D array iterates over the rows
     2.  the inner loop for a 2D array iterates over the columns
+37. # Sorting Algorithms
+38. in-place sort
+39. divide and conquer: 
+    1.  makes sub-arrays
+    2.  works better/organically with recursion
+40. ## Bubble Sort
+41. inner loop: largest item to the end of the array
+42. outer loop: compare and exchange adjacent items using tempVar
+43. two nested loops: O(n^2)
+44. can be used with small amount of data for its simplicity
+45. for i, find smallest element and swap it with element at i
+46. ## Selection Sort
+    1.  select the smallest element
+    2.  swap smallest element with element at position i
+    3.  i++
+47. ## Insertion Sort
+    1.  split array in sorted and unsorted
+    2.  compare first unsorted element with all elements in the sorted section
+    3.  place the firs unsorted element in a temporary variable.
+    4.  for (i=1; i < array.length; ++i)
+    5.  j=i-1
+48. ## Quick Sort
+49. pivot choice: first element or media point or last element (james's favorite :P)
+50. [i] <pivot> [j]
+51. i is looking for smaller elements
+52. j is looking for bigger elements
+53. 
