@@ -49,3 +49,16 @@ The story of Ibrahim is one I deeply relate to. Though I can't claim to be as sk
  It is still difficult for me to trust the other side. Here appears one of my questions: you say "rationality and scripture", but isn't rationality applied to the scripture? Aren't all the tools of extracting evidence essentially tools of logic? I know we have moved away from this purely rational approach, on to a finer sense, such as the kind that was needed to ready one's cognition to perceive the unspoken fact in the first layer of the story of Yussuf. In retrospect, such facts fit seamlessly, and mr.Reason will not complain. I'm not really sure at which point the scripture goes beyond reason. You did say it has to do with things that cannot be perceived. But isn't it strange that some people have seemingly reasoned their way to similar ideas of a stratified network of conscious identities? Albeit without all the details. We can say they did not do so using reason, but presented in ways to appeal to reason. I am fully aware you did not say to do away with reason. But I'm not sure I understand what you think of as the limits of reason. You mentioned what can be sensed. So, then is empirical knowledge the limit of reason? If not, and it extends to abstract knowledge, then I'm not sure I understand the difference between reason and knowledge received through some kind of inter-layer anfus collboration. 
 
 is there a point where knowledge beyond reason cannot be justified, and if so, then what becomes of belief with justification as opposed to blind belief?
+
+## The Three Limitations of Reason
+1. does not tell you how to connect with allah: the specific rituals or acts of devotion
+2. Ghayb: knowledge of the future
+3. Knowledge of the afterlife: baqarah: ibrahim asks show me how you revive the death: allah showed him to how use the dua
+
+## What Ibrahim Needs to do to Get Out of Hissab
+1. ceding to the delta in the scripture?
+2. not just to make an argument that had I been given the scripture I would have ceded to you
+3. cede to whom? 
+4. When given rational thinking and scripture, did he know everything in the scripture? He was not the composer of everything in the Quran. So he does not know everything in the scripture. What does this imply?
+   1. "did you receive the story of so and so" ayaat in the Quran: means they were not all sitting together in a committee when composing the Quran.
+   2. To whom is the responsability of presenting the Quran? the future rasool. He ceded to the knowledge broadcast by the future rasool. And all nabiyoon have to do this. They all have a delta they're not aware of.

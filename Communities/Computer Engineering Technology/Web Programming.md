@@ -204,4 +204,14 @@
 - MaxCDN
 - provides classes with predefined css rules?
 - spans
-- 
+## AngularJS
+- html attributes = Directives
+- binds data to html with *Expressions*
+- add script tag
+- binding view to model
+- ng-directives
+- angularJS expressions support filters while javascript expressions do not. what are filters?
+- two curly braces vs ng-bind
+- $scope.name: ng-model=name
+- var = global scope
+- let = block scope

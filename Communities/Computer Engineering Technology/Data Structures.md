@@ -53,10 +53,9 @@
     1. FIFO (?)
     2. Max Heap
     3. Min Heap
-31. Stack
-    1.  LIFO
-    2.  stack frame
-32. queues
+31. Stack: LIFO
+    1.  stack frame
+32. queues: FIFO
 33. priority queues
 34. efficiency
 35. Data structures [0] are not stored in memory, they are only created when the program starts running to enable efficient processing
@@ -89,4 +88,50 @@
 50. [i] <pivot> [j]
 51. i is looking for smaller elements
 52. j is looking for bigger elements
-53. 
+53. ## Big O Notation
+54. search algorithms
+55. recursion
+56. linear search
+57. binary search
+58. program efficiency analysis
+59. algorithmic efficiency factors
+60. CPU (time) usage
+61. time complexity
+62. functions for analyzing algorithms
+
+| notation      | name            |
+| ------------- | --------------- |
+| O(1)          | constant        |
+| O(log(n))     | logarithmic     |
+| O((log(n))^c) | polylogarithmic |
+| O(n)          | linear          |
+| O(n^2)        | quadratic       |
+| O(n^c)        | polynomial      |
+| O(c^n)        | exponential     |
+
+- Index-based algorithms have a constant time
+- linear scales with increase of data proportionally
+- ? do n-dimensional arrays require n-nested loops to parse every element?
+
+```java
+for (i<n) { // time complexity: n*m
+    for (i<m) {
+ }
+}
+```
+
+- ordered arrays
+- unordered arrays
+- searching
+- insertion
+- deletion
+- ? When is using an ordered array more efficient for searching, insertion and deletion?
+- range: how data/how many elements must be searched
+- logarithms: raising 2 to a poower is the inverse of a logarithm
+- Log a (b) = c : which power (c) is a number (a) raised to in order to result in a number (b)?
+- Binary search: compare search key with mid-point value
+- asympototic behavior of polynomiall function: as the data approaches infinity, how many steps are required?
+- the power of the range expressed in powers of 2 is equivalent to the number of steps required to search using binary search
+- 2^n = 64 -> log 2 (64) "log of 64 to base 2"
+- converting log base 2 to log base 10
+- big O notation only consideres the worst case scenario
