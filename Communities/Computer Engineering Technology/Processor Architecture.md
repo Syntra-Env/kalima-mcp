@@ -30,3 +30,27 @@
 24. why must circuit be powered off to use the multimeter? What does it measure?
 25. A node in circuit theory is not a “point.” It’s an equipotential region of ideal conductors that are assumed to have zero resistance.
 26. when you have an open circuit why is the voltage at a point the same as the source
+
+## Arithmetic Principles
+- index register: used like pointers
+- stack pointer: unique refister hold alues pushed onto it
+- program counter
+- bit accumulators
+- CCR: condition code register. each bit is a flag.
+
+### Binary Representation (68HCS12)
+#### Units
+- Nibble: 4bits
+- Byte: 8 bits
+- Word: 16 bits (2 bytes)
+
+#### LSB & MSB
+- least significant bit
+- most significant bit
+
+#### Signed & Unsigned
+| representation  | positive values | negative values | range |
+| --------------- | --------------- | --------------- | ----- |
+| Sign/Magnitude  |                 |                 |       |
+| Ones Complement |                 |                 |       |
+| Twos Complement |                 |                 |       |

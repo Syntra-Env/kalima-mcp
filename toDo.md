@@ -1,4 +1,4 @@
-# toDo
+# 3 Jun 2025
 
 ## Misc
 1. [ ] apply to a co-op position
@@ -20,8 +20,8 @@
 - [ ] (6 Jun, 11:30 pm) Lab Week 4 – Assignment 1C
 - [ ] (8 Jun) Hybrid Quiz 3
 - [ ] (10 Jun) Test 1
-- [ ] Hybrid Lecture 1: assembly languge
-- [ ] Hybrid lecture 2: two's complement
+- [x] Hybrid Lecture 1: assembly languge
+- [x] Hybrid lecture 2: two's complement
 - [ ] Test 1 preparation
 
 ## C Language
