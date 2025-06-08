@@ -18,4 +18,9 @@
 - [ ] (18 jun) practical assessement + code tracing
 
 ## Web Programming
-- [ ] (June 8) Assignment 1
+- [x] (June 8) Assignment 1
+  - [x] TriangularArea
+  - [x] RectangularArea
+  - [x] CircularArea
+  - [x] Factorial
+  - [x] Fibonacci

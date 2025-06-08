@@ -8,4 +8,3 @@
 **Related**
 1. [[StretchText by Ted Nelson]]
 2. [[Stretch Text]]
-
