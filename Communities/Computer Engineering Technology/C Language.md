@@ -1,58 +1,58 @@
 0. # C Language
 1. strict procedural language
 2. ## ANSI C standard
-3. problem solving (debugging)
+3. 1988 [ansi standard]
+4. standards enable efficient collaboration
+5. problem solving (debugging)
    1. "entering from multiple doors"
-4. problem decomposition
-   1. small testable components
+6. problem decomposition
+   1. small testable components (!)
    2. data-function coupling
-5. # Architecture
-6. is like a contract with developers
-7. memory management
-8.  parsing
-9.  data structures (more in second half)
-10. code/variable tracing
-11. command line
-12. parsing command line
-13. makefiles
-14. modular programming
-15. scales of complexity
-16. assembly language
-17. processor
-18. processor architecture
-19. ## Comments
-20. C comments = alt+shift+A = block comments = /* */
-21. conventions
-22. comments conventions
-23. comment during the process of writing code
-24. include comments to reference oonline code used
-25. 1972 - Dennis Ritchie
-26. Multix
-27. Time sharing
-28. ken thompson
-29. libraries
-30. statically linked library
-31. dynamically linked / shared library
-32. Unix
-33. compiler
-34. Link: combines object files, creates a single executable
-35. Portability
-36. portable compiler 
-37. bitfields
-38. binary operators
-39. primitive types
-40. [data structures] are systems of [primitive types]
-41. arrays
-42. control structures
-43. memory address
-44. 1988 [ansi standard]
-45. ## Comparisons
-46. bitwise comparisons
-47. logical comparisons
-48. [bitwise] vs [logical]
-49. <=> is the spaceship operator
-50. C has less guardrails than high-level languages
-51. standards enable efficient collaboration
+7. # Architecture
+8. is like a contract with developers
+9. memory management
+10. parsing
+11. data structures (more in second half)
+12. code/variable tracing
+13. command line
+14. parsing command line
+15. makefiles
+16. modular programming
+17. scales of complexity
+18. assembly language
+19. processor
+20. processor architecture
+21. ## Comments
+22. C comments = alt+shift+A = block comments = /* */
+23. conventions
+24. comments conventions
+25. comment during the process of writing code
+26. include comments to reference oonline code used
+27. 1972 - Dennis Ritchie
+28. Multix
+29. Time sharing
+30. ken thompson
+31. libraries
+32. statically linked library
+33. dynamically linked / shared library
+34. Unix
+35. compiler
+36. Link: combines object files, creates a single executable
+37. Portability
+38. portable compiler 
+39. bitfields
+40. binary operators
+41. primitive types
+42. [data structures] are systems of [primitive types]
+43. arrays
+44. control structures
+45. memory address
+46. ## Comparisons
+47. bitwise comparisons
+48. logical comparisons
+49. [bitwise] vs [logical]
+50. <=> is the spaceship operator
+51. C has less guardrails than high-level languages
 52. boilerplate
 53. c.json boilerplate
 54. /* filename.c
@@ -151,35 +151,35 @@
 103. Static Functions
      1.   available in the file in which they're defined
      2.   avoiding namespace collisions
-53. ## Four-part algorithm structure
+104. ## Four-part algorithm structure
     1.  input stage
     2.  validation stage
     3.  processing stage
     4.  output stage
-54. code for each stage should be kept distinct
-55. don't write duplicate of any stage
-56. Syntax: how code is parsed, revered words, what the compiler expects to see
-57. volatile
-58. typedef
-59. extern
-60. goto
-61. register
-62. union
-63. struct
-64. 1 register = 1 word in the processor architecture 
-65. word: architecture size (bits) (e.g., x32, x64, etc)
-66. most significant bit [signed/unsigned]
-67. 2's complement
-68. type qualifiers
-69. interpreted vs uninterpreted languages
-70. sizeof can be used to cast to different types (type = size)
-71. variables: named locations in memory
-72. bit field interpretor
-73. how many bits is a memory location?
-74. indirection
-75. registers don't have an address
-76. name -> reference to first bit of an address -> type
-77. type represents size of memory
+105. code for each stage should be kept distinct
+106. don't write duplicate of any stage
+107. Syntax: how code is parsed, revered words, what the compiler expects to see
+108. volatile
+109. typedef
+110. extern
+111. goto
+112. register
+113. union
+114. struct
+115. 1 register = 1 word in the processor architecture 
+116. word: architecture size (bits) (e.g., x32, x64, etc)
+117. most significant bit [signed/unsigned]
+118. 2's complement
+119. type qualifiers
+120. interpreted vs uninterpreted languages
+121. sizeof can be used to cast to different types (type = size)
+122. variables: named locations in memory
+123. bit field interpretor
+124. how many bits is a memory location?
+125. indirection
+126. registers don't have an address
+127. name -> reference to first bit of an address -> type
+128. type represents size of memory
 
 | type   | size (in bits) |
 | ------ | -------------- |
@@ -368,5 +368,47 @@ The unary operator & is said to be only applicable to objects in memory.
 How come the above are not objects in memory?
 
 
+### bubble sort
+
+int i;
+char sorted = 0;
+for (i=1; i<listNumbers; i++) {
+    int temp;
+    if (list[i-1]>list[i]) {
+        
+        temp = list[i];
+        list[i] = list[i-1];
+        list[i-1] = temp;
+    }
+}
 
 
+# Review
+## Lecture 1
+- coding to a standard
+  - ansi
+  - learn to adapt
+  - prevalent in the industry
+  - dealing with warnings
+- problem decomposition
+  - testable
+  - different for procedural and object-oriented languages
+- low-level high-level
+  - low: closer to instruction set architecture
+  - high: abstracted and human-readable
+- typed language
+  - type safety
+  - how bitfields are interpreted
+  - javascript: type fluid
+- untyped language
+  - rules for interpreting bitfields must be implemented by yourself
+- procedural as opposed to object-oriented
+  - foundation of all languages
+
+## Lecture 2
+- type: tells use size to skip (offset) when doing pointer arithmetic
+- kind:
+  - formatting
+  - type definition
+  - storage class specifiers
+  - qualifiers
