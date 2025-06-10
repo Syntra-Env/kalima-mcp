@@ -215,3 +215,21 @@
 - $scope.name: ng-model=name
 - var = global scope
 - let = block scope
+
+## Server-Side
+
+### Responsabilities
+- handle HTTP connections
+- responding to requests
+- manages permissions and access
+- encrypts and compresses data
+- manages domains and URLs
+
+### LAMP stack
+- linux os
+- apache web server
+  - PHP core: main features
+  - extension layer
+  - zend engine
+- mySQL
+- PHP

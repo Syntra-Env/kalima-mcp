@@ -24,4 +24,5 @@
 - [ ] (Before midterm) review Hybrid content
 
 ## Web Programming
-- [ ] 
+- [ ] Install Apache, PHP and MySQL
+- [ ] (Jun 15) Lab 5 - Preparation and Introduction to PHP

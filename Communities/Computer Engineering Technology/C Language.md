@@ -75,7 +75,7 @@
     4.  uninitialized variables cause to grab previously initialized values from heap
 66. $?
 67. ## Nonlocal Jumps <setjmp.h>
-68. Macro: text replacement?
+68. Macro: text replacement? -> preprocessor directives
 69. Buffer
 70. calling environment
 71. ## Common definitions <stddef.h>
@@ -91,7 +91,7 @@
     3.  '\n'
 79. Procedure can only do one thing
     1.  separation of concerns
-80. Preprocessor directives: don't take any memory???
+80. Preprocessor directives: don't take any memory??? also called macros?
     1.  #define
     2.  #include
 81. if (argc != 3) error = 1;
@@ -412,3 +412,10 @@ for (i=1; i<listNumbers; i++) {
   - type definition
   - storage class specifiers
   - qualifiers
+  - stores
+    - stack
+    - heap
+    - register: can't use the '&' address-of operator
+- static: inside stack to keep something we'll come back to
+- invoke function goes to bottom of the stack
+- structure: complex data type. i.e., set of multiple data types
