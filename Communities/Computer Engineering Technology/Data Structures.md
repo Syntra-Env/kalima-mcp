@@ -135,3 +135,8 @@ for (i<n) { // time complexity: n*m
 - 2^n = 64 -> log 2 (64) "log of 64 to base 2"
 - converting log base 2 to log base 10
 - big O notation only consideres the worst case scenario
+
+
+| Data Structure | Access | Insert at front | Insert at end |
+| -------------- | ------ | --------------- | ------------- |
+|                |        |                 |               |

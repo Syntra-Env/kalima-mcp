@@ -54,3 +54,6 @@
 | Sign/Magnitude  |                 |                 |       |
 | Ones Complement |                 |                 |       |
 | Twos Complement |                 |                 |       |
+
+## Week 6
+is two's complement only used for converting negative numbers... or turning a negative decimal to a signed binary?

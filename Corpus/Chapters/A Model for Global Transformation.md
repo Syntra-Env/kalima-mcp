@@ -1,4 +1,4 @@
-Context: This paper emerged out of a dialogue with an argumentative part of myself who insists on creating increasingly comprehensive human control systems as the only way to bring about global order. He doesn't want to admit it but his attachment to this perspective is due to his desire to get credit (recognition, praise, etc) for the resulting change. His masking argument is that
+Context: This article emerged out of a dialogue with an argumentative part of myself who insists on creating increasingly comprehensive human control systems as the only way to bring about global order. He doesn't want to admit it but his attachment to this perspective is due to his desire to get credit (recognition, praise, etc) for the resulting change.
 
 The current and most prevalent model for global transformation revolves around direct human control through laws and enforcement—essentially, a system where compliance is compelled through man-made systems of governance.
 
@@ -9,6 +9,7 @@ This is achieved, from the perspective of an earthling, through the initiation a
 Let me clarify this with two simple geometrical models.
 One earthling trying to help many other earthlings. This is not scalable.
 One earthling connecting with Allah, activating a cascading effect of change from the NOA all the way down to Jaheem.
+
 This embodies the principle of "think globally, act locally." By becoming a skilled and habitual caller, in addition to increasing self-coherence, one becomes a living example for those watching from above, ground-level and from below.
 
 Resistance to change brought about this way is ultimately futile. As fewer Anfus/Nufoos remain to reinforce outdated behaviors and cognitive patterns, opportunities for self-destructive actions diminish. With dwindling support, individuals lose the resources or encouragement to perpetuate negative habits.

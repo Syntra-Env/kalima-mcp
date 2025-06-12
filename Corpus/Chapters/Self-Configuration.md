@@ -2,6 +2,7 @@
 
 ## Defining the core of the self
 ### What is the self composed of?
+in order to avoid lisiting dimensions of the self that I think are necessary and sufficient to paint a picture of the whole self, I would like to propose that self-identification is quite flexible and if we want to build a framework for identity, then it must personalizable to what each individual gives most importance to.
 ### What remains once the body perishes?
 
 ## Crossing Over to The Metaphorical Understanding
