@@ -16,11 +16,15 @@
   - [x] write saveToFile()
   - [x] write loadFromFile()
   - [x] add number of books in the catalog display
+  - [x] remove extra spaces after method execution
+  - [ ] include actual name of book added in message after adding book
+  - [ ] remove newline after Genre when reading from file
+  - [ ] insert sorting algorithm directly inside the addBook method rather than in its own method
 - [ ] (Jun 18) Midterm
 - [ ] (Jun 20) Hybrid 6: List Search and Delete
 
 ## C Language
-- [ ] (16 Jun) Midterm
+- [ ] (mon 16 Jun) Midterm
 - [ ] (before 18 Jun) Review questions for practical assessement
 - [ ] (18 Jun) practical assessement + code tracing
 - [ ] (30 jun) Assignment 1: Maze Runner
