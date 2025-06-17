@@ -108,12 +108,12 @@
 84. method declaration: returnType functionName (type name pair(s)) {}
 85. is the offest related to pointer arithmetic?
 86. when you say it's good to initialize a variable because anything could be in it, do you mean it could be assigned a memory location that hasn't been freed before?
-87. in which order are elements stored in the symbol item? does it have to do with how the program will be executed?
+87. Are elements in the symbol table stored in the order of their execution? If not, then in which order are elements in the symbol table stored?
 88. ## while vs for loop
 89. for loop when you know when you want to loop to end
 90. while loop when you don't know exactly when the loop will end or should end
 91. while(string[i++] != '\0'); return i-1;
-92. Union: single value, multiple types
+92. Union: multiple types and values in the same memory space
 93. Struct: multiple different values as a new type: takes care of the memory allocation for us: not necessarily contiguous in memory, could store its parts in different places in memory.
 94. ## common input problems
 95. snippet library: things you do over and over again:
@@ -181,11 +181,12 @@
 127. name -> reference to first bit of an address -> type
 128. type represents size of memory
 
+(Charin the cat drowned in the Flodo)
 | type   | size (in bits) |
 | ------ | -------------- |
+| char   | 8              |
 | int    | 16 or 32       | words fit easily, so no multiple
 | float  | 32             |
-| char   | 8              |
 | double | 64             |
 
 - use char for bool?
@@ -206,12 +207,13 @@
 - reg stack pointer
 - segmentation fall error
 
-- compilation process
-- preprocessing
-- compilation
-- linking
-- loading
-- run program
+- compilation process (Pre-Com-Lin-Loa-Run)
+  - preprocessing: substitution
+  - compilation: objects
+  - linking: executable
+  - loading: disk to memory
+  - run program: execution
+
 - GNU compiler colelction
 - ansi american national standards institute
 - standards aids portability between compilers
@@ -220,9 +222,9 @@
 - return vs exit: return returns from current function call while exit is a system call that terminates current process
 - exit takes an integer parameter that represents the exit static (success/failure)
 - atexit()
-- a C function may not return an array
+- a C function may not return an array (but can return pointer to array?)
 - omitted return value in C89= return int
-- non-voiid function -> produces value
+- non-void function -> produces value
 - order of function definition: based on which methods call each other and in which order; very important for successful compilation
 - function prototypes
 - changes to parameters during execution
@@ -239,7 +241,7 @@
 6.   pointer types
 7.   generic pointer = [void * pointer = null;] : doesn't have a size, requires type casting
      1.   stores an address
-     2.   all pointers are the same size but can point to things of different sizes.
+     2.   all pointers are the same size but can point to things of different sizes
      3.   initialized pointers to null: makes nullpointer errors catchable
 8.   Register keyword used with a pointer makes the pointer unavailable. If the pointer is stored in the register, it is not in memory.
 9.   malloc returns null generic pointer
@@ -293,7 +295,7 @@ int main (){
 1. dynamically allocate and reallocate (to add numbers) memory as an array
 2.  check number against list
 3.  input number
-4.  free the allocated memory while keeping empty list or something we can still display after freeing memory
+4.  free the allocated memory while keeping empty list or something we can still display after freeing memory (instead of null pointer)
 
 5. until (exit): {
    1. display menu
@@ -382,7 +384,6 @@ for (i=1; i<listNumbers; i++) {
     }
 }
 
-
 # Review
 ## Lecture 1
 - coding to a standard
@@ -419,3 +420,26 @@ for (i=1; i<listNumbers; i++) {
 - static: inside stack to keep something we'll come back to
 - invoke function goes to bottom of the stack
 - structure: complex data type. i.e., set of multiple data types
+
+## Stack
+1. stack frame contains
+   1.  memory for local variables 
+   2.  return address to call location
+2.  Push: add to stack
+3.  Pop: remove from stack
+4.  used for static memory allocation (at compile-time)
+5.  scope and lifetime of variables is scope and lifetime of function
+
+## Heap
+1. allocate memory at runtime
+2. heap memory is not cleared automatically
+3. persists until explicitly freed
+4. slower than stack
+5. can become fragmented (free memory available in small )
+6. uninitialized variables cause to grab previously initialized values from heap
+7. static: off the stack (in heap)
+8. memory leak: memory we can't find to clean up. OS memory leaks stay permanently. causes heap to overtake the stack (heap overflow)
+9.  Dynamic memory allocation allocates memory on the heap
+
+## Pointers to pointers
+int complexarray[2][3];

@@ -233,3 +233,12 @@
   - zend engine
 - mySQL
 - PHP
+
+### Running PHP Locally
+- start web server environment
+- local web server requests local PHP resource
+- web server delegates execution to bundled PHP module
+- PHP execution output return to browser
+- browser receives response and displays output
+
+## Logical-Conditional Functions

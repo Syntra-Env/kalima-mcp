@@ -1,35 +1,24 @@
 # 3 Jun 2025
 
-## Misc
-- [ ] 
+## NOW
+- [ ] Prepare for Data Structures midterm
+  - [x] selection sort
+  - [x] Insertion sort
+  - [ ] comparable and comparator
+  - [x] quick sort
+  - [ ] merge sort
+  - [ ] bubble sort
+  - [ ] in-place vs not-in-place
+  - [ ] time complexity for different algorithms
+- [ ] Prepare for C practical assessment
+- [ ] Find a good timer app
 
-## Processor Architecture
-- [ ] (15 Jun) Hybrid Quiz 4: Computer Architecture
-- [ ] (20 Jun) Assignment 2A Quiz
-
-## Data Structures
-- [ ] (Jun 13) Hybrid 5: Sorting
-- [ ] (Jun 14) Assignment 2
-  - [ ] add top-level comments with assignment info
-  - [x] add @Override on top of addBook methods inherited form the superclass.
-  - [x] change catalog from Array to ArrayList
-  - [x] write saveToFile()
-  - [x] write loadFromFile()
-  - [x] add number of books in the catalog display
-  - [x] remove extra spaces after method execution
-  - [ ] include actual name of book added in message after adding book
-  - [ ] remove newline after Genre when reading from file
-  - [ ] insert sorting algorithm directly inside the addBook method rather than in its own method
-- [ ] (Jun 18) Midterm
-- [ ] (Jun 20) Hybrid 6: List Search and Delete
-
-## C Language
-- [ ] (mon 16 Jun) Midterm
-- [ ] (before 18 Jun) Review questions for practical assessement
-- [ ] (18 Jun) practical assessement + code tracing
-- [ ] (30 jun) Assignment 1: Maze Runner
-- [ ] (Before midterm) review Hybrid content
-
-## Web Programming
-- [ ] Install Apache, PHP and MySQL
-- [ ] (Jun 15) Lab 5 - Preparation and Introduction to PHP 
+## NEXT
+- [ ] (17 Jun) [C] Review questions for practical assessement
+- [ ] (18 Jun) [C] practical assessement + code tracing
+- [ ] (18 Jun) [DS] Midterm
+- [ ] (20 Jun) [PA] Assignment 2A Quiz
+- [ ] (20 Jun) [DS] Hybrid 6: List Search and Delete
+- [ ] (22 Jun) [DS] Lab 4 - Sorting and Recursive Divide and Conquer
+- [ ] (22 Jun) [WP] Lab 6 - Logical and Conditional Statements
+- [ ] (30 jun) [C] Assignment 1: Maze Runner

@@ -134,9 +134,5 @@ for (i<n) { // time complexity: n*m
 - the power of the range expressed in powers of 2 is equivalent to the number of steps required to search using binary search
 - 2^n = 64 -> log 2 (64) "log of 64 to base 2"
 - converting log base 2 to log base 10
-- big O notation only consideres the worst case scenario
+- big O analysis only consideres the worst case scenario
 
-
-| Data Structure | Access | Insert at front | Insert at end |
-| -------------- | ------ | --------------- | ------------- |
-|                |        |                 |               |
