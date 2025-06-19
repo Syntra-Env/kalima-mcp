@@ -18,3 +18,6 @@ Additional feature: the peer-review system: I know that a peer-review system can
 # 3. Cool Projects
 - Cabrera research lab
 - [[Alison McDowell]]
+
+## quote meaning guessing game
+A game where you are given a poem verse, quote, proverb, or literary passage and you are to guess what it means. The game is similar to semantle but.
