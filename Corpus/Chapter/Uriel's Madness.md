@@ -132,6 +132,43 @@ Years later, Uriel dies quietly. His last journal contains the line: *“Every m
 * **Signals:** Transmissions between generations
 * **Motif:** The ghost as seed
 
+# ✅ Characters Summary
+
 ---
 
-Would you like to proceed to **Step 5: Part-by-part outline for Chapter 1: *The Echoing Phrase*?**
+## Uriel
+**traits:** anxious, skeptic, idealist, meticulous,  
+
+**background:** jewish from Josefov, Prague. Thanks to the rapid growth of the muslim empire and increased trade between the muslim and christian world, trade routes were established. The Radhanites were positioned at the center of a growing trade network in Bohemia, Prague. Among his family were prominent lawyers and policy-makers. Growing up in the 21st century, he was a bit disconnected from the history of his city, but as time went by, he began to experience strange events where the city began to speak to him in its symbols. He was born in the 1990s, and at an early age began to tinker around with computers. He wrote a few programs and had conversations with his parents that increased his interest in the world of information. He went into computer science in university and got a PhD in theoretical computer science. He decided academia was not for him after a few of his most interesting research proposals got rejected. Thankfully, his family owned a business that he could help with to get by. 
+
+**motivations:** his strange experience compel him to find answers
+
+**flaws:**  
+
+**key relationships:**  His friend Miroslava from university, his parents and younger brother. Another friend, Ivo, whom he met after he began to write about his experiences online. They meet up once in a while and chat online.
+
+---
+
+## Miroslava
+**traits:**  reserved, adventurous, witty, alcoholic, restless, tired
+
+**background:** her family was in czech republic for a long time. she grew up in a different neighborhood than Uriel, being agnostic and all that. They met at the university and became friends. Miroslava specialized in biocomputing.
+
+**motivations:** she loves being in the lab, and creating simulations
+
+**flaws:** is bipolar, can be depressed for weeks at a time
+
+**key relationships:** Uriel is her friend, Havel is her boyfriend.
+
+---
+
+## Ivo
+**traits:** conspiratorial, energetic, paranoid, germaphobe, conceited, self-aggrandizing, dramatic, handsome
+
+**background:** from france, he came to study and work in prague for its rich history and architecture. He is an accountant.
+
+**motivations:** he thinks he found out some secrets and that some secret society is trying to turn him mad before he puts the pieces together and exposes them
+
+**flaws:** short-tempered, doesn't listen to advice, impulsive
+
+**key relationships:** Uriel, his comrade in trying to decipher the mystery

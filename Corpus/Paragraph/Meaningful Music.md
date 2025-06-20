@@ -1,1 +1,0 @@
-Imagine music that actually meant something and increased your productivity. If we learn to associate certain kinds of notes, pitches, etc with certain kinds of information, just as we have with notifications, then we could generate soothing background music that one could learn to "read", thereby gaining the ability to "check notifications" without actually looking at anything.

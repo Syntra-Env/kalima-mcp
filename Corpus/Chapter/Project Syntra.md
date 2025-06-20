@@ -19,21 +19,8 @@ There are a few core components of this system
     - evaluation of user performance based on goals and success criteria.
     - goal revision and updating based on user's changing reality and priorities
 
-### MAIN PROGRAM: Scriptural Analysis
-1. Identify linguistic patterns in the Quran  
-   a. NLP techniques  
-   b. Mathematical modeling of narratives  
-   c. Use academic books and papers analyzing the language of the Quran as references  
-2. Add new patterns to a database  
-   a. Check for duplicate or near-duplicates  
-   b. Enable users to compare their personal databases
-   d. Logic Proof Theory as a 3D Puzzle Game  
-3. Provide intuitive tools for searching and updating the database  
-   a. Pattern visualization  
-      - 3D Mind maps, network graphs  
-
-### SECONDARY PROGRAM: Self Analysis
-1. Record user daily log  
+### MAIN PROGRAM: Self Analysis
+1. Record user daily log
    a. Flexible data format  
    b. Identify key data points  
       - Emotions  

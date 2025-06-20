@@ -1,8 +1,0 @@
-- Chest pain
-- Chronic Exhaustion
-- Shortness of breath
-- Low-voltage current and mild discomfort throughout entire body
-- Cold extremities
-- Very sensitive skin
-- Chronic anxiety and apprehensiveness
-- Muscle twitching

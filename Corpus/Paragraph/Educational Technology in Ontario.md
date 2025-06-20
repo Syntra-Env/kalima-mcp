@@ -1,5 +1,0 @@
-I think the future of online education will be in the hands of businesses. More businesses are making courses of their own to train their employees, and it's becoming increasingly easy to do this. Or perhaps we will see some kind of merging between the educational institutions and the large corporations... which might turn lead us straight into a cyberpunk future. The exception is for research institutions. i.e., higher education institutions in which the main operation is not to make money but to make discoveries.
-
-We are obviously concerned with the influential figures in the higher education system, and we are wondering what their interests are and we hope that the most influential thought leaders will be spiritually inclined and not purely financially motivated.
-
-[[Educational Technology]]

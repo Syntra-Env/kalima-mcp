@@ -1,4 +1,4 @@
-# I Seek From People Things We Don't Have
+# I Seek From Others Things We Don't Have
 
 ## The attachment to sharing with others
 

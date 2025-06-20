@@ -1,1 +1,0 @@
-Hypothesis: the geometrical compactness of a mental visual representation of a concept influences the processability and limits the compositionality (less space for connections between concepts) of such a concept.
