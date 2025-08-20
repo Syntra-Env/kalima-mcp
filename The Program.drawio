@@ -1,0 +1,55 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/28.0.6 Chrome/138.0.7204.100 Electron/37.2.3 Safari/537.36" version="28.0.6">
+  <diagram name="Page-1" id="fyxV0nGsO-o0xg1lNeSQ">
+    <mxGraphModel dx="1042" dy="722" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="LX_HDggWRgZZZCS1ehc_-3" value="" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="LX_HDggWRgZZZCS1ehc_-1" target="LX_HDggWRgZZZCS1ehc_-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LX_HDggWRgZZZCS1ehc_-1" value="demonstrate that the structure of reality is a language" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="255" y="138" width="310" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="LX_HDggWRgZZZCS1ehc_-5" value="" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="LX_HDggWRgZZZCS1ehc_-2" target="LX_HDggWRgZZZCS1ehc_-4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LX_HDggWRgZZZCS1ehc_-2" value="expand the theory of language based on existing working theories of reality" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="200" y="248" width="420" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="LX_HDggWRgZZZCS1ehc_-7" value="" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="LX_HDggWRgZZZCS1ehc_-4" target="LX_HDggWRgZZZCS1ehc_-6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LX_HDggWRgZZZCS1ehc_-4" value="argue that the creator of reality must have therefore been communicated linguistically" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="170" y="358" width="480" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="LX_HDggWRgZZZCS1ehc_-9" value="" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="LX_HDggWRgZZZCS1ehc_-6" target="LX_HDggWRgZZZCS1ehc_-8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LX_HDggWRgZZZCS1ehc_-6" value="demonstrate the usefulness of the expanded theory of lingusitics on scriptural analysis" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="170" y="468" width="480" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="LX_HDggWRgZZZCS1ehc_-12" value="" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="LX_HDggWRgZZZCS1ehc_-8" target="LX_HDggWRgZZZCS1ehc_-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LX_HDggWRgZZZCS1ehc_-8" value="demonstrate methodological insights derived from the application of the methodology to reality" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="150" y="578" width="520" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="LX_HDggWRgZZZCS1ehc_-14" value="" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="LX_HDggWRgZZZCS1ehc_-11" target="LX_HDggWRgZZZCS1ehc_-13">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LX_HDggWRgZZZCS1ehc_-11" value="formulate the methodology and scripture as an instrument and interface to communicate with the ultimate reality" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="100" y="688" width="620" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="LX_HDggWRgZZZCS1ehc_-16" value="" style="edgeStyle=none;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="LX_HDggWRgZZZCS1ehc_-13" target="LX_HDggWRgZZZCS1ehc_-15">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LX_HDggWRgZZZCS1ehc_-13" value="explain the meaning and implications of communication with reality" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="220" y="798" width="380" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="LX_HDggWRgZZZCS1ehc_-15" value="use quantum information theory to formulate quantum phsyics as a theory of communication and show how it informs the new linguistics" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="35" y="908" width="750" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
