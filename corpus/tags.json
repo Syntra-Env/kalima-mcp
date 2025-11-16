@@ -1,0 +1,194 @@
+{
+  "version": "1.0.0",
+  "description": "Tag registry with hypothesis verification tracking",
+  "last_updated": "2025-11-15T22:59:19.032915",
+  "taxonomy": {
+    "thematic": {
+      "description": "Thematic and conceptual patterns",
+      "status": "established",
+      "subtypes": [
+        "prophets",
+        "concepts",
+        "narratives"
+      ],
+      "usage_count": 0
+    },
+    "compositional": {
+      "description": "How sentences and passages connect",
+      "status": "established",
+      "subtypes": [
+        "discourse_markers",
+        "connection_types",
+        "structure"
+      ],
+      "usage_count": 0
+    },
+    "syntactic": {
+      "description": "Sentence structure and grammar",
+      "status": "established",
+      "subtypes": [
+        "clause_type",
+        "word_order",
+        "dependency"
+      ],
+      "usage_count": 0
+    },
+    "morphological": {
+      "description": "Word structure and morphology",
+      "status": "established",
+      "subtypes": [
+        "root",
+        "pattern",
+        "derivation",
+        "inflection"
+      ],
+      "usage_count": 0
+    },
+    "phonological": {
+      "description": "Sound patterns and phonetics",
+      "status": "established",
+      "subtypes": [
+        "rhyme",
+        "rhythm",
+        "euphony",
+        "letter_repetition"
+      ],
+      "usage_count": 0
+    },
+    "ontology": {
+      "description": "Characters, objects, and entities",
+      "status": "established",
+      "subtypes": [
+        "characters",
+        "objects",
+        "places",
+        "events"
+      ],
+      "usage_count": 0
+    },
+    "stylistic": {
+      "description": "Writing style and register",
+      "status": "established",
+      "subtypes": [
+        "speech_type",
+        "tone",
+        "register"
+      ],
+      "usage_count": 0
+    },
+    "logical": {
+      "description": "Logical structure and reasoning",
+      "status": "established",
+      "subtypes": [
+        "argument_structure",
+        "premises",
+        "conclusions",
+        "reasoning_type"
+      ],
+      "usage_count": 0
+    },
+    "psychological": {
+      "description": "Mental and emotional states",
+      "status": "established",
+      "subtypes": [
+        "emotion",
+        "cognition",
+        "motivation"
+      ],
+      "usage_count": 0
+    },
+    "rhetorical": {
+      "description": "Rhetorical devices and techniques",
+      "status": "established",
+      "subtypes": [
+        "devices",
+        "questions",
+        "emphasis"
+      ],
+      "usage_count": 0
+    }
+  },
+  "tags": {
+    "root_علم_witnessing": {
+      "category": "morphological",
+      "status": "viable",
+      "hypothesis": "Root ع-ل-م in pattern فَعَّلَ (علّم) indicates teaching through demonstration/witnessing rather than mere information transfer",
+      "created_date": "2025-11-15T22:58:06.267871",
+      "last_updated": "2025-11-15T22:59:19.032915",
+      "evidence": {
+        "supporting": [
+          {
+            "verse": "2:31",
+            "note": "Initial observation",
+            "date": "2025-11-15T22:58:06.267871"
+          },
+          {
+            "verse": "18:66",
+            "note": "Moses asks to follow/witness Khidr's actions to learn - علمتني",
+            "date": "2025-11-15T22:59:19.032915"
+          }
+        ],
+        "counter_examples": [],
+        "total_instances": null,
+        "tested_instances": 1,
+        "pending_review": null
+      },
+      "verification_log": [
+        {
+          "date": "2025-11-15T22:58:06.267871",
+          "action": "created",
+          "status": "hypothesis",
+          "note": "Tag created with initial hypothesis"
+        },
+        {
+          "date": "2025-11-15T22:59:19.032915",
+          "action": "evidence_added",
+          "verse": "18:66",
+          "note": "Moses asks to follow/witness Khidr's actions to learn - علمتني"
+        },
+        {
+          "date": "2025-11-15T22:59:19.032915",
+          "action": "status_change",
+          "from_status": "hypothesis",
+          "to_status": "viable",
+          "note": "Auto-promoted: 2 supporting examples found"
+        }
+      ],
+      "challenges": [],
+      "related_hypotheses": []
+    }
+  },
+  "status_definitions": {
+    "hypothesis": "Initial claim, untested",
+    "viable": "Has 2+ supporting examples, ready for comprehensive testing",
+    "testing": "Currently being validated against all instances",
+    "challenged": "Counter-examples found, needs refinement",
+    "verified": "Passed comprehensive testing, no unresolved counter-examples",
+    "belief": "High certainty, well-established through sustained testing",
+    "deprecated": "Disproven or superseded by better hypothesis"
+  },
+  "statistics": {
+    "total_tags": 1,
+    "by_status": {
+      "hypothesis": 0,
+      "viable": 1,
+      "testing": 0,
+      "challenged": 0,
+      "verified": 0,
+      "belief": 0,
+      "deprecated": 0
+    },
+    "by_category": {
+      "thematic": 0,
+      "compositional": 0,
+      "syntactic": 0,
+      "morphological": 1,
+      "phonological": 0,
+      "ontology": 0,
+      "stylistic": 0,
+      "logical": 0,
+      "psychological": 0,
+      "rhetorical": 0
+    }
+  }
+}
