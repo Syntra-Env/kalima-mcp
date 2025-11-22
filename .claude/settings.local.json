@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(copy /Y:*)",
+      "Bash(pip install:*)",
+      "Bash(python app.py:*)",
+      "Bash(start http://localhost:5000)",
+      "Bash(dir flagman:*)",
+      "Bash(python flagman.py:*)",
+      "Bash(mkdir:*)",
+      "Bash(dir /b:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(python:*)",
+      "Bash(timeout 10 python:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

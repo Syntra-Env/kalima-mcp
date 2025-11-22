@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Codex - Quran Research Canvas</title>
+    <link rel="stylesheet" href="/static/css/minimal.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Scheherazade+New:wght@400;700&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Minimal Top Bar -->
+    <header class="minimal-header">
+        <button id="menuToggle" class="menu-toggle">☰</button>
+        <div class="header-spacer"></div>
+        <button id="patternToggle" class="menu-toggle" title="Toggle details &amp; results panel">🔍</button>
+    </header>
+
+    <!-- Collapsible Side Menu -->
+    <aside id="sideMenu" class="side-menu collapsed">
+        <div class="menu-content">
+            <div class="tree-panel">
+                <h2>Surah / Ayah</h2>
+                <div id="surahTree" class="surah-tree">
+                    <p class="hint">Select a surah to expand and jump to its ayahs.</p>
+                </div>
+            </div>
+
+            <div class="search-panel compact">
+                <h2>Search</h2>
+                <details class="search-section" open>
+                    <summary>Root Explorer</summary>
+                    <div id="rootLetterRow" class="letter-chip-row"></div>
+                    <div id="rootChipContainer" class="search-chip-container">
+                        <p class="hint">Select a letter to view available roots.</p>
+                    </div>
+                </details>
+                <details class="search-section">
+                    <summary>Navigation Map</summary>
+                    <div id="navMap" class="nav-map">
+                        <p class="hint">Your navigation history will appear as a map.</p>
+                    </div>
+                </details>
+                <details class="search-section">
+                    <summary>Diacritic Pattern Search</summary>
+                    <div class="pattern-search">
+                        <label class="pattern-label">Arabic keyword</label>
+                        <div class="pattern-input">
+                            <input type="text" id="patternInput" class="input" placeholder="Enter Arabic word e.g. بَعُوضَةً" />
+                            <button type="button" class="pattern-btn" id="patternBreakBtn" title="Break word into letters and diacritics">⟳</button>
+                        </div>
+                        <div class="pattern-actions">
+                            <button type="button" class="btn" id="patternAlphabetBtn">Alphabet (placeholders)</button>
+                            <label><input type="checkbox" id="patternAllowPrefix" /> Allow prefix</label>
+                            <label><input type="checkbox" id="patternAllowSuffix" /> Allow suffix</label>
+                        </div>
+                        <div id="patternSegments" class="pattern-segments">
+                            <p class="hint">Break a word to edit per-letter pattern.</p>
+                        </div>
+                        <div class="pattern-actions">
+                            <button type="button" class="btn btn-primary" id="patternSearchBtn">Search Pattern</button>
+                        </div>
+                        <p class="hint small">Toggle letters/diacritics to \"any\" for flexible matches.</p>
+                    </div>
+                </details>
+                <details class="search-section">
+                    <summary>Morphological Builder</summary>
+                    <div id="morphBuilder" class="builder-field" data-builder="morph"></div>
+                    <div class="builder-actions">
+                        <div id="morphChipRow" class="chip-row"></div>
+                        <div>
+                            <button type="button" class="btn" id="morphClearBtn">Clear</button>
+                            <button type="button" class="btn btn-primary" id="morphBuildSearch">Search</button>
+                        </div>
+                    </div>
+                </details>
+                <details class="search-section">
+                    <summary>Diacritic Pattern Search</summary>
+                    <div class="pattern-search">
+                        <label class="pattern-label">Arabic keyword</label>
+                        <div class="pattern-input">
+                            <input type="text" id="patternInput" class="input" placeholder="Enter Arabic word e.g. بَعُوضَةً" />
+                            <button type="button" class="pattern-btn" id="patternBreakBtn" title="Break word into letters and diacritics">⟳</button>
+                        </div>
+                        <div class="pattern-actions">
+                            <button type="button" class="btn" id="patternAlphabetBtn">Alphabet</button>
+                            <span class="word-size-hint">Word size locks</span>
+                        </div>
+                        <div id="patternSegments" class="pattern-segments"></div>
+                        <div class="pattern-actions">
+                            <button type="button" class="btn btn-primary" id="patternSearchBtn">Search Pattern</button>
+                        </div>
+                        <p class="hint small">Use placeholders to find matching diacritic patterns across words.</p>
+                    </div>
+                </details>
+                <details class="search-section">
+                    <summary>Syntactic Builder</summary>
+                    <div id="syntaxBuilder" class="builder-field" data-builder="syntax"></div>
+                    <div class="builder-actions">
+                        <div id="syntaxChipRow" class="chip-row"></div>
+                        <div>
+                            <button type="button" class="btn" id="syntaxClearBtn">Clear</button>
+                            <button type="button" class="btn btn-primary" id="syntaxBuildSearch">Search</button>
+                        </div>
+                    </div>
+                </details>
+                <details class="search-section">
+                    <summary>Library Search</summary>
+                    <input type="text" id="librarySearchInput" class="input" placeholder="Search notes &amp; bookmarks (data/)" />
+                    <div class="builder-actions">
+                        <button type="button" class="btn btn-primary" id="librarySearchBtn">Search Library</button>
+                    </div>
+                </details>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Details & Results Panel -->
+    <aside id="patternPanel" class="pattern-panel collapsed" aria-label="Details and results">
+        <div class="panel-header">
+            <h2>Details &amp; Results</h2>
+            <button id="closePatternPanel" class="panel-close" aria-label="Hide panel">×</button>
+        </div>
+        <div id="elementDetails" class="element-details">
+            <p class="hint">Click on any element to inspect its structure.</p>
+        </div>
+        <div class="structure-panel">
+            <h3>Structure Tagging</h3>
+            <div class="structure-palette">
+                <span class="palette-label">Type:</span>
+                <div id="layerPalette" class="palette-options"></div>
+            </div>
+            <p class="hint">Select a type, then click an element to tag.</p>
+        </div>
+        <div id="hypothesisPanel" class="hypothesis-panel">
+            <h3>Hypotheses</h3>
+            <div id="hypothesisList" class="hypothesis-list">
+                <p class="hint">No hypotheses yet.</p>
+            </div>
+            <form id="hypothesisForm" class="hypothesis-form">
+                <div id="hypTargetDisplay" class="hyp-target">No selection</div>
+                <label>Hypothesis / Referent</label>
+                <input id="hypText" type="text" placeholder="Hypothesis text" />
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save Hypothesis</button>
+                </div>
+            </form>
+        </div>
+        <div id="actionHistory" class="action-history">
+            <p class="hint">Recent actions will appear here.</p>
+        </div>
+        <div id="searchResults" class="search-results panel-results">
+            <p class="hint">Use the search builders to explore occurrences.</p>
+        </div>
+    </aside>
+
+    <!-- Main Canvas - Just the Quran Text -->
+    <main id="canvas" class="canvas">
+        <!-- Verse Reference -->
+        <div class="verse-reference" id="verseReference"></div>
+
+        <!-- The Sacred Text (Interactive) -->
+        <div class="quran-text" id="quranText">
+            <!-- Words will be rendered here as interactive elements -->
+        </div>
+
+        <!-- SVG Overlay for Connections -->
+        <svg id="connectionCanvas" class="connection-canvas"></svg>
+
+        <!-- Edge Indicators -->
+        <div class="edge-indicators">
+            <div class="edge-indicator edge-top" id="edgeTop"></div>
+            <div class="edge-indicator edge-right" id="edgeRight"></div>
+            <div class="edge-indicator edge-bottom" id="edgeBottom"></div>
+            <div class="edge-indicator edge-left" id="edgeLeft"></div>
+        </div>
+    </main>
+
+    <!-- Hover Tooltip -->
+    <div id="textTooltip" class="text-tooltip hidden"></div>
+
+    <!-- Pattern Definition Modal -->
+    <div id="patternModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2>Define New Pattern</h2>
+            <form id="patternForm">
+                <label>Pattern Name:</label>
+                <input type="text" id="patternName" required />
+
+                <label>Pattern Type:</label>
+                <select id="patternType">
+                    <option value="morphological">Morphological</option>
+                    <option value="syntactic">Syntactic</option>
+                    <option value="thematic">Thematic</option>
+                    <option value="phonological">Phonological</option>
+                </select>
+
+                <label>Description:</label>
+                <textarea id="patternDescription" rows="4"></textarea>
+
+                <label>Apply to entire corpus?</label>
+                <input type="checkbox" id="applyCorpus" />
+
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">Save Pattern</button>
+                    <button type="button" class="btn" id="cancelPattern">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/js/canvas.js"></script>
+</body>
+</html>

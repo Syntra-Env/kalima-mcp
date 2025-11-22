@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Codex - Quran Research Interface</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Scheherazade+New:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <h1 class="logo">Codex</h1>
+            <nav class="nav">
+                <button id="searchBtn" class="nav-btn">Search</button>
+                <button id="tagsBtn" class="nav-btn">Hypotheses</button>
+                <button id="statsBtn" class="nav-btn">Statistics</button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+        <div class="container">
+            <!-- Left Sidebar: Navigation & Info -->
+            <aside class="sidebar sidebar-left">
+                <div class="card">
+                    <h2>Navigation</h2>
+                    <div class="navigation">
+                        <input type="number" id="surahInput" placeholder="Surah #" min="1" max="114">
+                        <input type="number" id="ayahInput" placeholder="Ayah #" min="1">
+                        <button id="goBtn" class="btn btn-primary">Go</button>
+                    </div>
+                    <div class="nav-buttons">
+                        <button id="prevBtn" class="btn">← Previous</button>
+                        <button id="nextBtn" class="btn">Next →</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Display Options</h2>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="showTokens" checked>
+                        Show Tokens
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="showMorphology">
+                        Show Morphology
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="showAnnotations" checked>
+                        Show Annotations
+                    </label>
+                </div>
+
+                <div class="card stats-card" id="statsCard">
+                    <h2>Verse Info</h2>
+                    <div id="verseInfo"></div>
+                </div>
+            </aside>
+
+            <!-- Center: Verse Display -->
+            <section class="content">
+                <!-- Layer Controls -->
+                <div class="layer-controls" id="layerControls">
+                    <!-- Layer toggles will be inserted here by JavaScript -->
+                </div>
+
+                <div class="verse-container">
+                    <div class="verse-header" id="verseHeader">
+                        <h2 id="verseTitle">Loading...</h2>
+                    </div>
+
+                    <div class="verse-text" id="verseText">
+                        <!-- Arabic text will be displayed here -->
+                    </div>
+
+                    <div class="tokens-container" id="tokensContainer">
+                        <!-- Tokens will be displayed here -->
+                    </div>
+
+                    <div class="annotations-container" id="annotationsContainer">
+                        <!-- Annotations will be displayed here -->
+                    </div>
+
+                    <div class="action-buttons">
+                        <button id="annotateBtn" class="btn btn-primary">Add Annotation</button>
+                        <button id="linkHypothesisBtn" class="btn">Link to Hypothesis</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Sidebar: Morphology & Details -->
+            <aside class="sidebar sidebar-right">
+                <div class="card">
+                    <h2>Details</h2>
+                    <div id="detailsPanel">
+                        <p class="hint">Click on a word to view details</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Quick Search</h2>
+                    <input type="text" id="quickSearch" placeholder="Search verses...">
+                    <select id="searchType">
+                        <option value="text">Text</option>
+                        <option value="root">Root</option>
+                    </select>
+                    <div id="searchResults"></div>
+                </div>
+            </aside>
+        </div>
+    </main>
+
+    <!-- Search Modal -->
+    <div id="searchModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Advanced Search</h2>
+            <div class="search-form">
+                <input type="text" id="searchQuery" placeholder="Search..." class="search-input">
+                <select id="searchTypeModal">
+                    <option value="text">Text Search</option>
+                    <option value="root">Root Search</option>
+                </select>
+                <button id="searchSubmit" class="btn btn-primary">Search</button>
+            </div>
+            <div id="searchResultsModal" class="search-results">
+                <!-- Search results will appear here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Annotation Modal -->
+    <div id="annotationModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Add Annotation</h2>
+            <form id="annotationForm">
+                <label>Annotation Type:</label>
+                <select id="annotationType">
+                    <option value="morphological">Morphological</option>
+                    <option value="syntactic">Syntactic</option>
+                    <option value="rhetorical">Rhetorical</option>
+                    <option value="thematic">Thematic</option>
+                    <option value="compositional">Compositional</option>
+                    <option value="stylistic">Stylistic</option>
+                    <option value="phonological">Phonological</option>
+                    <option value="logical">Logical</option>
+                    <option value="psychological">Psychological</option>
+                    <option value="ontology">Ontological</option>
+                </select>
+
+                <label>Target Tokens:</label>
+                <input type="text" id="targetTokens" placeholder="Example: 1,2,3 or 1-3">
+
+                <label>Note:</label>
+                <textarea id="annotationNote" rows="4" placeholder="Enter your note here..."></textarea>
+
+                <label>Tags (comma-separated):</label>
+                <input type="text" id="annotationTags" placeholder="tag1, tag2, tag3">
+
+                <button type="submit" class="btn btn-primary">Save</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tags/Hypothesis Modal -->
+    <div id="tagsModal" class="modal">
+        <div class="modal-content large">
+            <span class="close">&times;</span>
+            <h2>Hypothesis Management</h2>
+            <div id="tagsContent">
+                <!-- Tags will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Modal -->
+    <div id="statsModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Corpus Statistics</h2>
+            <div id="statsContent">
+                <!-- Stats will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/layers.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

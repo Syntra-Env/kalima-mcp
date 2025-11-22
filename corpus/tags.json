@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "description": "Tag registry with hypothesis verification tracking",
-  "last_updated": "2025-11-15T22:59:19.032915",
+  "last_updated": "2025-11-16T13:09:17.376295",
   "taxonomy": {
     "thematic": {
       "description": "Thematic and conceptual patterns",
@@ -114,7 +114,7 @@
       "status": "viable",
       "hypothesis": "Root ع-ل-م in pattern فَعَّلَ (علّم) indicates teaching through demonstration/witnessing rather than mere information transfer",
       "created_date": "2025-11-15T22:58:06.267871",
-      "last_updated": "2025-11-15T22:59:19.032915",
+      "last_updated": "2025-11-15T23:36:11.972469",
       "evidence": {
         "supporting": [
           {
@@ -126,11 +126,17 @@
             "verse": "18:66",
             "note": "Moses asks to follow/witness Khidr's actions to learn - علمتني",
             "date": "2025-11-15T22:59:19.032915"
+          },
+          {
+            "verse": "3:1",
+            "note": "Test evidence for hypothesis verification",
+            "date": "2025-11-15T23:36:11.972469",
+            "annotation_id": "a-20251115-233611-001-YA"
           }
         ],
         "counter_examples": [],
         "total_instances": null,
-        "tested_instances": 1,
+        "tested_instances": 2,
         "pending_review": null
       },
       "verification_log": [
@@ -152,6 +158,12 @@
           "from_status": "hypothesis",
           "to_status": "viable",
           "note": "Auto-promoted: 2 supporting examples found"
+        },
+        {
+          "date": "2025-11-15T23:36:11.972469",
+          "action": "evidence_added",
+          "verse": "3:1",
+          "note": "Test evidence for hypothesis verification"
         }
       ],
       "challenges": [],
@@ -189,6 +201,24 @@
       "logical": 0,
       "psychological": 0,
       "rhetorical": 0
+    }
+  },
+  "patterns": {
+    "pattern-1": {
+      "name": "sdfsfsf",
+      "type": "syntactic",
+      "description": "sdfsfsdf",
+      "example_word_id": "1",
+      "verse_ref": "1:1",
+      "apply_corpus": false
+    },
+    "pattern-2": {
+      "name": "sdfsdf",
+      "type": "morphological",
+      "description": "sdfsdfs",
+      "example_word_id": "3",
+      "verse_ref": "1:1",
+      "apply_corpus": false
     }
   }
 }
