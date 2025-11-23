@@ -24,6 +24,7 @@ DEFAULT_TAGS_PATH = os.path.join(PROJECT_ROOT, 'corpus', 'tags.json')
 CORPUS_PATH = os.getenv('CORPUS_PATH', DEFAULT_CORPUS_PATH)
 TAGS_PATH = os.getenv('TAGS_PATH', DEFAULT_TAGS_PATH)
 DATA_PATH = os.getenv('DATA_PATH', os.path.join(PROJECT_ROOT, 'data'))
+NOTES_PATH = os.path.join(PROJECT_ROOT, 'notes')
 READ_ONLY_MODE = os.getenv('CODEX_READ_ONLY', '').lower() in ('1', 'true', 'yes')
 
 
@@ -389,7 +390,28 @@ class CorpusManager:
         if not root or root not in self.root_index:
             return []
         references = sorted(self.root_index[root])
-        return self._build_search_results(references, f"Root: {root}", limit)
+
+        results = []
+        for surah_num, ayah_num in references[:limit]:
+            verse = self.verse_lookup.get((surah_num, ayah_num))
+            if not verse:
+                continue
+
+            match_form = None
+            for token in verse.get('tokens', []):
+                for seg in token.get('segments', []):
+                    if seg.get('root') == root:
+                        match_form = token.get('form')
+                        break
+                if match_form:
+                    break
+
+            entry = {'verse': verse, 'match': f"Root: {root}"}
+            if match_form:
+                entry['match_term'] = match_form
+            results.append(entry)
+
+        return {'results': results, 'total_count': len(references)}
 
     def search_morph_pattern(self, pattern_id: str, limit: int = 100) -> List[Dict]:
         if not pattern_id or pattern_id not in self.morph_pattern_index:
@@ -423,6 +445,7 @@ class CorpusManager:
             return []
 
         results = []
+        total_count = 0
         for i, verse in enumerate(self.verses):
             if not verse.get('tokens'):
                 continue
@@ -438,19 +461,23 @@ class CorpusManager:
                         segment.get('features', '')
                     ]
                     if any(q in str(field).lower() for field in fields if field):
-                        match_desc = f"{segment.get('type', '').upper()} • {segment.get('pos', '')} • {segment.get('lemma', '') or ''}"
-                        results.append({
-                            'index': i,
-                            'verse': verse,
-                            'match': match_desc.strip()
-                        })
+                        total_count += 1
+                        if len(results) < limit:
+                            match_desc = f"{segment.get('type', '').upper()} • {segment.get('pos', '')} • {segment.get('lemma', '') or ''}"
+                            entry = {
+                                'index': i,
+                                'verse': verse,
+                                'match': match_desc.strip()
+                            }
+                            token_form = token.get('form')
+                            if token_form:
+                                entry['match_term'] = token_form
+                            results.append(entry)
                         found = True
                         break
                 if found:
                     break
-            if len(results) >= limit:
-                break
-        return results
+        return {'results': results, 'total_count': total_count}
 
     def search_syntax(self, pattern: str, limit: int = 100) -> List[Dict]:
         """Search for syntactic POS sequences"""
@@ -459,6 +486,7 @@ class CorpusManager:
             return []
 
         results = []
+        total_count = 0
         length = len(tokens)
 
         for i, verse in enumerate(self.verses):
@@ -478,18 +506,21 @@ class CorpusManager:
             for start in range(len(pos_sequence) - length + 1):
                 window = pos_sequence[start:start + length]
                 if window == tokens:
-                    match_desc = "POS pattern: " + ' '.join(p.upper() for p in window)
-                    results.append({
-                        'index': i,
-                        'verse': verse,
-                        'match': match_desc
-                    })
+                    total_count += 1
+                    if len(results) < limit:
+                        match_desc = "POS pattern: " + ' '.join(p.upper() for p in window)
+                        entry = {
+                            'index': i,
+                            'verse': verse,
+                            'match': match_desc
+                        }
+                        window_forms = [t.get('form') for t in verse['tokens'][start:start + length] if t.get('form')]
+                        if window_forms:
+                            entry['match_term'] = ' '.join(window_forms)
+                        results.append(entry)
                     break
 
-            if len(results) >= limit:
-                break
-
-        return results
+        return {'results': results, 'total_count': total_count}
 
     def search_library(self, query: str, limit: int = 30) -> List[Dict]:
         """Search text-based resources under data/ for supporting references"""
@@ -545,20 +576,28 @@ class CorpusManager:
             return []
 
         results: List[Dict] = []
+        total_matches = 0
         compiled = re.compile(regex)
 
         for verse in self.verses:
             text = verse.get('text') or ''
-            if compiled.search(text):
-                results.append({'verse': verse, 'match': 'Pattern match'})
-                if len(results) >= limit:
-                    break
-        return results
+            matches = list(compiled.finditer(text))
+            if matches:
+                total_matches += len(matches)
+                if len(results) < limit:
+                    results.append({
+                        'verse': verse,
+                        'match': 'Pattern match',
+                        'match_regex': regex,
+                        'match_count': len(matches)
+                    })
+        return {'results': results, 'total_count': total_matches}
 
     def _pattern_segments_to_regex(self, segments: List[Dict], allow_prefix: bool, allow_suffix: bool) -> Optional[str]:
         # Include extended alef/hamza forms
         arabic_letters = r'[\u0621-\u064A\u0671-\u0673\u0675]'
         diacritic_class = r'[\u064B-\u0652\u0670\u0653-\u0655]'
+        tatweel = r'\u0640*'  # allow optional elongation marks inside words
         parts = []
         for seg in segments:
             letter = seg.get('letter')
@@ -570,8 +609,10 @@ class CorpusManager:
             if any_diacritics:
                 diac_part = f'{diacritic_class}*'
             else:
-                diac_part = ''.join(re.escape(d) for d in diacritics if d)
-            parts.append(f'{letter_part}{diac_part}')
+                specific = ''.join(re.escape(d) for d in diacritics if d)
+                # Allow any extra combining marks even when specific ones are provided
+                diac_part = f'{specific}{diacritic_class}*'
+            parts.append(f'{letter_part}{diac_part}{tatweel}')
 
         body = ''.join(parts)
         left = '' if allow_prefix else r'(?<!\S)'
@@ -891,12 +932,14 @@ def api_search_roots():
     """Search occurrences for a specific root"""
     root = request.args.get('root', '')
     limit = int(request.args.get('limit', 200))
-    results = corpus.search_root(root, limit)
+    data = corpus.search_root(root, limit)
+    results = data['results']
+    total_count = data.get('total_count', len(results))
     return jsonify({
         'results': results,
         'query': root,
         'type': 'root',
-        'count': len(results)
+        'count': total_count
     })
 
 
@@ -908,13 +951,16 @@ def api_search_morphology():
     limit = int(request.args.get('limit', 100))
     if pattern_id:
         results = corpus.search_morph_pattern(pattern_id, limit)
+        total_count = len(results)
     else:
-        results = corpus.search_morphology(query, limit)
+        data = corpus.search_morphology(query, limit)
+        results = data['results']
+        total_count = data.get('total_count', len(results))
     return jsonify({
         'results': results,
         'query': pattern_id or query,
         'type': 'morphology',
-        'count': len(results)
+        'count': total_count
     })
 
 
@@ -926,13 +972,16 @@ def api_search_syntax():
     limit = int(request.args.get('limit', 100))
     if pattern_id:
         results = corpus.search_syntax_pattern(pattern_id, limit)
+        total_count = len(results)
     else:
-        results = corpus.search_syntax(query, limit)
+        data = corpus.search_syntax(query, limit)
+        results = data['results']
+        total_count = data.get('total_count', len(results))
     return jsonify({
         'results': results,
         'query': pattern_id or query,
         'type': 'syntax',
-        'count': len(results)
+        'count': total_count
     })
 
 
@@ -941,13 +990,58 @@ def api_search_pattern_word():
     """Search diacritic-aware word patterns with placeholders"""
     payload = request.json or {}
     limit = int(payload.get('limit', 50))
-    results = corpus.search_pattern_word(payload, limit)
+    data = corpus.search_pattern_word(payload, limit)
     return jsonify({
-        'results': results,
+        'results': data['results'],
         'query': payload,
         'type': 'pattern_word',
-        'count': len(results)
+        'count': data.get('total_count', len(data['results']))
     })
+
+
+@app.route('/api/notes')
+def api_notes():
+    """List simple note files under /notes"""
+    notes_dir = Path(NOTES_PATH)
+    if not notes_dir.exists():
+        return jsonify({'notes': []})
+
+    notes = []
+    for path in notes_dir.rglob('*'):
+        if path.is_file() and path.suffix.lower() in {'.md', '.txt'}:
+            rel = str(path.relative_to(notes_dir))
+            snippet = ''
+            try:
+                snippet = path.read_text(encoding='utf-8', errors='ignore').strip().split('\n')[0][:200]
+            except Exception:
+                snippet = ''
+            notes.append({'path': rel, 'title': path.stem, 'snippet': snippet})
+
+    return jsonify({'notes': notes})
+
+
+@app.route('/api/notes/content')
+def api_note_content():
+    """Return full note content by relative path under /notes"""
+    rel_path = request.args.get('path', '')
+    if not rel_path:
+        return jsonify({'error': 'path required'}), 400
+    notes_dir = Path(NOTES_PATH)
+    target = notes_dir / rel_path
+    try:
+        target = target.resolve()
+    except Exception:
+        return jsonify({'error': 'invalid path'}), 400
+    # prevent path traversal
+    if notes_dir not in target.parents:
+        return jsonify({'error': 'invalid path'}), 400
+    if not target.exists() or not target.is_file():
+        return jsonify({'error': 'not found'}), 404
+    try:
+        content = target.read_text(encoding='utf-8', errors='ignore')
+    except Exception:
+        return jsonify({'error': 'unable to read'}), 500
+    return jsonify({'path': rel_path, 'content': content})
 
 
 @app.route('/api/library_search')

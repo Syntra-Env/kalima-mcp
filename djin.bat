@@ -8,5 +8,4 @@ python scripts/add_annotation.py ^
   --tags "sulayman,speech,opening,style" ^
   --status raw ^
   --backup
-
 pause

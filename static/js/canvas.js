@@ -12,18 +12,6 @@ const LAYER_DEFINITIONS = {
             { id: 'shadda', label: 'شدة · Gemination' }
         ]
     },
-
-    highlightMatch(text, term, result) {
-        if (!text) return '';
-        const target = term || result?.matchTerm || '';
-        if (!target) return this.escapeHtml(text);
-        const re = new RegExp(this.escapeRegex(target), 'g');
-        return this.escapeHtml(text).replace(re, m => `<span class="match-highlight">${m}</span>`);
-    },
-
-    escapeRegex(str) {
-        return str.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-    },
     morphological: {
         label: 'Morphological Units',
         description: 'Assign prefixes, stems, clitics, and suffixes built from letter spans.',
@@ -142,17 +130,72 @@ const Canvas = {
     // Initialize
     init() {
         this.setupEventListeners();
-        this.tooltipEl = document.getElementById('textTooltip');
+        // Disable hover tooltip UI
+        this.tooltipEl = null;
         this.renderLayerPalette();
         this.setAppMode(this.appMode);
         this.setHypothesisTargetForLayer(this.currentLayer);
         this.setupMorphBuilder();
         this.setupSyntaxBuilder();
+        this.setupStackPanels();
         this.loadSurahSummaries();
         this.loadRootOptions();
         this.loadMorphPatterns();
         this.loadSyntaxPatterns();
+        this.loadNotesList();
         this.renderNavMap();
+        this.detailZoom = 1;
+    },
+
+    setupStackPanels() {
+        const container = document.getElementById('sideStacks');
+        if (!container) return;
+
+        // restore order
+        const saved = localStorage.getItem('codex-stack-order');
+        if (saved) {
+            const order = saved.split(',');
+            order.forEach(id => {
+                const panel = container.querySelector(`.stack-panel[data-panel="${id}"]`);
+                if (panel) container.appendChild(panel);
+            });
+        }
+
+        // attach toggles
+        container.querySelectorAll('.stack-toggle').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const panel = e.currentTarget.closest('.stack-panel');
+                if (!panel) return;
+                panel.classList.toggle('collapsed');
+                e.currentTarget.textContent = panel.classList.contains('collapsed') ? '+' : '−';
+            });
+        });
+
+        // drag reorder
+        let dragEl = null;
+        container.querySelectorAll('.stack-header').forEach(header => {
+            header.addEventListener('dragstart', (e) => {
+                dragEl = header.closest('.stack-panel');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            header.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                const overPanel = header.closest('.stack-panel');
+                if (!dragEl || dragEl === overPanel) return;
+                const rect = overPanel.getBoundingClientRect();
+                const before = (e.clientY - rect.top) < rect.height / 2;
+                if (before) {
+                    overPanel.parentNode.insertBefore(dragEl, overPanel);
+                } else {
+                    overPanel.parentNode.insertBefore(dragEl, overPanel.nextSibling);
+                }
+            });
+            header.addEventListener('dragend', () => {
+                dragEl = null;
+                const order = Array.from(container.querySelectorAll('.stack-panel')).map(p => p.dataset.panel);
+                localStorage.setItem('codex-stack-order', order.join(','));
+            });
+        });
     },
 
     setupEventListeners() {
@@ -164,6 +207,11 @@ const Canvas = {
             sideMenu.classList.toggle('collapsed');
             canvasEl.classList.toggle('menu-open');
         });
+
+        const zoomIn = document.getElementById('detailZoomIn');
+        const zoomOut = document.getElementById('detailZoomOut');
+        if (zoomIn) zoomIn.addEventListener('click', () => this.adjustDetailZoom(0.1));
+        if (zoomOut) zoomOut.addEventListener('click', () => this.adjustDetailZoom(-0.1));
 
         // Pattern instances panel toggle
         const patternToggle = document.getElementById('patternToggle');
@@ -262,9 +310,7 @@ const Canvas = {
             }
         });
 
-        window.addEventListener('scroll', () => this.hideTextTooltip());
-        window.addEventListener('resize', () => this.hideTextTooltip());
-    },
+            },
 
     togglePatternPanel() {
         const panel = document.getElementById('patternPanel');
@@ -476,7 +522,8 @@ const Canvas = {
             this.renderSearchMessage(`Searching for root ${root}...`);
             const response = await fetch(`/api/search/roots?root=${encodeURIComponent(root)}`);
             const data = await response.json();
-            this.renderSearchResults(data.results, `No occurrences found for root ${root}.`);
+            const results = (data.results || []).map(r => ({ ...r, matchTerm: root }));
+            this.renderSearchResults(results, `No occurrences found for root ${root}.`, data.count);
         } catch (error) {
             console.error('Root search failed:', error);
             this.renderSearchMessage('Root search failed. Please try again.');
@@ -637,22 +684,35 @@ const Canvas = {
     },
 
     renderSearchMessage(message) {
-        const container = document.getElementById('searchResults');
-        if (!container) return;
-        container.innerHTML = `<p class="hint">${this.escapeHtml(message)}</p>`;
-        this.openPatternPanel();
-    },
-
-    renderSearchResults(results, emptyMessage = 'No matches found.') {
         const container = document.getElementById('quranText');
         if (!container) return;
-        this.currentSearchResults = results || [];
+        this.currentSearchResults = null;
+        container.innerHTML = `<p class="hint">${this.escapeHtml(message)}</p>`;
+    },
+
+    renderSearchResults(results, emptyMessage = 'No matches found.', totalCount = null) {
+        const container = document.getElementById('quranText');
+        if (!container) return;
+        const normalized = (results || []).map(r => ({
+            ...r,
+            matchTerm: r.matchTerm || r.match_term || r.match || '',
+            matchRegex: r.matchRegex || r.match_regex || null
+        }));
+        this.currentSearchResults = normalized;
         container.innerHTML = '';
 
-        if (!results || results.length === 0) {
+        if (!normalized.length) {
             container.innerHTML = `<p class="hint">${this.escapeHtml(emptyMessage)}</p>`;
             return;
         }
+
+        const summary = document.createElement('div');
+        summary.className = 'search-summary';
+        const ayahCount = this.countUniqueAyahs(normalized);
+        const matchCount = this.countTotalMatches(normalized, totalCount);
+        const showingLabel = matchCount > normalized.length ? ` (showing ${normalized.length})` : '';
+        summary.textContent = `Results: ${matchCount} match${matchCount === 1 ? '' : 'es'}${showingLabel} in ${ayahCount} ayah${ayahCount === 1 ? '' : 's'}.`;
+        container.appendChild(summary);
 
         const resultWrapper = document.createElement('div');
         resultWrapper.className = 'search-results-main';
@@ -662,7 +722,7 @@ const Canvas = {
             if (!verse) return;
             const item = document.createElement('div');
             item.className = 'search-result-item';
-            const text = this.highlightMatch(verse.text, (result.matchTerm || ''), result);
+            const text = this.highlightMatch(verse.text || '', (result.matchTerm || ''), result);
             item.innerHTML = `
                 <div class="search-result-ref">${this.escapeHtml(verse.surah.name)} ${verse.surah.number}:${verse.ayah}</div>
                 <div class="search-result-text">${text}</div>
@@ -686,6 +746,140 @@ const Canvas = {
 
         container.appendChild(backBtn);
         container.appendChild(resultWrapper);
+    },
+
+    loadNotesList() {
+        const list = document.getElementById('notesList');
+        if (!list) return;
+        fetch('/api/notes')
+            .then(res => res.json())
+            .then(data => {
+                const notes = data.notes || [];
+                if (!notes.length) {
+                    list.innerHTML = '<p class="hint">No notes found.</p>';
+                    return;
+                }
+                const ul = document.createElement('ul');
+                notes.forEach(n => {
+                    const li = document.createElement('li');
+                    li.className = 'note-item';
+                    li.innerHTML = `<strong>${this.escapeHtml(n.title || n.path)}</strong><div class="note-snippet">${this.escapeHtml(n.snippet || '')}</div>`;
+                    li.addEventListener('click', () => {
+                        this.loadNoteContent(n.path, n.title || n.path);
+                    });
+                    ul.appendChild(li);
+                });
+                list.innerHTML = '';
+                list.appendChild(ul);
+            })
+            .catch(() => {
+                list.innerHTML = '<p class="hint">Unable to load notes.</p>';
+            });
+    },
+
+    loadNoteContent(path, title = '') {
+        const panel = document.getElementById('searchResults');
+        if (panel) {
+            panel.innerHTML = `<p class="hint">Loading note ${this.escapeHtml(title)}...</p>`;
+            this.openPatternPanel();
+        }
+        fetch(`/api/notes/content?path=${encodeURIComponent(path)}`)
+            .then(res => res.json())
+            .then(data => {
+                const content = data.content || '';
+                if (panel) {
+                    panel.innerHTML = `<h4>${this.escapeHtml(title || path)}</h4><pre class="note-content">${this.escapeHtml(content)}</pre>`;
+                } else {
+                    this.renderSearchMessage(content);
+                }
+            })
+            .catch(() => {
+                if (panel) {
+                    panel.innerHTML = '<p class="hint">Failed to load note.</p>';
+                }
+            });
+    },
+
+    countUniqueAyahs(results) {
+        const set = new Set();
+        (results || []).forEach(r => {
+            const key = this.buildVerseKey(r.verse);
+            if (key) {
+                set.add(key);
+            }
+        });
+        return set.size;
+    },
+
+    countTotalMatches(results, totalCountOverride = null) {
+        if (typeof totalCountOverride === 'number') return totalCountOverride;
+        let total = 0;
+        (results || []).forEach(r => {
+            const cnt = r.match_count || r.matchCount || 1;
+            total += cnt;
+        });
+        return total;
+    },
+
+    buildVerseKey(verse) {
+        if (!verse) return null;
+        const ayah = verse.ayah;
+        let surahNum = null;
+        if (verse.surah && typeof verse.surah === 'object' && 'number' in verse.surah) {
+            surahNum = verse.surah.number;
+        } else if (typeof verse.surah === 'number' || typeof verse.surah === 'string') {
+            surahNum = verse.surah;
+        }
+        if (surahNum == null || ayah == null) return null;
+        return `${surahNum}:${ayah}`;
+    },
+
+    highlightMatch(text, term, result) {
+        const source = text || '';
+        const regexStr = result?.matchRegex;
+        if (regexStr) {
+            try {
+                const regex = new RegExp(regexStr, 'gu');
+                let out = '';
+                let last = 0;
+                let match;
+                while ((match = regex.exec(source)) !== null) {
+                    out += this.escapeHtml(source.slice(last, match.index));
+                    out += `<mark>${this.escapeHtml(match[0])}</mark>`;
+                    last = match.index + match[0].length;
+                    if (match.index === regex.lastIndex) regex.lastIndex++; // avoid zero-length loops
+                }
+                out += this.escapeHtml(source.slice(last));
+                return out || this.escapeHtml(source);
+            } catch (e) {
+                console.warn('Failed to apply matchRegex, falling back to term highlighting', e);
+            }
+        }
+
+        const needle = (term || result?.matchTerm || result?.match || '').trim();
+        if (!needle) {
+            return this.escapeHtml(source);
+        }
+        try {
+            const regex = new RegExp(this.escapeForRegex(needle), 'gi');
+            let out = '';
+            let last = 0;
+            let match;
+            while ((match = regex.exec(source)) !== null) {
+                out += this.escapeHtml(source.slice(last, match.index));
+                out += `<mark>${this.escapeHtml(match[0])}</mark>`;
+                last = match.index + match[0].length;
+            }
+            out += this.escapeHtml(source.slice(last));
+            return out || this.escapeHtml(source);
+        } catch (e) {
+            console.warn('highlightMatch failed, falling back to plain text', e);
+            return this.escapeHtml(source);
+        }
+    },
+
+    escapeForRegex(str) {
+        return (str || '').replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
     },
 
     setLayer(layer, rerender = true) {
@@ -730,15 +924,19 @@ const Canvas = {
 
     parseArabicWord(word) {
         const segments = [];
-        const isDiacritic = (ch) => /[\u064B-\u0652\u0670]/.test(ch);
+        const isDiacritic = (ch) => /[\u064B-\u0652\u0670\u0653-\u0655]/.test(ch);
+        const isLetter = (ch) => /[\u0620-\u064a\u0671-\u0673\u0675]/.test(ch);
         for (let i = 0; i < word.length; i++) {
             const ch = word[i];
             if (isDiacritic(ch)) {
                 if (segments.length) {
                     segments[segments.length - 1].diacritics.push(ch);
                 }
-            } else if (ch >= '\u0620' && ch <= '\u064a') {
+            } else if (isLetter(ch)) {
                 segments.push({ letter: ch, diacritics: [], any_letter: false, any_diacritics: false });
+            } else {
+                // Skip tatweel/whitespace/other symbols
+                continue;
             }
         }
         return segments;
@@ -775,8 +973,22 @@ const Canvas = {
     },
 
     async submitPatternSearch() {
+        if (!this.patternSegments || this.patternSegments.length === 0) {
+            const input = document.getElementById('patternInput');
+            const word = (input?.value || '').trim();
+            if (word) {
+                this.patternSegments = this.parseArabicWord(word);
+                this.renderPatternSegments();
+            }
+        }
+        if (!this.patternSegments || this.patternSegments.length === 0) {
+            this.renderSearchMessage('Add a word and break it into pattern segments first.');
+            return;
+        }
         const allowPrefix = document.getElementById('patternAllowPrefix')?.checked || false;
-        const allowSuffix = document.getElementById('patternAllowSuffix')?.checked || false;
+        const autoFlexSuffix = this.patternSegments.some(seg => seg.any_letter || seg.any_diacritics);
+        const allowSuffix = document.getElementById('patternAllowSuffix')?.checked || autoFlexSuffix;
+        this.renderSearchMessage('Searching pattern...');
         const payload = {
             segments: (this.patternSegments || []).map(seg => ({
                 letter: seg.letter,
@@ -793,10 +1005,19 @@ const Canvas = {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+            if (!resp.ok) {
+                throw new Error(`Pattern search failed (${resp.status})`);
+            }
             const data = await resp.json();
-            this.renderSearchResults(data.results, 'No matches for this pattern.');
+            const results = (data.results || []).map(r => ({
+                ...r,
+                matchRegex: r.match_regex || r.matchRegex || null
+            }));
+            const totalMatches = results.reduce((sum, r) => sum + (r.match_count || 1), 0);
+            this.renderSearchResults(results, 'No matches for this pattern.', totalMatches);
         } catch (error) {
             console.error('Pattern search failed', error);
+            this.renderSearchMessage('Pattern search failed. Please try again.');
         }
     },
     logAction(action) {
@@ -809,13 +1030,17 @@ const Canvas = {
         const items = this.actionHistory.map(entry => {
             const ref = entry.ref ? `<span class="ref">${this.escapeHtml(entry.ref)}</span>` : '';
             const details = entry.details ? `<span class="meta">${this.escapeHtml(entry.details)}</span>` : '';
-            return `<li>${ref}${details ? ' · ' + details : ''}</li>`;
+            return `<li>${ref}${details ? ' | ' + details : ''}</li>`;
         }).join('');
         historyEl.innerHTML = `<ul>${items}</ul>`;
     },
 
     logNavigation(surah, ayah) {
         if (!surah || !ayah) return;
+        const latest = this.navJourney[0];
+        if (latest && latest.surah === surah && latest.ayah === ayah) {
+            return;
+        }
         this.navJourney.unshift({ surah, ayah, ts: Date.now() });
         this.navJourney = this.navJourney.slice(0, 30);
         this.renderNavMap();
@@ -828,17 +1053,28 @@ const Canvas = {
             map.innerHTML = '<p class="hint">No navigation history yet.</p>';
             return;
         }
-        const items = this.navJourney.map(node => {
-            return `
-                <div class="branch">
-                    <div class="branch-line"></div>
-                    <div class="branch-node">
-                        <span class="node-item">S${this.escapeHtml(node.surah)} <span class="ayah-label">· A${this.escapeHtml(node.ayah)}</span></span>
-                    </div>
-                </div>
-            `;
-        }).join('');
-        map.innerHTML = items;
+        map.innerHTML = '';
+        this.navJourney.forEach(node => {
+            const branch = document.createElement('div');
+            branch.className = 'branch';
+
+            const line = document.createElement('div');
+            line.className = 'branch-line';
+            branch.appendChild(line);
+
+            const branchNode = document.createElement('div');
+            branchNode.className = 'branch-node';
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'node-item';
+            button.textContent = `S${node.surah}  Ayah ${node.ayah}`;
+            button.title = `Jump to ${node.surah}:${node.ayah}`;
+            button.addEventListener('click', () => this.navigateToVerse(node.surah, node.ayah));
+            branchNode.appendChild(button);
+
+            branch.appendChild(branchNode);
+            map.appendChild(branch);
+        });
     },
 
     async loadHypotheses() {
@@ -914,7 +1150,7 @@ const Canvas = {
 
         const query = input.value.trim();
         try {
-            this.renderSearchMessage(`Searching library for “${this.escapeHtml(query)}”…`);
+            this.renderSearchMessage(`Searching library for "${this.escapeHtml(query)}"...`);
             const response = await fetch(`/api/library_search?q=${encodeURIComponent(query)}`);
             const data = await response.json();
             this.renderLibraryResults(data.results || [], query);
@@ -926,13 +1162,26 @@ const Canvas = {
 
     renderLibraryResults(results, query) {
         const container = document.getElementById('searchResults');
-        if (!container) return;
+        if (container) {
+            this.openPatternPanel();
+            if (!results || results.length === 0) {
+                container.innerHTML = `<p class="hint">No matches in data/ for "${this.escapeHtml(query)}".</p>`;
+            } else {
+                container.innerHTML = '';
+                results.slice(0, 30).forEach(r => {
+                    const row = document.createElement('div');
+                    row.className = 'search-result-item';
+                    row.innerHTML = `<div class="search-result-ref">${this.escapeHtml(r.path)}:${this.escapeHtml(String(r.line))}</div><div class="search-result-text">${this.escapeHtml(r.snippet || '')}</div>`;
+                    container.appendChild(row);
+                });
+            }
+        }
 
         if (!results || results.length === 0) {
-            container.innerHTML = `<p class=\"hint\">No matches in data/ for “${this.escapeHtml(query)}”.</p>`;
-            this.openPatternPanel();
+            this.renderSearchMessage(`No matches in data/ for "${this.escapeHtml(query)}".`);
             return;
         }
+
         this.renderSearchResults(results.map(r => ({
             verse: { surah: { name: 'Data' , number: ''}, ayah: r.line, text: `${r.path}: ${r.snippet}` },
             match: 'Library hit',
@@ -1164,8 +1413,12 @@ const Canvas = {
         try {
             this.renderSearchMessage('Searching morphological pattern...');
             const response = await fetch(`/api/search/morphology?q=${encodeURIComponent(query)}`);
+            if (!response.ok) {
+                throw new Error(`Morphology search failed (${response.status})`);
+            }
             const data = await response.json();
-            this.renderSearchResults(data.results, 'No matches for the selected morphological pattern.');
+            const results = (data.results || []).map(r => ({ ...r, matchTerm: query }));
+            this.renderSearchResults(results, 'No matches for the selected morphological pattern.', data.count);
         } catch (error) {
             console.error('Morphology search failed:', error);
             this.renderSearchMessage('Morphology search failed. Please try again.');
@@ -1182,8 +1435,12 @@ const Canvas = {
         try {
             this.renderSearchMessage('Searching syntactic pattern...');
             const response = await fetch(`/api/search/syntax?q=${encodeURIComponent(query)}`);
+            if (!response.ok) {
+                throw new Error(`Syntax search failed (${response.status})`);
+            }
             const data = await response.json();
-            this.renderSearchResults(data.results, 'No matches for the selected syntactic pattern.');
+            const results = (data.results || []).map(r => ({ ...r, matchTerm: query }));
+            this.renderSearchResults(results, 'No matches for the selected syntactic pattern.', data.count);
         } catch (error) {
             console.error('Syntax search failed:', error);
             this.renderSearchMessage('Syntax search failed. Please try again.');
@@ -1323,39 +1580,19 @@ const Canvas = {
         return surahData.verses.find(v => v.surah.number === surahNumber && v.ayah === ayahNumber) || null;
     },
 
-    showElementTooltip(element) {
-        if (!this.tooltipEl || this.isDragging) return;
-        const content = this.buildTooltipContent(element);
-        if (!content) {
-            this.hideTextTooltip();
-            return;
+    // Tooltip disabled
+    showElementTooltip() {},
+
+    positionTooltip() {},
+
+    hideTextTooltip() {},
+
+    adjustDetailZoom(delta) {
+        this.detailZoom = Math.max(0.6, Math.min(1.6, (this.detailZoom || 1) + delta));
+        const panel = document.getElementById('patternPanel');
+        if (panel) {
+            panel.style.setProperty('--detail-zoom', this.detailZoom.toString());
         }
-
-        this.tooltipEl.innerHTML = content;
-        this.tooltipEl.classList.remove('hidden');
-        this.positionTooltip(element);
-    },
-
-    positionTooltip(element) {
-        if (!this.tooltipEl || this.tooltipEl.classList.contains('hidden')) return;
-        const rect = element.getBoundingClientRect();
-        const tooltipRect = this.tooltipEl.getBoundingClientRect();
-
-        let top = rect.top - tooltipRect.height - 12;
-        if (top < 70) {
-            top = rect.bottom + 12;
-        }
-
-        let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
-        left = Math.max(12, Math.min(left, window.innerWidth - tooltipRect.width - 12));
-
-        this.tooltipEl.style.top = `${top}px`;
-        this.tooltipEl.style.left = `${left}px`;
-    },
-
-    hideTextTooltip() {
-        if (!this.tooltipEl) return;
-        this.tooltipEl.classList.add('hidden');
     },
 
     buildTooltipContent(element) {
@@ -1454,10 +1691,9 @@ const Canvas = {
             wordEl.addEventListener('mousedown', (e) => this.handleElementMouseDown(e, wordEl));
             wordEl.addEventListener('mouseenter', (e) => {
                 this.handleElementMouseEnter(e, wordEl);
-                this.showElementTooltip(wordEl);
             });
-            wordEl.addEventListener('mousemove', () => this.positionTooltip(wordEl));
-            wordEl.addEventListener('mouseleave', () => this.hideTextTooltip());
+            wordEl.addEventListener('mousemove', () => {});
+            wordEl.addEventListener('mouseleave', () => {});
             wordEl.addEventListener('mouseup', (e) => this.handleElementMouseUp(e, wordEl));
 
             container.appendChild(wordEl);
@@ -1526,10 +1762,9 @@ const Canvas = {
                     morpheme.addEventListener('mouseenter', (e) => {
                         e.stopPropagation();
                         this.handleElementMouseEnter(e, morpheme);
-                        this.showElementTooltip(morpheme);
                     });
-                    morpheme.addEventListener('mousemove', () => this.positionTooltip(morpheme));
-                    morpheme.addEventListener('mouseleave', () => this.hideTextTooltip());
+                    morpheme.addEventListener('mousemove', () => {});
+                    morpheme.addEventListener('mouseleave', () => {});
                     morpheme.addEventListener('mouseup', (e) => {
                         e.stopPropagation();
                         this.handleElementMouseUp(e, morpheme);
@@ -1616,10 +1851,9 @@ const Canvas = {
             letterEl.addEventListener('mouseenter', (e) => {
                 e.stopPropagation();
                 this.handleElementMouseEnter(e, letterEl);
-                this.showElementTooltip(letterEl);
             });
-            letterEl.addEventListener('mousemove', () => this.positionTooltip(letterEl));
-            letterEl.addEventListener('mouseleave', () => this.hideTextTooltip());
+            letterEl.addEventListener('mousemove', () => {});
+            letterEl.addEventListener('mouseleave', () => {});
             letterEl.addEventListener('mouseup', (e) => {
                 e.stopPropagation();
                 this.handleElementMouseUp(e, letterEl);
@@ -2193,10 +2427,9 @@ const Canvas = {
         sentenceEl.addEventListener('mouseenter', (e) => {
             e.stopPropagation();
             this.handleElementMouseEnter(e, sentenceEl);
-            this.showElementTooltip(sentenceEl);
         });
-        sentenceEl.addEventListener('mousemove', () => this.positionTooltip(sentenceEl));
-        sentenceEl.addEventListener('mouseleave', () => this.hideTextTooltip());
+        sentenceEl.addEventListener('mousemove', () => {});
+        sentenceEl.addEventListener('mouseleave', () => {});
         sentenceEl.addEventListener('mouseup', (e) => {
             e.stopPropagation();
             this.handleElementMouseUp(e, sentenceEl);
@@ -2454,12 +2687,14 @@ const Canvas = {
         const type = element.dataset.type || element.dataset.layer || '';
         const pos = element.dataset.pos || '';
         const root = element.dataset.root && element.dataset.root !== '—' ? element.dataset.root : '';
+        const pattern = element.dataset.pattern || '';
         const lemma = element.dataset.lemma && element.dataset.lemma !== '—' ? element.dataset.lemma : '';
         const structure = element.dataset.structureCategoryLabel || '';
         const features = element.dataset.features || '';
 
         const chips = [];
         if (root) chips.push({ action: 'root', label: `Root ${root}`, value: root });
+        if (pattern) chips.push({ action: 'pattern', label: `Pattern ${pattern}`, value: pattern });
         if (pos) chips.push({ action: 'morph', label: `POS ${pos}`, value: `pos:${pos}`.toLowerCase() });
         if (type) chips.push({ action: 'morph', label: type.toUpperCase(), value: type.toLowerCase() });
         if (lemma) chips.push({ action: 'morph', label: `Lemma ${lemma}`, value: lemma });
@@ -2489,6 +2724,16 @@ const Canvas = {
         switch(action) {
             case 'root':
                 this.performRootSearch(value);
+                break;
+            case 'pattern':
+                this.renderSearchMessage(`Searching pattern ${value}...`);
+                fetch(`/api/search/morphology?q=${encodeURIComponent(value)}`)
+                    .then(res => res.json())
+                    .then(data => this.renderSearchResults(data.results || [], 'No matches found for this pattern.', data.count))
+                    .catch(err => {
+                        console.error('Pattern search failed', err);
+                        this.renderSearchMessage('Pattern search failed.');
+                    });
                 break;
             case 'morph':
                 this.renderSearchMessage(`Searching ${value}...`);

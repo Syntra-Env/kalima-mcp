@@ -11,7 +11,8 @@
       "Bash(dir /b:*)",
       "Bash(python -m py_compile:*)",
       "Bash(python:*)",
-      "Bash(timeout 10 python:*)"
+      "Bash(timeout 10 python:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []
