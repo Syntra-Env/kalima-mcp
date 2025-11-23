@@ -1,2 +1,14 @@
 /.metadata/
 /.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.bak
+*.backup
+*.backup_*
+*.before_*
+corpus/backups/
+.DS_Store
+*.swp
+*.swo
+*~

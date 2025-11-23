@@ -14,17 +14,19 @@ from collections import defaultdict
 from pathlib import Path
 import unicodedata
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='')
 app.config['JSON_AS_ASCII'] = False  # Enable Unicode in JSON responses
 
 # Paths
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_CORPUS_PATH = os.path.join(PROJECT_ROOT, 'corpus', 'quran.jsonl')
-DEFAULT_TAGS_PATH = os.path.join(PROJECT_ROOT, 'corpus', 'tags.json')
+DEFAULT_CORPUS_PATH = os.path.join(PROJECT_ROOT, 'datasets', 'corpus', 'quran.jsonl')
+DEFAULT_TAGS_PATH = os.path.join(PROJECT_ROOT, 'datasets', 'corpus', 'tags.json')
 CORPUS_PATH = os.getenv('CORPUS_PATH', DEFAULT_CORPUS_PATH)
 TAGS_PATH = os.getenv('TAGS_PATH', DEFAULT_TAGS_PATH)
-DATA_PATH = os.getenv('DATA_PATH', os.path.join(PROJECT_ROOT, 'data'))
+DATA_PATH = os.getenv('DATA_PATH', os.path.join(PROJECT_ROOT, 'datasets', 'resources'))
 NOTES_PATH = os.path.join(PROJECT_ROOT, 'notes')
+MASAQ_PATH = os.path.join(PROJECT_ROOT, 'datasets', 'masaq')
+MORPHOLOGY_PATH = os.path.join(PROJECT_ROOT, 'datasets', 'morphology')
 READ_ONLY_MODE = os.getenv('CODEX_READ_ONLY', '').lower() in ('1', 'true', 'yes')
 
 
@@ -70,20 +72,10 @@ class CorpusManager:
         return {}
 
     def save_corpus(self):
-        """Save corpus with backups"""
+        """Save corpus (versioned by git)"""
         if READ_ONLY_MODE:
             return
-        # Backup
-        corpus_dir = os.path.dirname(CORPUS_PATH)
-        backup_dir = os.path.join(corpus_dir, 'backups')
-        os.makedirs(backup_dir, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = os.path.join(backup_dir, f"quran_{timestamp}.jsonl")
 
-        import shutil
-        shutil.copy2(CORPUS_PATH, backup_path)
-
-        # Save
         with open(CORPUS_PATH, 'w', encoding='utf-8') as f:
             for verse in self.verses:
                 f.write(json.dumps(verse, ensure_ascii=False) + '\n')
@@ -833,7 +825,7 @@ corpus = CorpusManager()
 @app.route('/')
 def index():
     """Main interface - minimal layered canvas"""
-    return render_template('index_minimal.html')
+    return app.send_static_file('index.html')
 
 
 @app.route('/api/verses')

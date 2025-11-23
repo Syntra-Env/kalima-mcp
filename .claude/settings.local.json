@@ -12,7 +12,8 @@
       "Bash(python -m py_compile:*)",
       "Bash(python:*)",
       "Bash(timeout 10 python:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []
