@@ -38,6 +38,7 @@ class CorpusManager:
         self.verses = self.load_corpus()
         self.tags = self.load_tags()
         self.masaq_data = self.load_masaq_data()
+        self.treebank_data = self.load_treebank_data()
         self.surah_index = self.build_surah_index()
         self.root_index = {}
         self.root_list = []
@@ -95,6 +96,54 @@ class CorpusManager:
             return dict(masaq_index)
         except Exception as e:
             print(f"Error loading MASAQ data: {e}")
+            return {}
+
+    def load_treebank_data(self) -> Dict:
+        """Load Quranic Treebank dataset with dependency trees"""
+        treebank_csv = os.path.join(PROJECT_ROOT, 'datasets', 'quranic', 'Quranic', 'Quranic.csv')
+        if not os.path.exists(treebank_csv):
+            print(f"Warning: Treebank dataset not found at {treebank_csv}")
+            return {}
+
+        treebank_index = defaultdict(list)
+
+        try:
+            with open(treebank_csv, 'r', encoding='utf-16') as f:
+                reader = csv.DictReader(f, delimiter='\t')
+                for row in reader:
+                    chapter = row.get('chapter_id')
+                    verse = row.get('verse_id')
+                    if not chapter or not verse:
+                        continue
+
+                    surah = int(chapter)
+                    ayah = int(verse)
+                    key = (surah, ayah)
+
+                    # Store relevant treebank data
+                    token_data = {
+                        'token_id': row.get('token_id'),
+                        'word': row.get('uthmani_unicode'),
+                        'pos': row.get('pos'),
+                        'rel_label': row.get('rel_label'),  # Dependency relation
+                        'rel_label_ar': row.get('rel_label_ar'),
+                        'ref_token_id': row.get('ref_token_id'),  # Parent in tree
+                        'verb_form': row.get('verb_form'),
+                        'verb_aspect': row.get('verb_aspect'),
+                        'verb_mood': row.get('verb_mood'),
+                        'verb_voice': row.get('verb_voice'),
+                        'person': row.get('person'),
+                        'gender': row.get('gender'),
+                        'number': row.get('number'),
+                        'root': row.get('root'),
+                        'lemma': row.get('lemma')
+                    }
+                    treebank_index[key].append(token_data)
+
+            print(f"Loaded Treebank data: {len(treebank_index)} verses with dependency trees")
+            return dict(treebank_index)
+        except Exception as e:
+            print(f"Error loading Treebank data: {e}")
             return {}
 
     def save_corpus(self):
@@ -688,6 +737,38 @@ class CorpusManager:
     def get_masaq_morphology(self, surah: int, ayah: int) -> Optional[List[Dict]]:
         """Get MASAQ morphological data for a specific verse"""
         return self.masaq_data.get((surah, ayah))
+
+    def get_dependency_tree(self, surah: int, ayah: int) -> Optional[List[Dict]]:
+        """Get dependency tree data for a specific verse"""
+        return self.treebank_data.get((surah, ayah))
+
+    def search_dependency_relation(self, rel_label: str, limit: int = 50) -> List[Dict]:
+        """
+        Search verses by dependency relation type.
+        rel_label examples: 'gen', 'Pred', 'Adj', 'Poss', 'subj', 'obj', etc.
+        """
+        results = []
+        total_count = 0
+
+        for (surah, ayah), tokens in self.treebank_data.items():
+            verse_matches = []
+
+            for token in tokens:
+                if token.get('rel_label') == rel_label:
+                    verse_matches.append(token)
+                    total_count += 1
+
+            if verse_matches and len(results) < limit:
+                verse = self.get_verse(surah, ayah)
+                if verse:
+                    results.append({
+                        'verse': verse,
+                        'match': f"Dependency: {rel_label}",
+                        'dependency_matches': verse_matches[:5],
+                        'match_count': len(verse_matches)
+                    })
+
+        return {'results': results, 'total_count': total_count}
 
     def search_masaq_morphology(self, morph_tag: str = None, syntactic_role: str = None,
                                 case_mood: str = None, limit: int = 100) -> List[Dict]:
@@ -1722,12 +1803,64 @@ def api_search_verb_forms():
     })
 
 
+@app.route('/api/dependency/<int:surah>/<int:ayah>')
+def api_dependency_tree(surah, ayah):
+    """Get dependency tree for a verse"""
+    tree_data = corpus.get_dependency_tree(surah, ayah)
+    if tree_data is None:
+        return jsonify({'error': 'Dependency tree not found for this verse'}), 404
+    return jsonify({
+        'surah': surah,
+        'ayah': ayah,
+        'dependency_tree': tree_data
+    })
+
+
+@app.route('/api/search/dependency')
+def api_search_dependency():
+    """Search by dependency relation"""
+    rel_label = request.args.get('relation')
+    limit = int(request.args.get('limit', 50))
+
+    if not rel_label:
+        return jsonify({'error': 'relation parameter required'}), 400
+
+    data = corpus.search_dependency_relation(rel_label, limit)
+
+    return jsonify({
+        'results': data['results'],
+        'query': {'relation': rel_label},
+        'type': 'dependency',
+        'count': data.get('total_count', len(data['results']))
+    })
+
+
+@app.route('/api/dependency/relations')
+def api_dependency_relations():
+    """Get available dependency relation labels"""
+    relations = set()
+    relations_ar = set()
+
+    for tokens in corpus.treebank_data.values():
+        for token in tokens:
+            if token.get('rel_label'):
+                relations.add(token['rel_label'])
+            if token.get('rel_label_ar'):
+                relations_ar.add(token['rel_label_ar'])
+
+    return jsonify({
+        'relations': sorted(relations),
+        'relations_ar': sorted(relations_ar)
+    })
+
+
 if __name__ == '__main__':
     print("=" * 70)
     print("Codex - Quran Research Interface")
     print("=" * 70)
     print(f"Loaded {len(corpus.verses)} verses")
     print(f"Loaded {len(corpus.masaq_data)} verses with MASAQ morphology")
+    print(f"Loaded {len(corpus.treebank_data)} verses with dependency trees")
     print(f"Loaded {len(corpus.tags.get('tags', {}))} hypothesis tags")
     print("\nStarting server at http://localhost:5000")
     print("=" * 70)
