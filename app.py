@@ -8,6 +8,7 @@ from flask import Flask, render_template, jsonify, request
 import json
 import os
 import re
+import csv
 from datetime import datetime
 from typing import List, Dict, Optional
 from collections import defaultdict
@@ -36,6 +37,7 @@ class CorpusManager:
     def __init__(self):
         self.verses = self.load_corpus()
         self.tags = self.load_tags()
+        self.masaq_data = self.load_masaq_data()
         self.surah_index = self.build_surah_index()
         self.root_index = {}
         self.root_list = []
@@ -70,6 +72,30 @@ class CorpusManager:
             with open(TAGS_PATH, 'r', encoding='utf-8') as f:
                 return json.load(f)
         return {}
+
+    def load_masaq_data(self) -> Dict:
+        """Load MASAQ morphological dataset indexed by surah:ayah:word"""
+        masaq_csv = os.path.join(MASAQ_PATH, 'MASAQ.csv')
+        if not os.path.exists(masaq_csv):
+            print(f"Warning: MASAQ dataset not found at {masaq_csv}")
+            return {}
+
+        masaq_index = defaultdict(list)
+
+        try:
+            with open(masaq_csv, 'r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    surah = int(row['Sura_No'])
+                    ayah = int(row['Verse_No'])
+                    key = (surah, ayah)
+                    masaq_index[key].append(row)
+
+            print(f"Loaded MASAQ data: {len(masaq_index)} verses with detailed morphology")
+            return dict(masaq_index)
+        except Exception as e:
+            print(f"Error loading MASAQ data: {e}")
+            return {}
 
     def save_corpus(self):
         """Save corpus (versioned by git)"""
@@ -227,6 +253,151 @@ class CorpusManager:
         if features:
             parts.append(features)
         return ' • '.join(parts) or 'Morph Pattern'
+
+    def parse_morphological_features(self, segment: Dict) -> Dict:
+        """
+        Parse morphological features from segment into structured data.
+        Extracts: verb form, person, number, gender, voice, mood, case, tense, aspect
+        """
+        features_str = segment.get('features', '')
+        pos = segment.get('pos', '')
+
+        parsed = {
+            'pos': pos,
+            'pos_full': self._get_pos_full_name(pos),
+            'root': segment.get('root'),
+            'lemma': segment.get('lemma'),
+            'type': segment.get('type'),
+            'verb_form': None,
+            'person': None,
+            'number': None,
+            'gender': None,
+            'voice': None,
+            'mood': None,
+            'case': None,
+            'tense': None,
+            'aspect': None,
+            'features_raw': features_str
+        }
+
+        if not features_str:
+            return parsed
+
+        # Parse features string
+        features_upper = features_str.upper()
+
+        # Verb Form (I-X) - extract from parentheses like (IV), (III), (X)
+        import re
+        verb_form_match = re.search(r'\((I{1,3}V?|VI{0,3}|I?X)\)', features_str)
+        if verb_form_match:
+            form_num = verb_form_match.group(1)
+            roman_to_arabic = {
+                'I': 'I', 'II': 'II', 'III': 'III', 'IV': 'IV', 'V': 'V',
+                'VI': 'VI', 'VII': 'VII', 'VIII': 'VIII', 'IX': 'IX', 'X': 'X'
+            }
+            parsed['verb_form'] = f"Form {roman_to_arabic.get(form_num, form_num)}"
+
+        # Person (1P, 2P, 3P, etc.)
+        if '1P' in features_str or '1S' in features_str or '1D' in features_str:
+            parsed['person'] = '1st'
+        elif '2P' in features_str or '2MS' in features_str or '2FS' in features_str or '2MD' in features_str or '2FD' in features_str or '2MP' in features_str or '2FP' in features_str:
+            parsed['person'] = '2nd'
+        elif '3P' in features_str or '3MS' in features_str or '3FS' in features_str or '3MD' in features_str or '3FD' in features_str or '3MP' in features_str or '3FP' in features_str:
+            parsed['person'] = '3rd'
+
+        # Number (singular, dual, plural)
+        if 'S|' in features_str or features_str.endswith('S') or 'MS' in features_str or 'FS' in features_str:
+            parsed['number'] = 'singular'
+        elif 'D|' in features_str or features_str.endswith('D') or 'MD' in features_str or 'FD' in features_str:
+            parsed['number'] = 'dual'
+        elif 'P|' in features_str or features_str.endswith('P') or 'MP' in features_str or 'FP' in features_str:
+            parsed['number'] = 'plural'
+
+        # Gender (M/F)
+        if '|M|' in features_str or '|M' in features_str or 'MS' in features_str or 'MD' in features_str or 'MP' in features_str:
+            parsed['gender'] = 'masculine'
+        elif '|F|' in features_str or '|F' in features_str or 'FS' in features_str or 'FD' in features_str or 'FP' in features_str:
+            parsed['gender'] = 'feminine'
+
+        # Voice (ACT/PASS)
+        if 'ACT' in features_upper or 'ACTIVE' in features_upper:
+            parsed['voice'] = 'active'
+        elif 'PASS' in features_upper or 'PASSIVE' in features_upper:
+            parsed['voice'] = 'passive'
+
+        # Mood (IND/SUBJ/JUS)
+        if 'MOOD:IND' in features_str:
+            parsed['mood'] = 'indicative'
+        elif 'MOOD:SJ' in features_str or 'SUBJ' in features_upper:
+            parsed['mood'] = 'subjunctive'
+        elif 'MOOD:JUS' in features_str or 'JUS' in features_upper:
+            parsed['mood'] = 'jussive'
+
+        # Case (NOM/ACC/GEN)
+        if 'NOM' in features_upper:
+            parsed['case'] = 'nominative'
+        elif 'ACC' in features_upper:
+            parsed['case'] = 'accusative'
+        elif 'GEN' in features_upper:
+            parsed['case'] = 'genitive'
+
+        # Tense/Aspect
+        if 'PERF' in features_upper:
+            parsed['tense'] = 'perfect'
+            parsed['aspect'] = 'perfective'
+        elif 'IMPF' in features_upper:
+            parsed['tense'] = 'imperfect'
+            parsed['aspect'] = 'imperfective'
+        elif 'IMPV' in features_upper:
+            parsed['tense'] = 'imperative'
+
+        return parsed
+
+    def _get_pos_full_name(self, pos: str) -> str:
+        """Convert POS code to full name"""
+        pos_map = {
+            'N': 'Noun',
+            'PN': 'Proper Noun',
+            'ADJ': 'Adjective',
+            'V': 'Verb',
+            'P': 'Preposition',
+            'PRON': 'Pronoun',
+            'DET': 'Determiner',
+            'REL': 'Relative Pronoun',
+            'T': 'Particle',
+            'NEG': 'Negative Particle',
+            'CONJ': 'Conjunction',
+            'INTERROG': 'Interrogative',
+            'VOC': 'Vocative Particle',
+            'SUB': 'Subordinating Conjunction',
+            'EMPH': 'Emphatic Particle',
+            'IMPV': 'Imperative Particle',
+            'ACC': 'Accusative Particle',
+            'AMD': 'Amendment Particle',
+            'ANS': 'Answer Particle',
+            'AVR': 'Aversion Particle',
+            'CAUS': 'Causative Particle',
+            'CERT': 'Certainty Particle',
+            'CIRC': 'Circumstantial Particle',
+            'COM': 'Comitative Particle',
+            'COND': 'Conditional Particle',
+            'EQ': 'Equalization Particle',
+            'EXH': 'Exhortation Particle',
+            'EXL': 'Explanation Particle',
+            'EXP': 'Exceptive Particle',
+            'FUT': 'Future Particle',
+            'INC': 'Inceptive Particle',
+            'INT': 'Intensification Particle',
+            'INTG': 'Interrogative Particle',
+            'PRO': 'Prohibition Particle',
+            'REM': 'Resumption Particle',
+            'RES': 'Restriction Particle',
+            'RET': 'Retraction Particle',
+            'RSLT': 'Result Particle',
+            'SUP': 'Supplemental Particle',
+            'SUR': 'Surprise Particle'
+        }
+        return pos_map.get(pos, pos)
 
     def _build_pronoun_id(self, token_id, segment_id=None) -> str:
         """Create stable identifier for pronoun-bearing segment/token"""
@@ -511,6 +682,58 @@ class CorpusManager:
                             entry['match_term'] = ' '.join(window_forms)
                         results.append(entry)
                     break
+
+        return {'results': results, 'total_count': total_count}
+
+    def get_masaq_morphology(self, surah: int, ayah: int) -> Optional[List[Dict]]:
+        """Get MASAQ morphological data for a specific verse"""
+        return self.masaq_data.get((surah, ayah))
+
+    def search_masaq_morphology(self, morph_tag: str = None, syntactic_role: str = None,
+                                case_mood: str = None, limit: int = 100) -> List[Dict]:
+        """
+        Search verses using MASAQ morphological features.
+        Can filter by: morph_tag (VERB, NOUN, etc.), syntactic_role, case_mood, etc.
+        """
+        results = []
+        total_count = 0
+
+        for (surah, ayah), masaq_words in self.masaq_data.items():
+            verse_matches = []
+
+            for word_data in masaq_words:
+                matches = True
+
+                if morph_tag and word_data.get('Morph_tag') != morph_tag:
+                    matches = False
+                if syntactic_role and word_data.get('Syntactic_Role') != syntactic_role:
+                    matches = False
+                if case_mood and word_data.get('Case_Mood') != case_mood:
+                    matches = False
+
+                if matches:
+                    verse_matches.append(word_data)
+                    total_count += 1
+
+            if verse_matches and len(results) < limit:
+                verse = self.get_verse(surah, ayah)
+                if verse:
+                    # Build match description
+                    match_parts = []
+                    if morph_tag:
+                        match_parts.append(f"Type: {morph_tag}")
+                    if syntactic_role:
+                        match_parts.append(f"Role: {syntactic_role}")
+                    if case_mood:
+                        match_parts.append(f"Case: {case_mood}")
+                    match_desc = ', '.join(match_parts) if match_parts else 'MASAQ morphology match'
+
+                    results.append({
+                        'verse': verse,
+                        'match': match_desc,
+                        'masaq_matches': verse_matches[:5],  # Show first 5 matches
+                        'match_count': len(verse_matches)
+                    })
 
         return {'results': results, 'total_count': total_count}
 
@@ -1315,11 +1538,196 @@ def api_translation_delete(verse_ref, translation_id):
         return jsonify({'error': 'Invalid verse reference'}), 400
 
 
+@app.route('/api/morphology/<int:surah>/<int:ayah>')
+def api_masaq_morphology(surah, ayah):
+    """Get detailed MASAQ morphological data for a verse"""
+    masaq_data = corpus.get_masaq_morphology(surah, ayah)
+    if masaq_data is None:
+        return jsonify({'error': 'MASAQ data not found for this verse'}), 404
+    return jsonify({
+        'surah': surah,
+        'ayah': ayah,
+        'morphology': masaq_data
+    })
+
+
+@app.route('/api/search/morphology_advanced')
+def api_search_masaq():
+    """Advanced morphological search using MASAQ dataset"""
+    morph_tag = request.args.get('morph_tag')
+    syntactic_role = request.args.get('syntactic_role')
+    case_mood = request.args.get('case_mood')
+    limit = int(request.args.get('limit', 50))
+
+    data = corpus.search_masaq_morphology(
+        morph_tag=morph_tag,
+        syntactic_role=syntactic_role,
+        case_mood=case_mood,
+        limit=limit
+    )
+
+    return jsonify({
+        'results': data['results'],
+        'query': {
+            'morph_tag': morph_tag,
+            'syntactic_role': syntactic_role,
+            'case_mood': case_mood
+        },
+        'type': 'masaq_morphology',
+        'count': data.get('total_count', len(data['results']))
+    })
+
+
+@app.route('/api/morphology/features')
+def api_morphology_features():
+    """Get available morphological features from MASAQ dataset"""
+    # Collect unique values for filtering
+    morph_tags = set()
+    syntactic_roles = set()
+    case_moods = set()
+
+    for masaq_words in corpus.masaq_data.values():
+        for word in masaq_words:
+            if word.get('Morph_tag'):
+                morph_tags.add(word['Morph_tag'])
+            if word.get('Syntactic_Role'):
+                syntactic_roles.add(word['Syntactic_Role'])
+            if word.get('Case_Mood'):
+                case_moods.add(word['Case_Mood'])
+
+    return jsonify({
+        'morph_tags': sorted(morph_tags),
+        'syntactic_roles': sorted(syntactic_roles),
+        'case_moods': sorted(case_moods)
+    })
+
+
+@app.route('/api/morphology/parsed/<int:surah>/<int:ayah>')
+def api_parsed_morphology(surah, ayah):
+    """Get parsed morphological features for a verse including verb forms"""
+    verse = corpus.get_verse(surah, ayah)
+    if not verse:
+        return jsonify({'error': 'Verse not found'}), 404
+
+    tokens_with_parsed = []
+    for token in verse.get('tokens', []):
+        token_data = {
+            'id': token.get('id'),
+            'form': token.get('form'),
+            'segments': []
+        }
+        for segment in token.get('segments', []):
+            parsed = corpus.parse_morphological_features(segment)
+            token_data['segments'].append({
+                'original': segment,
+                'parsed': parsed
+            })
+        tokens_with_parsed.append(token_data)
+
+    return jsonify({
+        'surah': surah,
+        'ayah': ayah,
+        'text': verse.get('text'),
+        'tokens': tokens_with_parsed
+    })
+
+
+@app.route('/api/search/verb_forms')
+def api_search_verb_forms():
+    """Search for specific verb forms (I-X) with optional filters"""
+    verb_form = request.args.get('form')  # e.g., "IV", "III", "X"
+    person = request.args.get('person')  # e.g., "3rd"
+    number = request.args.get('number')  # e.g., "plural"
+    gender = request.args.get('gender')  # e.g., "masculine"
+    voice = request.args.get('voice')    # e.g., "passive"
+    tense = request.args.get('tense')    # e.g., "perfect"
+    limit = int(request.args.get('limit', 50))
+
+    results = []
+    total_count = 0
+
+    for verse in corpus.verses:
+        if not verse.get('tokens'):
+            continue
+
+        verse_matches = []
+        for token in verse['tokens']:
+            for segment in token.get('segments', []):
+                if segment.get('pos') != 'V':  # Only verbs
+                    continue
+
+                parsed = corpus.parse_morphological_features(segment)
+
+                # Check filters
+                matches = True
+                if verb_form and not (parsed.get('verb_form') == f"Form {verb_form}"):
+                    matches = False
+                if person and parsed.get('person') != person:
+                    matches = False
+                if number and parsed.get('number') != number:
+                    matches = False
+                if gender and parsed.get('gender') != gender:
+                    matches = False
+                if voice and parsed.get('voice') != voice:
+                    matches = False
+                if tense and parsed.get('tense') != tense:
+                    matches = False
+
+                if matches:
+                    verse_matches.append({
+                        'token_form': token.get('form'),
+                        'root': parsed.get('root'),
+                        'lemma': parsed.get('lemma'),
+                        'parsed': parsed
+                    })
+                    total_count += 1
+
+        if verse_matches and len(results) < limit:
+            # Build match description
+            match_parts = []
+            if verb_form:
+                match_parts.append(f"Form {verb_form}")
+            if person:
+                match_parts.append(f"{person} person")
+            if number:
+                match_parts.append(number)
+            if gender:
+                match_parts.append(gender)
+            if voice:
+                match_parts.append(voice)
+            if tense:
+                match_parts.append(tense)
+
+            match_desc = ', '.join(match_parts) if match_parts else 'Verb'
+
+            results.append({
+                'verse': verse,
+                'match': match_desc,
+                'matches': verse_matches[:3],
+                'match_count': len(verse_matches)
+            })
+
+    return jsonify({
+        'results': results,
+        'query': {
+            'verb_form': verb_form,
+            'person': person,
+            'number': number,
+            'gender': gender,
+            'voice': voice,
+            'tense': tense
+        },
+        'type': 'verb_forms',
+        'count': total_count
+    })
+
+
 if __name__ == '__main__':
     print("=" * 70)
     print("Codex - Quran Research Interface")
     print("=" * 70)
     print(f"Loaded {len(corpus.verses)} verses")
+    print(f"Loaded {len(corpus.masaq_data)} verses with MASAQ morphology")
     print(f"Loaded {len(corpus.tags.get('tags', {}))} hypothesis tags")
     print("\nStarting server at http://localhost:5000")
     print("=" * 70)
