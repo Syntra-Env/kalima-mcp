@@ -1,0 +1,12 @@
+version: '3.8'
+services:
+  kalima:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./kalima.db:/app/kalima.db
+      - ./kalima-index:/app/kalima-index
+    environment:
+      - RUST_LOG=info
+    restart: unless-stopped

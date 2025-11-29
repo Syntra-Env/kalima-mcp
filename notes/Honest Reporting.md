@@ -1,1 +1,0 @@
-If he does not honestly report about his conscious experience accurately, then he will harm those around him who depend on his accurate reporting to shape their reality. It may have been better for him not to have anyone who depended on his truth, but the world showed him that what others do is not in his hands.

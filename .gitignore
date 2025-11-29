@@ -1,14 +1,35 @@
-/.metadata/
-/.venv/
-__pycache__/
-*.pyc
-*.pyo
-*.bak
+# Rust build artifacts
+/engine/target/
+/engine/**/*.rs.bk
+Cargo.lock
+
+# Runtime data
+kalima.db
+kalima.db-shm
+kalima.db-wal
+kalima-index/
+
+# Backup files
 *.backup
 *.backup_*
-*.before_*
-corpus/backups/
+
+# OS files
 .DS_Store
 *.swp
 *.swo
 *~
+.metadata/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Python (legacy - for archive compatibility)
+/.venv/
+__pycache__/
+*.pyc
+*.pyo
