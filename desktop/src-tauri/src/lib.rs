@@ -52,8 +52,8 @@ fn configure_backend_paths() {
     exe_dir.join(name)
   };
 
-  let db_path = resolve("kalima.db");
-  let index_path = resolve("kalima-index");
+  let db_path = resolve("data/database/kalima.db");
+  let index_path = resolve("data/search-index");
 
   // Ensure index directory exists so Tantivy can open or create it.
   if !index_path.exists() {
