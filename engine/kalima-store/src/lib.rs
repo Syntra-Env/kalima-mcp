@@ -409,6 +409,76 @@ impl SqliteStorage {
         .map_err(|e| EngineError::Storage(e.to_string()))?
         .unwrap_or_else(|| "Unknown".to_string());
 
+        // Get tokens with their morphological segments
+        let rows = sqlx::query(
+            r#"
+            SELECT t.id as token_id, t.token_index, t.text as token_text,
+                   s.id, s.type, s.form, s.root, s.lemma, s.pattern, s.pos,
+                   s.verb_form, s.voice, s.mood, s.tense, s.aspect, s.person,
+                   s.number, s.gender, s.case_value, s.dependency_rel
+            FROM tokens t
+            LEFT JOIN segments s ON s.token_id = t.id
+            WHERE t.verse_surah = ?1 AND t.verse_ayah = ?2
+            ORDER BY t.token_index, s.id
+            "#
+        )
+        .bind(surah)
+        .bind(ayah)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        // Group segments by token
+        use std::collections::HashMap;
+        let mut tokens_map: HashMap<i64, serde_json::Value> = HashMap::new();
+
+        for row in rows {
+            let token_index: i64 = row.try_get("token_index").unwrap_or(0);
+            let token_text: String = row.try_get("token_text").unwrap_or_default();
+
+            let token = tokens_map.entry(token_index).or_insert_with(|| {
+                serde_json::json!({
+                    "index": token_index,
+                    "text": token_text,
+                    "segments": []
+                })
+            });
+
+            // Add segment if it exists
+            if let Ok(seg_id) = row.try_get::<String, _>("id") {
+                if !seg_id.is_empty() {
+                    let segment = serde_json::json!({
+                        "id": seg_id,
+                        "type": row.try_get::<String, _>("type").unwrap_or_default(),
+                        "form": row.try_get::<String, _>("form").unwrap_or_default(),
+                        "root": row.try_get::<Option<String>, _>("root").unwrap_or(None),
+                        "lemma": row.try_get::<Option<String>, _>("lemma").unwrap_or(None),
+                        "pattern": row.try_get::<Option<String>, _>("pattern").unwrap_or(None),
+                        "pos": row.try_get::<Option<String>, _>("pos").unwrap_or(None),
+                        "verb_form": row.try_get::<Option<String>, _>("verb_form").unwrap_or(None),
+                        "voice": row.try_get::<Option<String>, _>("voice").unwrap_or(None),
+                        "mood": row.try_get::<Option<String>, _>("mood").unwrap_or(None),
+                        "tense": row.try_get::<Option<String>, _>("tense").unwrap_or(None),
+                        "aspect": row.try_get::<Option<String>, _>("aspect").unwrap_or(None),
+                        "person": row.try_get::<Option<String>, _>("person").unwrap_or(None),
+                        "number": row.try_get::<Option<String>, _>("number").unwrap_or(None),
+                        "gender": row.try_get::<Option<String>, _>("gender").unwrap_or(None),
+                        "case": row.try_get::<Option<String>, _>("case_value").unwrap_or(None),
+                        "dependency_rel": row.try_get::<Option<String>, _>("dependency_rel").unwrap_or(None),
+                    });
+
+                    if let Some(segments) = token.get_mut("segments").and_then(|s| s.as_array_mut()) {
+                        segments.push(segment);
+                    }
+                }
+            }
+        }
+
+        // Convert to sorted array
+        let mut tokens: Vec<_> = tokens_map.into_iter().collect();
+        tokens.sort_by_key(|(idx, _)| *idx);
+        let tokens_array: Vec<_> = tokens.into_iter().map(|(_, token)| token).collect();
+
         Ok(Some(serde_json::json!({
             "surah": {
                 "number": surah,
@@ -416,7 +486,7 @@ impl SqliteStorage {
             },
             "ayah": ayah,
             "text": text.unwrap_or_default(),
-            "tokens": []
+            "tokens": tokens_array
         })))
     }
 
