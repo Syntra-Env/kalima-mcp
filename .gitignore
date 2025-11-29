@@ -3,6 +3,10 @@
 /engine/**/*.rs.bk
 Cargo.lock
 
+# Executable binary (copied from engine/target/release/)
+kalima.exe
+kalima
+
 # Runtime data
 kalima.db
 kalima.db-shm

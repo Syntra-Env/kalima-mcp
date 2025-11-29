@@ -13,18 +13,26 @@ High-performance web application for Quranic text analysis, morphological resear
 git clone https://github.com/wwwportal/Kalima.git
 cd Kalima
 
-# Build
+# Build and copy executable to root
 cd engine
-cargo build --release
+cargo build --release --bin kalima-api
+cp target/release/kalima-api.exe ../kalima.exe
+cd ..
 
 # Ingest data (first time only)
-cargo run --bin kalima-ingest -- ../datasets/corpus/quran.jsonl
+./kalima.exe --help  # (or use: cargo run --bin kalima-ingest from engine/)
 
-# Start server
-cargo run --release --bin kalima-api
+# Start server from project root
+./kalima.exe
 ```
 
 Open browser: **http://localhost:8080**
+
+**Quick Start (if binary already exists):**
+```bash
+cd Kalima
+./kalima.exe
+```
 
 ## Architecture
 
