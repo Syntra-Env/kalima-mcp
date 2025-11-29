@@ -128,7 +128,7 @@ async fn static_handler(uri: Uri) -> Response {
     };
 
     // Strategy 1: Try to serve from external folder (for easy updates)
-    let folder_path = PathBuf::from("../static").join(path);
+    let folder_path = PathBuf::from("./static").join(path);
     if folder_path.exists() && folder_path.is_file() {
         if let Ok(content) = fs::read(&folder_path) {
             let mime_type = mime_guess::from_path(&folder_path)
