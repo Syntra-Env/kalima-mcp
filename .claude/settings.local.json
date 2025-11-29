@@ -5,7 +5,13 @@
       "Bash(findstr:*)",
       "Bash(cargo build:*)",
       "Bash(git tag:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(cargo install:*)",
+      "Bash(cargo tauri build:*)",
+      "Bash(tasklist:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(sqlite3:*)"
     ],
     "deny": [],
     "ask": []

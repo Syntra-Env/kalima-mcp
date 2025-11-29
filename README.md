@@ -16,7 +16,7 @@ cd Kalima
 
 # Build and run data ingestion (only needed once)
 cd engine
-cargo run --release --bin ingest -- --db ../kalima.db --index ../kalima-index --input ../datasets/corpus/quran.jsonl
+cargo run --release --bin ingest -- --db ../data/database/kalima.db --index ../data/search-index --input ../datasets/corpus/quran.jsonl
 cd ..
 ```
 
@@ -33,13 +33,13 @@ cargo tauri dev
 
 # Build new executable
 cargo tauri build
-cp src-tauri/target/release/app.exe Kalima.exe
+cp desktop/src-tauri/target/release/app.exe Kalima.exe
 ```
 
 The desktop app automatically:
 - Starts the Rust API server in-process
 - Opens in a native window (no external browser)
-- Loads data from `kalima.db` and `kalima-index/` in the project directory
+- Loads data from `data/database/` and `data/search-index/` in the project directory
 
 ### CLI/Server Mode
 ```bash

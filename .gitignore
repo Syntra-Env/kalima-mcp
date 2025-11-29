@@ -1,8 +1,8 @@
 # Rust build artifacts
 /engine/target/
 /engine/**/*.rs.bk
-/src-tauri/target/
-/src-tauri/gen/
+/desktop/src-tauri/target/
+/desktop/src-tauri/gen/
 Cargo.lock
 
 # Executable binaries
@@ -10,24 +10,9 @@ kalima.exe
 Kalima.exe
 kalima
 
-# Runtime data
-kalima.db
-kalima.db-shm
-kalima.db-wal
-kalima-index/
-engine/kalima.db*
-
-# Runtime index files IN the crate directory (but allow crate source)
-engine/kalima-index/*.fast
-engine/kalima-index/*.fieldnorm
-engine/kalima-index/*.idx
-engine/kalima-index/*.pos
-engine/kalima-index/*.store
-engine/kalima-index/*.term
-engine/kalima-index/.managed.json
-engine/kalima-index/.tantivy-*.lock
-engine/kalima-index/meta.json
-engine/kalima-index/kalima-index-test-local/
+# Runtime data directories
+data/database/
+data/search-index/
 
 # Backup files
 *.backup

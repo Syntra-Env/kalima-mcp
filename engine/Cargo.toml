@@ -1,9 +1,9 @@
 [workspace]
 members = [
-    "kalima-core",
-    "kalima-store",
-    "kalima-index",
-    "kalima-api",
+    "common",
+    "store",
+    "search",
+    "api",
 ]
 resolver = "2"
 
@@ -29,7 +29,3 @@ tantivy = "0.22"
 tempfile = "3"
 structopt = "0.3"
 tower-http = { version = "0.5", features = ["fs"] }
-
-[workspace.dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-tempfile = "3"
