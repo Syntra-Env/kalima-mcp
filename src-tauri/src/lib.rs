@@ -12,10 +12,13 @@ pub fn run() {
 
       configure_backend_paths();
 
+      // Start the API server in background and wait for it to be ready
       tauri::async_runtime::spawn(async {
-        // kalima-api panics on fatal errors, so we just await it here.
         kalima_api::start_server().await;
       });
+
+      // Give the server time to bind to port 8080
+      std::thread::sleep(std::time::Duration::from_millis(1000));
 
       Ok(())
     })
