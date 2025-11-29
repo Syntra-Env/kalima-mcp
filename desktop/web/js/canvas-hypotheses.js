@@ -18,7 +18,7 @@ Object.assign(Canvas, {
             this.currentHypotheses = [];
             this.renderHypotheses();
         }
-    },,
+    },
 
     renderHypotheses() {
         const list = document.getElementById('hypothesisList');
@@ -37,7 +37,7 @@ Object.assign(Canvas, {
             `;
             list.appendChild(card);
         });
-    },,
+    },
 
     async submitHypothesis(event) {
         event.preventDefault();
@@ -65,7 +65,7 @@ Object.assign(Canvas, {
         } catch (error) {
             console.error('Error saving hypothesis', error);
         }
-    },,
+    },
 
     async loadPronounData() {
         if (!this.currentSurahNumber || !this.currentAyahNumber) {
@@ -79,7 +79,7 @@ Object.assign(Canvas, {
         } catch (error) {
             console.error('Error loading pronoun data:', error);
         }
-    },,
+    },
 
     renderPronounPanel(data) {
         const list = document.getElementById('pronounList');
@@ -196,7 +196,7 @@ Object.assign(Canvas, {
 
             list.appendChild(card);
         });
-    },,
+    },
 
     async submitPronounReference(event) {
         event.preventDefault();
@@ -230,13 +230,13 @@ Object.assign(Canvas, {
             console.error('Error saving pronoun referent:', error);
             alert('Unable to save pronoun referent');
         }
-    },,
+    },
 
     async promptEvidence(refId, type) {
         const note = prompt(`Add a ${type} evidence note`);
         if (!note) return;
         await this.addPronounEvidence(refId, type, note);
-    },,
+    },
 
     async addPronounEvidence(refId, type, note) {
         if (!this.currentSurahNumber || !this.currentAyahNumber) return;
@@ -257,7 +257,7 @@ Object.assign(Canvas, {
         } catch (error) {
             console.error('Error adding pronoun evidence:', error);
         }
-    },,
+    },
 
     async updatePronounStatus(refId, status) {
         if (!this.currentSurahNumber || !this.currentAyahNumber) return;
@@ -273,7 +273,7 @@ Object.assign(Canvas, {
         } catch (error) {
             console.error('Error updating pronoun status:', error);
         }
-    },,
+    },
 
     buildPronounLabel(pronoun) {
         const base = pronoun.form || pronoun.token_form || pronoun.pronoun_id;

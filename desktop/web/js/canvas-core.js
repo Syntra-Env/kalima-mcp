@@ -20,7 +20,7 @@ Object.assign(Canvas, {
         this.loadNotesList();
         this.renderNavMap();
         this.detailZoom = 1;
-    },,
+    },
 
     setupStackPanels() {
         const container = document.getElementById('sideStacks');
@@ -42,7 +42,7 @@ Object.assign(Canvas, {
                 const panel = e.currentTarget.closest('.stack-panel');
                 if (!panel) return;
                 panel.classList.toggle('collapsed');
-                e.currentTarget.textContent = panel.classList.contains('collapsed') ? '+' : '−';
+                e.currentTarget.textContent = panel.classList.contains('collapsed') ? '+' : '-';
             });
         });
 
@@ -71,7 +71,7 @@ Object.assign(Canvas, {
                 localStorage.setItem('codex-stack-order', order.join(','));
             });
         });
-    },,
+    },
 
     setupEventListeners() {
         // Menu toggle
@@ -174,7 +174,10 @@ Object.assign(Canvas, {
 
         // Hide context menu on click outside
         document.addEventListener('click', () => {
-            document.getElementById('contextMenu').style.display = 'none';
+            const menu = document.getElementById('contextMenu');
+            if (menu) {
+                menu.style.display = 'none';
+            }
         });
 
         // Global mouseup to handle drag selection ending anywhere
@@ -186,7 +189,7 @@ Object.assign(Canvas, {
             }
         });
 
-            },,
+            },
 
     togglePatternPanel() {
         const panel = document.getElementById('patternPanel');
@@ -195,7 +198,7 @@ Object.assign(Canvas, {
 
         const collapsed = panel.classList.toggle('collapsed');
         canvas.classList.toggle('pattern-open', !collapsed);
-    },,
+    },
 
     openPatternPanel() {
         const panel = document.getElementById('patternPanel');
@@ -204,7 +207,7 @@ Object.assign(Canvas, {
 
         panel.classList.remove('collapsed');
         canvas.classList.add('pattern-open');
-    },,
+    },
 
     closePatternPanel() {
         const panel = document.getElementById('patternPanel');
@@ -213,7 +216,7 @@ Object.assign(Canvas, {
 
         panel.classList.add('collapsed');
         canvas.classList.remove('pattern-open');
-    },,
+    },
 
     renderLayerPalette() {
         const palette = document.getElementById('layerPalette');
@@ -244,7 +247,7 @@ Object.assign(Canvas, {
             option.addEventListener('click', () => this.setStructureCategory(cat.id));
             palette.appendChild(option);
         });
-    },,
+    },
 
     setStructureCategory(categoryId) {
         this.selectedStructureCategory = categoryId;
@@ -257,7 +260,7 @@ Object.assign(Canvas, {
                 details: `Selected structure type ${cat.label}`
             });
         }
-    },,
+    },
 
     setCurrentTarget(type, id, meta = {}, label = '') {
         this.currentTarget = { type, id, meta, label };
@@ -265,7 +268,7 @@ Object.assign(Canvas, {
         if (display) {
             display.textContent = label || `${type}: ${id}`;
         }
-    },,
+    },
 
     setupMorphBuilder() {
         this.renderBuilderChips('morphChipRow', MORPH_BLOCKS, 'morphBuilder');
@@ -277,7 +280,7 @@ Object.assign(Canvas, {
         if (searchBtn) {
             searchBtn.addEventListener('click', () => this.handleMorphSearch());
         }
-    },,
+    },
 
     setupSyntaxBuilder() {
         this.renderBuilderChips('syntaxChipRow', SYNTAX_BLOCKS, 'syntaxBuilder');
@@ -289,7 +292,7 @@ Object.assign(Canvas, {
         if (searchBtn) {
             searchBtn.addEventListener('click', () => this.handleSyntaxSearch());
         }
-    },,
+    },
 
     renderBuilderChips(rowId, blocks, builderId) {
         const row = document.getElementById(rowId);
@@ -312,7 +315,7 @@ Object.assign(Canvas, {
                 }
             });
         }
-    },,
+    },
 
     appendToBuilder(builderId, label, value) {
         const builder = document.getElementById(builderId);
@@ -322,20 +325,20 @@ Object.assign(Canvas, {
         token.textContent = label;
         token.dataset.value = value;
         builder.appendChild(token);
-    },,
+    },
 
     getBuilderTokens(builderId) {
         const builder = document.getElementById(builderId);
         if (!builder) return [];
         return Array.from(builder.querySelectorAll('.builder-token')).map(token => token.dataset.value || token.textContent.trim());
-    },,
+    },
 
     clearBuilder(builderId) {
         const builder = document.getElementById(builderId);
         if (builder) {
             builder.innerHTML = '';
         }
-    },,
+    },
 
     setLayer(layer, rerender = true) {
         const normalized = ['letter', 'morphological', 'word', 'sentence'].includes(layer) ? layer : this.currentLayer;
@@ -345,7 +348,7 @@ Object.assign(Canvas, {
             this.renderLayerPalette();
             this.renderSurah();
         }
-    },,
+    },
 
     setHypothesisTargetForLayer(layer) {
         const display = document.getElementById('hypTargetDisplay');
@@ -356,7 +359,7 @@ Object.assign(Canvas, {
         else if (layer === 'morphological') mapped = 'morpheme';
         else if (layer === 'letter') mapped = 'letter';
         display.textContent = this.currentTarget ? `${mapped.toUpperCase()} • ${this.currentTarget.label || ''}` : `${mapped.toUpperCase()} (select element)`;
-    },,
+    },
 
     navigateLayerUp() {
         const order = ['letter', 'morphological', 'word', 'sentence'];
@@ -367,7 +370,7 @@ Object.assign(Canvas, {
             this.setLayer(target);
             this.logAction({ ref: `${this.currentSurahNumber || ''}:${this.currentAyahNumber || ''}`, details: `Switched to ${target} layer` });
         }
-    },,
+    },
 
     setMode(mode) {
         if (mode !== 'annotate') {
@@ -390,7 +393,7 @@ Object.assign(Canvas, {
         }
 
         this.clearSelection();
-    },,
+    },
 
     setAppMode(mode) {
         this.appMode = 'read';

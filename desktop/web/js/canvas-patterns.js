@@ -8,7 +8,7 @@ Object.assign(Canvas, {
         const word = (input?.value || '').trim();
         this.patternSegments = this.parseArabicWord(word);
         this.renderPatternSegments();
-    },,
+    },
 
     parseArabicWord(word) {
         const segments = [];
@@ -28,7 +28,7 @@ Object.assign(Canvas, {
             }
         }
         return segments;
-    },,
+    },
 
     renderPatternSegments() {
         const container = document.getElementById('patternSegments');
@@ -58,7 +58,7 @@ Object.assign(Canvas, {
             });
             container.appendChild(wrapper);
         });
-    },,
+    },
 
     async submitPatternSearch() {
         if (!this.patternSegments || this.patternSegments.length === 0) {
@@ -107,7 +107,7 @@ Object.assign(Canvas, {
             console.error('Pattern search failed', error);
             this.renderSearchMessage('Pattern search failed. Please try again.');
         }
-    },,
+    },
 
     async loadMorphPatterns() {
         try {
@@ -116,7 +116,7 @@ Object.assign(Canvas, {
         } catch (error) {
             console.error('Error loading morphological patterns:', error);
         }
-    },,
+    },
 
     async loadSyntaxPatterns() {
         try {
@@ -125,7 +125,7 @@ Object.assign(Canvas, {
         } catch (error) {
             console.error('Error loading syntactic patterns:', error);
         }
-    },,
+    },
 
     async savePattern() {
         const pattern = {
@@ -155,7 +155,7 @@ Object.assign(Canvas, {
             console.error('Error saving pattern:', error);
             alert('Error saving pattern');
         }
-    },,
+    },
 
     showPatternModal(wordId) {
         const modal = document.getElementById('patternModal');

@@ -55,7 +55,7 @@ Object.assign(Canvas, {
 
             tree.appendChild(node);
         });
-    },,
+    },
 
     async selectSurah(number, options = {}) {
         try {
@@ -79,7 +79,7 @@ Object.assign(Canvas, {
         } catch (error) {
             console.error('Error selecting surah:', error);
         }
-    },,
+    },
 
     async getSurahData(number) {
         if (this.surahCache[number]) {
@@ -92,7 +92,7 @@ Object.assign(Canvas, {
         }
         this.surahCache[number] = data;
         return data;
-    },,
+    },
 
     async loadSurahSummaries() {
         try {
@@ -105,7 +105,7 @@ Object.assign(Canvas, {
         } catch (error) {
             console.error('Error loading surah summaries:', error);
         }
-    },,
+    },
 
     renderAyahList() {
         const list = document.getElementById('ayahList');
@@ -131,7 +131,7 @@ Object.assign(Canvas, {
             });
             list.appendChild(button);
         });
-    },,
+    },
 
     scrollToAyah(ayahNumber, smooth = true) {
         if (!this.currentSurahNumber || !ayahNumber) return;
@@ -143,7 +143,7 @@ Object.assign(Canvas, {
             el.classList.add('current-ayah');
             el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
         }
-    },,
+    },
 
     async navigateToVerse(surahNumber, ayahNumber) {
         await this.selectSurah(surahNumber);
@@ -156,7 +156,7 @@ Object.assign(Canvas, {
         this.renderAyahList();
         this.logNavigation(surahNumber, ayahNumber);
         this.scrollToAyah(ayahNumber);
-    },,
+    },
 
     renderSurah() {
         if (!this.currentSurahData) return;

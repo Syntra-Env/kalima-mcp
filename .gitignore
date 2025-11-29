@@ -10,9 +10,17 @@ kalima.exe
 Kalima.exe
 kalima
 
+# Node/test artifacts
+/node_modules/
+/playwright-report/
+/test-results/
+/.playwright/
+
 # Runtime data directories
 data/database/
 data/search-index/
+/kalima-index/
+/kalima.db
 
 # Backup files
 *.backup

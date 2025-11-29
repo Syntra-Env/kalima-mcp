@@ -30,7 +30,7 @@ Object.assign(Canvas, {
 
             container.appendChild(wordEl);
         });
-    },,
+    },
 
     renderMorphologicalLayer(container, verse) {
         // Render with selectable morphemes (prefix/stem/suffix)
@@ -147,7 +147,7 @@ Object.assign(Canvas, {
 
             container.appendChild(wordEl);
         });
-    },,
+    },
 
     renderLetterLayer(container, verse) {
         // Render with individual letter selection
@@ -197,7 +197,7 @@ Object.assign(Canvas, {
 
             container.appendChild(letterEl);
         }
-    },,
+    },
 
     renderTranslationLayer(container, verse) {
         // Render mixed Arabic/English translation view
@@ -224,7 +224,7 @@ Object.assign(Canvas, {
                 }, verse);
             });
         }
-    },,
+    },
 
     renderTranslationSegment(container, segment, verse) {
         // Find if this segment has a translation
@@ -271,7 +271,7 @@ Object.assign(Canvas, {
 
         container.appendChild(segmentEl);
         container.appendChild(document.createTextNode(' '));
-    },,
+    },
 
     renderSentenceLayer(container, verse) {
         const sentenceEl = document.createElement('span');
@@ -303,7 +303,7 @@ Object.assign(Canvas, {
         });
 
         container.appendChild(sentenceEl);
-    },,
+    },
 
     startTranslationEdit(segmentEl, segment, existingTranslation) {
         // Clear any other editing segments
@@ -371,14 +371,14 @@ Object.assign(Canvas, {
                 this.cancelTranslationEdit();
             }
         });
-    },,
+    },
 
     cancelTranslationEdit() {
         if (this.editingSegment) {
             this.renderSurah();
             this.editingSegment = null;
         }
-    },,
+    },
 
     assignStructure(element) {
         const definition = LAYER_DEFINITIONS[this.currentLayer];

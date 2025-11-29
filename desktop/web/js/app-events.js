@@ -11,54 +11,77 @@ document.addEventListener('DOMContentLoaded', () => {
     loadVerseByIndex(0);
 
     // Navigation buttons
-    document.getElementById('nextBtn').addEventListener('click', nextVerse);
-    document.getElementById('prevBtn').addEventListener('click', prevVerse);
+    const nextBtn = document.getElementById('nextBtn');
+    if (nextBtn) nextBtn.addEventListener('click', nextVerse);
+    const prevBtn = document.getElementById('prevBtn');
+    if (prevBtn) prevBtn.addEventListener('click', prevVerse);
 
-    document.getElementById('goBtn').addEventListener('click', () => {
-        const surah = parseInt(document.getElementById('surahInput').value);
-        const ayah = parseInt(document.getElementById('ayahInput').value);
-        if (surah && ayah) {
-            loadVerse(surah, ayah);
-        }
-    });
+    const goBtn = document.getElementById('goBtn');
+    if (goBtn) {
+        goBtn.addEventListener('click', () => {
+            const surah = parseInt(document.getElementById('surahInput').value);
+            const ayah = parseInt(document.getElementById('ayahInput').value);
+            if (surah && ayah) {
+                loadVerse(surah, ayah);
+            }
+        });
+    }
 
     // Display options
-    document.getElementById('showTokens').addEventListener('change', (e) => {
-        state.showTokens = e.target.checked;
-        if (state.currentVerse) displayTokens(state.currentVerse);
-    });
+    const showTokens = document.getElementById('showTokens');
+    if (showTokens) {
+        showTokens.addEventListener('change', (e) => {
+            state.showTokens = e.target.checked;
+            if (state.currentVerse) displayTokens(state.currentVerse);
+        });
+    }
 
-    document.getElementById('showMorphology').addEventListener('change', (e) => {
-        state.showMorphology = e.target.checked;
-        if (state.currentVerse) displayTokens(state.currentVerse);
-    });
+    const showMorphology = document.getElementById('showMorphology');
+    if (showMorphology) {
+        showMorphology.addEventListener('change', (e) => {
+            state.showMorphology = e.target.checked;
+            if (state.currentVerse) displayTokens(state.currentVerse);
+        });
+    }
 
-    document.getElementById('showAnnotations').addEventListener('change', (e) => {
-        state.showAnnotations = e.target.checked;
-        if (state.currentVerse) displayAnnotations(state.currentVerse);
-    });
+    const showAnnotations = document.getElementById('showAnnotations');
+    if (showAnnotations) {
+        showAnnotations.addEventListener('change', (e) => {
+            state.showAnnotations = e.target.checked;
+            if (state.currentVerse) displayAnnotations(state.currentVerse);
+        });
+    }
 
     // Quick search
     let searchTimeout;
-    document.getElementById('quickSearch').addEventListener('input', (e) => {
-        clearTimeout(searchTimeout);
-        const query = e.target.value;
-        if (query.length > 2) {
-            searchTimeout = setTimeout(() => {
-                const type = document.getElementById('searchType').value;
-                performSearch(query, type);
-            }, 500);
-        }
-    });
+    const quickSearch = document.getElementById('quickSearch');
+    if (quickSearch) {
+        quickSearch.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value;
+            if (query.length > 2) {
+                searchTimeout = setTimeout(() => {
+                    const searchType = document.getElementById('searchType');
+                    const type = searchType ? searchType.value : 'text';
+                    performSearch(query, type);
+                }, 500);
+            }
+        });
+    }
 
     // Annotation modal
-    document.getElementById('annotateBtn').addEventListener('click', showAnnotationModal);
-    document.getElementById('annotationForm').addEventListener('submit', submitAnnotation);
+    const annotateBtn = document.getElementById('annotateBtn');
+    if (annotateBtn) annotateBtn.addEventListener('click', showAnnotationModal);
+    const annotationForm = document.getElementById('annotationForm');
+    if (annotationForm) annotationForm.addEventListener('submit', submitAnnotation);
 
     // Top nav buttons
-    document.getElementById('searchBtn').addEventListener('click', () => showModal('searchModal'));
-    document.getElementById('tagsBtn').addEventListener('click', showTagsModal);
-    document.getElementById('statsBtn').addEventListener('click', showStatsModal);
+    const searchBtn = document.getElementById('searchBtn');
+    if (searchBtn) searchBtn.addEventListener('click', () => showModal('searchModal'));
+    const tagsBtn = document.getElementById('tagsBtn');
+    if (tagsBtn) tagsBtn.addEventListener('click', showTagsModal);
+    const statsBtn = document.getElementById('statsBtn');
+    if (statsBtn) statsBtn.addEventListener('click', showStatsModal);
 
     // Modal close buttons
     document.querySelectorAll('.close').forEach(closeBtn => {

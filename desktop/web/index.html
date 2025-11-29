@@ -184,6 +184,48 @@
 
     <!-- Main Canvas - Just the Quran Text -->
     <main id="canvas" class="canvas">
+        <!-- Lightweight navigation controls for testing and basic use -->
+        <section class="nav-controls">
+            <div class="nav-row">
+                <button id="prevBtn" class="btn">Previous</button>
+                <label>
+                    Surah
+                    <input id="surahInput" type="number" min="1" class="input nav-input" />
+                </label>
+                <label>
+                    Ayah
+                    <input id="ayahInput" type="number" min="1" class="input nav-input" />
+                </label>
+                <button id="goBtn" class="btn">Go</button>
+                <button id="nextBtn" class="btn">Next</button>
+            </div>
+            <div id="verseTitle" class="verse-title"></div>
+            <div id="verseText" class="verse-text"></div>
+            <div id="tokensContainer" class="token-panel"></div>
+            <div id="annotationsContainer" class="annotation-panel"></div>
+            <div class="nav-row">
+                <label>
+                    Quick search
+                    <input id="quickSearch" type="text" class="input nav-input" placeholder="Search..." />
+                </label>
+                <label>
+                    Type
+                    <select id="searchType" class="input nav-input">
+                        <option value="text">Text</option>
+                        <option value="root">Root</option>
+                        <option value="morphology">Morphology</option>
+                    </select>
+                </label>
+            </div>
+            <div class="nav-row nav-toggles">
+                <label><input id="showTokens" type="checkbox" checked /> Show tokens</label>
+                <label><input id="showMorphology" type="checkbox" /> Show morphology</label>
+                <label><input id="showAnnotations" type="checkbox" checked /> Show annotations</label>
+            </div>
+            <div id="verseInfo" class="info-panel"></div>
+            <div id="detailsPanel" class="details-panel"></div>
+        </section>
+
         <!-- Verse Reference -->
         <div class="verse-reference" id="verseReference"></div>
 

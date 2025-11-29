@@ -6,11 +6,19 @@ function displayVerse(verse) {
 
     // Update header
     const surah = verse.surah;
-    document.getElementById('verseTitle').textContent =
-        `Surah ${surah.name} (${surah.number}) - Ayah ${verse.ayah}`;
+    const verseTitle = document.getElementById('verseTitle');
+    if (verseTitle) {
+        verseTitle.textContent = `Surah ${surah.name} (${surah.number}) - Ayah ${verse.ayah}`;
+    }
 
     // Display verse text (RTL is automatic in browser!)
-    document.getElementById('verseText').textContent = verse.text;
+    const verseText = document.getElementById('verseText');
+    if (verseText) {
+        verseText.textContent = verse.text;
+    }
+
+    // Render main Quran text view with interactive tokens
+    renderQuranText(verse);
 
     // Display tokens
     displayTokens(verse);
@@ -29,6 +37,7 @@ function displayVerse(verse) {
 
 function displayTokens(verse) {
     const container = document.getElementById('tokensContainer');
+    if (!container) return;
 
     if (!state.showTokens || !verse.tokens || verse.tokens.length === 0) {
         container.classList.remove('show');
@@ -91,6 +100,7 @@ function displayTokens(verse) {
 
 function displayAnnotations(verse) {
     const container = document.getElementById('annotationsContainer');
+    if (!container) return;
 
     if (!state.showAnnotations || !verse.annotations || verse.annotations.length === 0) {
         container.classList.remove('show');
@@ -126,6 +136,7 @@ function displayAnnotations(verse) {
 
 function displayTokenDetails(token) {
     const panel = document.getElementById('detailsPanel');
+    if (!panel) return;
 
     let html = `<h3>Token ${token.id}: <span style="font-family: 'Scheherazade New', 'Amiri', serif; direction: rtl;">${token.form}</span></h3>`;
 
@@ -168,6 +179,7 @@ function toggleTokenSelection(tokenId) {
 
 function updateInfoPanel(verse) {
     const panel = document.getElementById('verseInfo');
+    if (!panel) return;
     const surah = verse.surah;
 
     let html = `
@@ -293,4 +305,52 @@ function showModal(modalId) {
 
 function closeModal(modalId) {
     document.getElementById(modalId).classList.remove('show');
+}
+
+function renderQuranText(verse) {
+    const container = document.getElementById('quranText');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const line = document.createElement('div');
+    line.className = 'quran-line';
+    line.dir = 'rtl';
+
+    const tokens = verse.tokens && verse.tokens.length ? verse.tokens : [{ id: verse.id || 'v', text: verse.text, segments: [] }];
+    tokens.forEach(token => {
+        const span = document.createElement('span');
+        span.className = 'quran-token';
+        span.textContent = token.form || token.text || '';
+        span.dataset.tokenId = token.id;
+
+        // Attach primary segment metadata (if present) for hover/detail
+        const seg = token.segments && token.segments[0];
+        if (seg) {
+            if (seg.root) span.dataset.root = seg.root;
+            if (seg.pos) span.dataset.pos = seg.pos;
+            if (seg.lemma) span.dataset.lemma = seg.lemma;
+            if (seg.pattern) span.dataset.pattern = seg.pattern;
+            if (seg.verb_form) span.dataset.verbForm = seg.verb_form || seg.verbForm;
+        }
+
+        span.title = [
+            seg?.root ? `Root: ${seg.root}` : '',
+            seg?.pos ? `POS: ${seg.pos}` : '',
+        ].filter(Boolean).join(' • ');
+
+        span.addEventListener('mouseenter', () => span.classList.add('hover'));
+        span.addEventListener('mouseleave', () => span.classList.remove('hover'));
+        span.addEventListener('click', () => {
+            if (window.Canvas && typeof Canvas.showElementDetails === 'function') {
+                Canvas.showElementDetails(span);
+            } else {
+                // Fallback: highlight selection
+                span.classList.toggle('selected');
+            }
+        });
+
+        line.appendChild(span);
+    });
+
+    container.appendChild(line);
 }

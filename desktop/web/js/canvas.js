@@ -44,13 +44,3 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Export for use in other scripts
 window.Canvas = Canvas;
-
-// API base override for Rust backend toggle
-const API_BASE = window.CodexAPIBase || '';
-const __origFetch = window.fetch.bind(window);
-window.fetch = (input, init) => {
-    if (typeof input === 'string' && input.startsWith('/api')) {
-        input = API_BASE + input;
-    }
-    return __origFetch(input, init);
-};

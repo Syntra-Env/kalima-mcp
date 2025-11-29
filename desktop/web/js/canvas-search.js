@@ -15,7 +15,7 @@ Object.assign(Canvas, {
             console.error('Error loading roots:', error);
             letterRow.textContent = 'Failed to load roots.';
         }
-    },,
+    },
 
     renderRootLetters() {
         const row = document.getElementById('rootLetterRow');
@@ -33,7 +33,7 @@ Object.assign(Canvas, {
             chip.addEventListener('click', () => this.showRootsForLetter(letter));
             row.appendChild(chip);
         });
-    },,
+    },
 
     showRootsForLetter(letter) {
         const container = document.getElementById('rootChipContainer');
@@ -53,7 +53,7 @@ Object.assign(Canvas, {
             chip.addEventListener('click', () => this.performRootSearch(root));
             container.appendChild(chip);
         });
-    },,
+    },
 
     async performRootSearch(root) {
         if (!root) {
@@ -70,7 +70,7 @@ Object.assign(Canvas, {
             console.error('Root search failed:', error);
             this.renderSearchMessage('Root search failed. Please try again.');
         }
-    },,
+    },
 
     async handleMorphSearch() {
         const tokens = this.getBuilderTokens('morphBuilder');
@@ -92,7 +92,7 @@ Object.assign(Canvas, {
             console.error('Morphology search failed:', error);
             this.renderSearchMessage('Morphology search failed. Please try again.');
         }
-    },,
+    },
 
     async handleSyntaxSearch() {
         const tokens = this.getBuilderTokens('syntaxBuilder');
@@ -114,7 +114,7 @@ Object.assign(Canvas, {
             console.error('Syntax search failed:', error);
             this.renderSearchMessage('Syntax search failed. Please try again.');
         }
-    },,
+    },
 
     async handleLibrarySearch() {
         const input = document.getElementById('librarySearchInput');
@@ -133,7 +133,7 @@ Object.assign(Canvas, {
             console.error('Library search failed:', error);
             this.renderSearchMessage('Library search failed. Please try again.');
         }
-    },,
+    },
 
     renderSearchResults(results, emptyMessage = 'No matches found.', totalCount = null) {
         const container = document.getElementById('quranText');
@@ -191,14 +191,14 @@ Object.assign(Canvas, {
 
         container.appendChild(backBtn);
         container.appendChild(resultWrapper);
-    },,
+    },
 
     renderSearchMessage(message) {
         const container = document.getElementById('quranText');
         if (!container) return;
         this.currentSearchResults = null;
         container.innerHTML = `<p class="hint">${this.escapeHtml(message)}</p>`;
-    },,
+    },
 
     renderLibraryResults(results, query) {
         const container = document.getElementById('searchResults');
@@ -227,7 +227,7 @@ Object.assign(Canvas, {
             match: 'Library hit',
             matchTerm: query
         })), 'No matches in data');
-    },,
+    },
 
     loadNotesList() {
         const list = document.getElementById('notesList');
@@ -256,7 +256,7 @@ Object.assign(Canvas, {
             .catch(() => {
                 list.innerHTML = '<p class="hint">Unable to load notes.</p>';
             });
-    },,
+    },
 
     loadNoteContent(path, title = '') {
         const panel = document.getElementById('searchResults');
