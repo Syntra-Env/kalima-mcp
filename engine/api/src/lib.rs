@@ -32,8 +32,8 @@ pub async fn start_server() {
         .init();
 
     // Init backends
-    let db_path = std::env::var("KALIMA_DB").unwrap_or_else(|_| "kalima.db".into());
-    let index_path = std::env::var("KALIMA_INDEX").unwrap_or_else(|_| "kalima-index".into());
+    let db_path = std::env::var("KALIMA_DB").unwrap_or_else(|_| "data/database/kalima.db".into());
+    let index_path = std::env::var("KALIMA_INDEX").unwrap_or_else(|_| "data/search-index".into());
 
     let storage = Arc::new(
         SqliteStorage::connect(&db_path)
