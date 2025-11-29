@@ -1,0 +1,26 @@
+[package]
+name = "kalima-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+kalima-core = { path = "../kalima-core" }
+kalima-store = { path = "../kalima-store" }
+kalima-index = { path = "../kalima-index" }
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+axum.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+structopt.workspace = true
+anyhow.workspace = true
+tempfile.workspace = true
+tower-http.workspace = true
+chrono = "0.4"
+regex = "1.10"
+rust-embed = "8.0"
+mime_guess = "2.0"

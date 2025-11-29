@@ -1,0 +1,15 @@
+[package]
+name = "kalima-store"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+kalima-core = { path = "../kalima-core" }
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+sqlx.workspace = true
+uuid.workspace = true
