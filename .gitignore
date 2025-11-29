@@ -1,10 +1,13 @@
 # Rust build artifacts
 /engine/target/
 /engine/**/*.rs.bk
+/src-tauri/target/
+/src-tauri/gen/
 Cargo.lock
 
-# Executable binary (copied from engine/target/release/)
+# Executable binaries
 kalima.exe
+Kalima.exe
 kalima
 
 # Runtime data

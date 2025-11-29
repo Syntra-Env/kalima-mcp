@@ -6,8 +6,29 @@ High-performance web application for Quranic text analysis, morphological resear
 
 ### Prerequisites
 - Rust 1.70+ ([Install Rust](https://rustup.rs/))
+- Tauri CLI: `cargo install tauri-cli --locked`
 
-### Build and Run
+### Desktop App (no browser required)
+```bash
+cd Kalima
+
+# Run desktop app directly from root
+./Kalima.exe
+
+# Or develop with hot-reload
+cargo tauri dev
+
+# Build new executable
+cargo tauri build
+cp src-tauri/target/release/app.exe Kalima.exe
+```
+
+The desktop app automatically:
+- Starts the Rust API server in-process
+- Opens in a native window (no external browser)
+- Loads data from `kalima.db` and `kalima-index/` in the project directory
+
+### CLI/Server Mode
 ```bash
 # Clone repository
 git clone https://github.com/wwwportal/Kalima.git
@@ -22,15 +43,7 @@ cd ..
 # Ingest data (first time only)
 ./kalima.exe --help  # (or use: cargo run --bin kalima-ingest from engine/)
 
-# Start server from project root
-./kalima.exe
-```
-
-Open browser: **http://localhost:8080**
-
-**Quick Start (if binary already exists):**
-```bash
-cd Kalima
+# Start server from project root (serves http://localhost:8080)
 ./kalima.exe
 ```
 
@@ -46,15 +59,15 @@ cd Kalima
 
 ## Features
 
-- ✅ Browse 114 surahs, 6,236 verses
-- ✅ Full-text search with Arabic diacritics
-- ✅ Root-based morphological search
-- ✅ POS pattern search
-- ✅ Verb form analysis (Forms I-X)
-- ✅ Dependency tree visualization
-- ✅ Annotations & connections
-- ✅ Hypothesis management
-- ✅ Translation comparison
+- Browse 114 surahs, 6,236 verses
+- Full-text search with Arabic diacritics
+- Root-based morphological search
+- POS pattern search
+- Verb form analysis (Forms I-X)
+- Dependency tree visualization
+- Annotations & connections
+- Hypothesis management
+- Translation comparison
 
 ## API Endpoints
 
