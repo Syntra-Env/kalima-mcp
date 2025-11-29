@@ -1,0 +1,223 @@
+{
+  "index_settings": {
+    "docstore_compression": "lz4",
+    "docstore_blocksize": 16384
+  },
+  "segments": [
+    {
+      "segment_id": "2530ba82-3868-4e6e-a265-06a9ff49cd4b",
+      "max_doc": 16570,
+      "deletes": null
+    },
+    {
+      "segment_id": "532af559-3a17-4ac0-90ee-a62ee62418be",
+      "max_doc": 16551,
+      "deletes": null
+    },
+    {
+      "segment_id": "2cc32572-ecde-44cb-b2e3-a37eba5a6f7e",
+      "max_doc": 16468,
+      "deletes": null
+    },
+    {
+      "segment_id": "8438f026-24da-49e1-82b4-d162e25c2828",
+      "max_doc": 9342,
+      "deletes": null
+    },
+    {
+      "segment_id": "3819c4cc-f875-4d02-bac7-2d0489b52f81",
+      "max_doc": 9259,
+      "deletes": null
+    },
+    {
+      "segment_id": "98505eea-a608-4bbf-87e0-3f68111dc50e",
+      "max_doc": 9239,
+      "deletes": null
+    }
+  ],
+  "schema": [
+    {
+      "name": "id",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": true,
+        "fast": false
+      }
+    },
+    {
+      "name": "text",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": false,
+        "fast": false
+      }
+    },
+    {
+      "name": "roots",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": false,
+        "fast": false
+      }
+    },
+    {
+      "name": "lemmas",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": false,
+        "fast": false
+      }
+    },
+    {
+      "name": "pos",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": false,
+        "fast": false
+      }
+    },
+    {
+      "name": "verb_form",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": false,
+        "fast": false
+      }
+    },
+    {
+      "name": "gender",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": false,
+        "fast": false
+      }
+    },
+    {
+      "name": "number",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": false,
+        "fast": false
+      }
+    },
+    {
+      "name": "case",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": false,
+        "fast": false
+      }
+    },
+    {
+      "name": "pattern",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": false,
+        "fast": false
+      }
+    },
+    {
+      "name": "voice",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": false,
+        "fast": false
+      }
+    },
+    {
+      "name": "mood",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": false,
+        "fast": false
+      }
+    },
+    {
+      "name": "tense",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": false,
+        "fast": false
+      }
+    },
+    {
+      "name": "aspect",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": false,
+        "fast": false
+      }
+    }
+  ],
+  "opstamp": 77435
+}

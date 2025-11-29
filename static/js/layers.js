@@ -118,11 +118,12 @@ const LayerSystem = {
 
     loadConnections(verseRef) {
         // Load connections from backend
-        fetch(`/api/connections/${verseRef}`)
+        fetch(`/api/connections?verse=${encodeURIComponent(verseRef)}`)
             .then(res => res.json())
             .then(data => {
-                this.connections.internal = data.internal || [];
-                this.connections.external = data.external || [];
+                // Rust API returns flat list; treat all as internal for now
+                this.connections.internal = data || [];
+                this.connections.external = [];
                 this.refreshDisplay();
             })
             .catch(err => console.error('Error loading connections:', err));
@@ -133,10 +134,19 @@ const LayerSystem = {
 
         const verseRef = `${this.currentVerse.surah.number}:${this.currentVerse.ayah}`;
 
-        fetch(`/api/connections/${verseRef}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(this.connections)
+        // Persist each internal connection individually
+        this.connections.internal.forEach(conn => {
+            fetch(`/api/connections`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: conn.id,
+                    from_token: conn.from,
+                    to_token: conn.to,
+                    layer: conn.layer || 'internal',
+                    meta: conn.meta || {}
+                })
+            });
         });
     },
 

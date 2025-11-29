@@ -15,7 +15,7 @@ from collections import defaultdict
 from pathlib import Path
 import unicodedata
 
-app = Flask(__name__, static_folder='static', static_url_path='')
+app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config['JSON_AS_ASCII'] = False  # Enable Unicode in JSON responses
 
 # Paths
