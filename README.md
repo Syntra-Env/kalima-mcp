@@ -9,13 +9,26 @@ High-performance web application for Quranic text analysis, morphological resear
 - Tauri CLI: `cargo install tauri-cli --locked`
 
 ### Desktop App (no browser required)
+
+**First-time setup** (after cloning repository):
 ```bash
 cd Kalima
 
+# Build and run data ingestion (only needed once)
+cd engine
+cargo run --release --bin ingest -- --db ../kalima.db --index ../kalima-index --input ../datasets/corpus/quran.jsonl
+cd ..
+```
+
+**Running the app:**
+```bash
 # Run desktop app directly from root
 ./Kalima.exe
+```
 
-# Or develop with hot-reload
+**Development:**
+```bash
+# Develop with hot-reload
 cargo tauri dev
 
 # Build new executable
