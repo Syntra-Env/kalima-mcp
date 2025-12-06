@@ -9,9 +9,9 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   webServer: {
-    command: 'npx http-server desktop/web -p 4173 -c-1',
+    command: 'cd desktop/frontend && npm run build && npm run preview -- --host --port 4173',
     port: 4173,
     reuseExistingServer: true,
-    timeout: 30_000,
+    timeout: 60_000,
   },
 });

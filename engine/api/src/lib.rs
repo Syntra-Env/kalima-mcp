@@ -1,7 +1,5 @@
 use axum::{extract::State, http::StatusCode, routing::get, routing::post, Json, Router};
 use axum::extract::Path;
-use axum::response::{IntoResponse, Response};
-use axum::http::{header, Uri};
 use common::{Annotation, EngineError, QuerySpec, SearchBackend, SegmentView, StorageBackend};
 use search::TantivyIndex;
 use store::{ConnectionRecord, SqliteStorage, SurahSummary};
@@ -11,11 +9,6 @@ use uuid::Uuid;
 use std::fs;
 use std::path::PathBuf;
 use std::collections::HashMap;
-use rust_embed::RustEmbed;
-
-#[derive(RustEmbed)]
-#[folder = "../../desktop/web/"]
-struct StaticAssets;
 
 #[derive(Clone)]
 struct AppState {
@@ -32,8 +25,8 @@ pub async fn start_server() {
         .init();
 
     // Init backends
-    let db_path = std::env::var("KALIMA_DB").unwrap_or_else(|_| "data/database/kalima.db".into());
-    let index_path = std::env::var("KALIMA_INDEX").unwrap_or_else(|_| "data/search-index".into());
+    let db_path = std::env::var("KALIMA_DB").unwrap_or_else(|_| "../data/database/kalima.db".into());
+    let index_path = std::env::var("KALIMA_INDEX").unwrap_or_else(|_| "../data/search-index".into());
 
     let storage = Arc::new(
         SqliteStorage::connect(&db_path)
@@ -98,8 +91,7 @@ pub async fn start_server() {
         .route("/api/tags", get(get_tags))
         .route("/api/tags/:tag_name", get(get_tag).put(update_tag))
         .route("/api/stats", get(get_stats))
-        .with_state(state)
-        .fallback(static_handler);
+        .with_state(state);
 
     let addr = "0.0.0.0:8080";
     let listener = tokio::net::TcpListener::bind(addr)
@@ -111,61 +103,6 @@ pub async fn start_server() {
 
 async fn health() -> &'static str {
     "ok"
-}
-
-// Hybrid static file handler: checks folder first, falls back to embedded
-async fn static_handler(uri: Uri) -> Response {
-    let path = uri.path().trim_start_matches('/');
-
-    // Strip /static/ prefix if present
-    let path = path.trim_start_matches("static/");
-
-    // Default to index.html for root
-    let path = if path.is_empty() || path == "/" {
-        "index.html"
-    } else {
-        path
-    };
-
-    // Strategy 1: Try to serve from external folder (for easy updates)
-    let folder_path = PathBuf::from("./desktop/web").join(path);
-    if folder_path.exists() && folder_path.is_file() {
-        if let Ok(content) = fs::read(&folder_path) {
-            let mime_type = mime_guess::from_path(&folder_path)
-                .first_or_octet_stream();
-
-            return (
-                [(header::CONTENT_TYPE, mime_type.as_ref())],
-                content
-            ).into_response();
-        }
-    }
-
-    // Strategy 2: Serve from embedded assets (production fallback)
-    match StaticAssets::get(path) {
-        Some(content) => {
-            let mime_type = mime_guess::from_path(path)
-                .first_or_octet_stream();
-
-            (
-                [(header::CONTENT_TYPE, mime_type.as_ref())],
-                content.data.into_owned()
-            ).into_response()
-        }
-        None => {
-            // If path not found, try serving index.html (for SPA routing)
-            if path != "index.html" {
-                if let Some(content) = StaticAssets::get("index.html") {
-                    return (
-                        [(header::CONTENT_TYPE, "text/html")],
-                        content.data.into_owned()
-                    ).into_response();
-                }
-            }
-
-            (StatusCode::NOT_FOUND, "404 Not Found").into_response()
-        }
-    }
 }
 
 async fn search_handler(

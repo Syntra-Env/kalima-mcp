@@ -4,6 +4,7 @@ members = [
     "store",
     "search",
     "api",
+    "cli",
 ]
 resolver = "2"
 

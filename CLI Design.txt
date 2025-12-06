@@ -1,0 +1,34 @@
+
+
+To search for an ayah:
+	search surah_number:ayah_number 
+	
+To inspect the linguistic details of an ayah:
+	if already focused on an linguistic unit and want to see all its available linguistic details:
+		inspect
+	else to inspect a specific linguistic dimension of the linguistic unit {
+		inspect <linguistic dimension> |
+	}
+	else
+		inspect surah_number:ayah_number
+		
+To change perspectives/recursion/layers/scales by zooming in or out, from an ayah to a sentence to a word to the word's morphological components.
+Specifically, to see the entire Quranic text at once:
+	see book
+To see a Surah:
+	see chapter <chapter_number>
+To see an ayah:
+	see verse <verse_number>
+To see a sentence:
+	see sentence <sentence_number>
+// Caution! A sentence can sometimes be split across two ayat.
+To see a word:
+	see word <word_number>
+// Caution! Two words can sometimes be concatenated into a single word.)
+// Question: Can a word sometimes be split into two separate words?
+To see a morpheme:
+	see morpheme <morpheme_letter>
+To see a letter:
+	see letter <letter_number>	
+
+(accept also letters written in letters, i.e., one, two, three, two hundred fifty three, etc)
