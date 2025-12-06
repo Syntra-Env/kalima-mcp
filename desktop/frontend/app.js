@@ -1,6 +1,3 @@
-// Import Tauri API
-const { invoke } = window.__TAURI__.core;
-
 const output = document.getElementById('output');
 const commandInput = document.getElementById('command-input');
 const promptSpan = document.getElementById('prompt');
@@ -8,10 +5,24 @@ const promptSpan = document.getElementById('prompt');
 let commandHistory = [];
 let historyIndex = -1;
 let currentPrompt = 'kalima >';
+let invoke;
 
 // Initialize
-window.addEventListener('DOMContentLoaded', () => {
-    printLine('Kalima CLI. Type \'help\' for commands.');
+window.addEventListener('DOMContentLoaded', async () => {
+    // Load Tauri API
+    try {
+        if (window.__TAURI__) {
+            invoke = window.__TAURI__.core.invoke;
+        } else if (window.__TAURI_INTERNALS__) {
+            invoke = window.__TAURI_INTERNALS__.invoke;
+        } else {
+            throw new Error('Tauri API not available');
+        }
+        printLine('Kalima CLI. Type \'help\' for commands.');
+    } catch (error) {
+        printLine('Error: Could not load Tauri API - ' + error.message, 'error');
+        printLine('Please rebuild the application.', 'warning');
+    }
     commandInput.focus();
 });
 
@@ -57,11 +68,34 @@ commandInput.addEventListener('keydown', async (e) => {
 });
 
 async function executeCommand(command) {
+    if (!invoke) {
+        printLine('Error: Tauri API not loaded', 'error');
+        return;
+    }
+
     try {
         const result = await invoke('execute_command', { command });
 
         if (result.output) {
-            printOutput(result.output, result.output_type);
+            const outputType = result.output.output_type;
+
+            if (outputType === 'info' && result.output.message) {
+                printLine(result.output.message);
+            } else if (outputType === 'error' && result.output.message) {
+                printLine(result.output.message, 'error');
+            } else if (outputType === 'success' && result.output.message) {
+                printLine(result.output.message, 'success');
+            } else if (outputType === 'warning' && result.output.message) {
+                printLine(result.output.message, 'warning');
+            } else if (outputType === 'verse') {
+                printVerse(result.output);
+            } else if (outputType === 'analysis') {
+                printAnalysis(result.output);
+            } else if (outputType === 'pager' && result.output.content) {
+                printPager(result.output.content);
+            } else {
+                printLine(JSON.stringify(result.output));
+            }
         }
 
         if (result.prompt) {

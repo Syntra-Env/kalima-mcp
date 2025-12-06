@@ -479,13 +479,25 @@ impl SqliteStorage {
         tokens.sort_by_key(|(idx, _)| *idx);
         let tokens_array: Vec<_> = tokens.into_iter().map(|(_, token)| token).collect();
 
+        // If verse text is incomplete, reconstruct it from tokens
+        let verse_text = if let Some(t) = text {
+            t
+        } else {
+            // Build text from token texts
+            tokens_array
+                .iter()
+                .filter_map(|t| t.get("text").and_then(|v| v.as_str()))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+
         Ok(Some(serde_json::json!({
             "surah": {
                 "number": surah,
                 "name": surah_name
             },
             "ayah": ayah,
-            "text": text.unwrap_or_default(),
+            "text": verse_text,
             "tokens": tokens_array
         })))
     }
