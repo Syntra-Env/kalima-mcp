@@ -299,11 +299,15 @@ fn inspect_specific(state: &AppState, verse: &Verse) -> Result<CommandOutput> {
         .tokens
         .len()
         .max(verse.text.split_whitespace().count());
+    let mut used_fallback = false;
     if morph_segments.len() < expected_tokens {
         let fallback = load_fallback_morphology(verse.surah.number, verse.ayah);
-        morph_segments.extend(fallback);
+        if !fallback.is_empty() {
+            morph_segments = fallback;
+            used_fallback = true;
+        }
     }
-    let tokens = build_analysis_tokens(verse, &morph_segments, &dependencies);
+    let tokens = build_analysis_tokens(verse, &morph_segments, &dependencies, !used_fallback);
 
     Ok(CommandOutput::Analysis(AnalysisOutput {
         header: Some("=== Full Linguistic Analysis ===".to_string()),
@@ -472,6 +476,7 @@ fn build_analysis_tokens(
     verse: &Verse,
     morphology: &[Value],
     dependencies: &[Value],
+    include_text_fallback: bool,
 ) -> Vec<AnalysisToken> {
     let mut seen_keys: HashSet<String> = HashSet::new();
     let mut tokens: Vec<AnalysisToken> = Vec::new();
@@ -611,18 +616,20 @@ fn build_analysis_tokens(
     tokens.extend(verse_tokens);
 
     // Final fallback: ensure every whitespace-delimited word in the verse text is present.
-    for w in verse.text.split_whitespace() {
-        let key = w.to_lowercase();
-        if !key.is_empty() && !seen_keys.contains(&key) {
-            seen_keys.insert(key);
-            tokens.push(AnalysisToken {
-                text: w.to_string(),
-                root: None,
-                pos: None,
-                form: None,
-                lemma: None,
-                features: None,
-            });
+    if include_text_fallback {
+        for w in verse.text.split_whitespace() {
+            let key = w.to_lowercase();
+            if !key.is_empty() && !seen_keys.contains(&key) {
+                seen_keys.insert(key);
+                tokens.push(AnalysisToken {
+                    text: w.to_string(),
+                    root: None,
+                    pos: None,
+                    form: None,
+                    lemma: None,
+                    features: None,
+                });
+            }
         }
     }
 
@@ -1085,7 +1092,7 @@ mod tests {
             "dependency_rel": "subj"
         })];
         let deps: Vec<Value> = vec![];
-        let tokens = build_analysis_tokens(&verse, &morph, &deps);
+        let tokens = build_analysis_tokens(&verse, &morph, &deps, true);
         assert!(tokens.iter().any(|t| t.text == "word (noun)"));
         assert!(tokens.iter().any(|t| t.root.as_deref() == Some("r")));
         assert!(tokens.iter().any(|t| t.pos.as_deref() == Some("N | dep: subj")));
@@ -1109,7 +1116,7 @@ mod tests {
                 }],
             }],
         };
-        let tokens = build_analysis_tokens(&verse, &[], &[]);
+        let tokens = build_analysis_tokens(&verse, &[], &[], true);
         assert_eq!(tokens.len(), 2);
         assert!(tokens.iter().any(|t| t.text == "form (POS)" && t.root.as_deref() == Some("root")));
         assert!(tokens.iter().any(|t| t.text == "text"));
@@ -1132,7 +1139,7 @@ mod tests {
             "word": "foo",
             "pos": "N"
         })];
-        let tokens = build_analysis_tokens(&verse, &morph, &deps);
+        let tokens = build_analysis_tokens(&verse, &morph, &deps, true);
         assert_eq!(tokens.len(), 2);
         assert!(tokens.iter().any(|t| t.text == "text"));
         assert!(tokens.iter().any(|t| t.text == "subj -> foo" && t.pos.as_deref() == Some("N")));
@@ -1172,7 +1179,7 @@ mod tests {
             "type": "noun",
         })];
         let deps: Vec<Value> = vec![];
-        let tokens = build_analysis_tokens(&verse, &morph, &deps);
+        let tokens = build_analysis_tokens(&verse, &morph, &deps, true);
         assert_eq!(tokens.len(), 3);
         assert!(tokens.iter().any(|t| t.text.contains("first") && t.root.as_deref() == Some("r1")));
         assert!(tokens.iter().any(|t| t.text.contains("second") && t.root.as_deref() == Some("r2")));
@@ -1194,7 +1201,7 @@ mod tests {
                 segments: vec![],
             }],
         };
-        let tokens = build_analysis_tokens(&verse, &[], &[]);
+        let tokens = build_analysis_tokens(&verse, &[], &[], true);
         assert_eq!(tokens.len(), 3);
         assert!(tokens.iter().any(|t| t.text == "foo"));
         assert!(tokens.iter().any(|t| t.text == "bar"));
