@@ -1,4 +1,4 @@
-# Kalima - Quranic Research Platform
+# Kalima - Quran Research Platform
 
 High-performance web application for Quranic text analysis, morphological research, and linguistic exploration.
 
