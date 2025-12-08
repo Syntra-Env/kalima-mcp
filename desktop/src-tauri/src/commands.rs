@@ -1043,12 +1043,27 @@ fn load_masaq_morphology(surah: i64, ayah: i64) -> Vec<Value> {
 
             let determiner = morph_tag.eq_ignore_ascii_case("DET") || morph_type.eq_ignore_ascii_case("DET");
             let case_field = if !case_mood.is_empty() { Some(case_mood.to_string()) } else { None };
+            let base_text = if !segmented.is_empty() { segmented } else { word };
+
+            // Normalize forms/text: use segmented text; strip definite article or leading alif for stems.
+            let (norm_text, norm_form) = if morph_type.eq_ignore_ascii_case("Prefix") {
+                let t = if !base_text.is_empty() { base_text } else { word };
+                (t.to_string(), Some(t.to_string()))
+            } else {
+                let mut t = if !base_text.is_empty() { base_text.to_string() } else { word.to_string() };
+                if determiner && t.starts_with("ال") {
+                    t = t.trim_start_matches("ال").to_string();
+                } else if t.starts_with('ا') {
+                    t = t.trim_start_matches('ا').to_string();
+                }
+                (t.clone(), Some(t))
+            };
 
             map.entry((s, a)).or_default().push(serde_json::json!({
-                "text": word,
+                "text": norm_text,
                 "lemma": if lemma.is_empty() { None::<String> } else { Some(lemma.to_string()) },
                 "pos": if morph_tag.is_empty() { None::<String> } else { Some(morph_tag.to_string()) },
-                "form": if segmented.is_empty() { None::<String> } else { Some(segmented.to_string()) },
+                "form": norm_form,
                 "features": if features.is_empty() { None::<String> } else { Some(features.join(" | ")) },
                 "type": if morph_type.is_empty() { None::<String> } else { Some(morph_type.to_string()) },
                 "role": if syntactic_role.is_empty() { None::<String> } else { Some(syntactic_role.to_string()) },
