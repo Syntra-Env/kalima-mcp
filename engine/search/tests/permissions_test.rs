@@ -1,7 +1,7 @@
+use common::{SearchBackend, SegmentView};
 use search::TantivyIndex;
-use common::{SegmentView, SearchBackend};
-use tempfile::TempDir;
 use std::sync::Arc;
+use tempfile::TempDir;
 
 #[tokio::test]
 async fn test_index_creation_and_writing() -> anyhow::Result<()> {
@@ -10,7 +10,7 @@ async fn test_index_creation_and_writing() -> anyhow::Result<()> {
     if path.exists() {
         std::fs::remove_dir_all(&path)?;
     }
-    
+
     println!("Creating index at {:?}", path);
     let index = TantivyIndex::open_or_create(&path)?;
     let index = Arc::new(index);
@@ -28,9 +28,9 @@ async fn test_index_creation_and_writing() -> anyhow::Result<()> {
     println!("Indexing document...");
     index.index_document(&doc).await?;
     index.commit()?;
-    
+
     println!("Document indexed successfully.");
-    
+
     // Try to open it again while the first one is alive (simulating potential concurrency or re-opening issues)
     println!("Attempting to open index again...");
     let index2 = TantivyIndex::open_or_create(&path);
@@ -46,7 +46,7 @@ async fn test_index_creation_and_writing() -> anyhow::Result<()> {
 async fn test_heavy_write_load() -> anyhow::Result<()> {
     let temp_dir = TempDir::new()?;
     let path = temp_dir.path().to_path_buf();
-    
+
     let index = Arc::new(TantivyIndex::open_or_create(&path)?);
 
     for i in 0..100 {
@@ -64,6 +64,6 @@ async fn test_heavy_write_load() -> anyhow::Result<()> {
         index.index_document(&doc).await?;
     }
     index.commit()?;
-    
+
     Ok(())
 }

@@ -6,6 +6,10 @@ let commandHistory = [];
 let historyIndex = -1;
 let currentPrompt = 'kalima >';
 let invoke;
+let baseApi = window.KALIMA_BASE_URL ?? '';
+let webCurrentVerse = null;
+let baseFontSize = 16;
+let zoomFactor = 1;
 
 // Initialize
 window.addEventListener('DOMContentLoaded', async () => {
@@ -16,7 +20,13 @@ window.addEventListener('DOMContentLoaded', async () => {
         } else if (window.__TAURI_INTERNALS__) {
             invoke = window.__TAURI_INTERNALS__.invoke;
         } else {
-            throw new Error('Tauri API not available');
+            // Web fallback: emulate Tauri invoke using HTTP API
+            invoke = async (cmd, args) => {
+                if (cmd !== 'execute_command') {
+                    throw new Error('Unknown command');
+                }
+                return await executeWebCommand(args.command);
+            };
         }
         printLine('Kalima CLI. Type \'help\' for commands.');
     } catch (error) {
@@ -30,6 +40,19 @@ window.addEventListener('DOMContentLoaded', async () => {
 document.addEventListener('click', () => {
     commandInput.focus();
 });
+
+// Handle trackpad pinch / two-finger zoom (Ctrl + wheel in Chromium)
+window.addEventListener('wheel', (event) => {
+    if (event.ctrlKey) {
+        event.preventDefault();
+
+        // Negative deltaY is zoom-in; positive is zoom-out
+        const step = event.deltaY < 0 ? 0.08 : -0.08;
+        zoomFactor = Math.min(1.8, Math.max(0.6, zoomFactor + step));
+        document.documentElement.style.setProperty('--zoom', zoomFactor.toFixed(2));
+        document.documentElement.style.fontSize = `${(baseFontSize * zoomFactor).toFixed(2)}px`;
+    }
+}, { passive: false });
 
 // Handle command input
 commandInput.addEventListener('keydown', async (e) => {
@@ -93,6 +116,8 @@ async function executeCommand(command) {
                 printAnalysis(result.output);
             } else if (outputType === 'pager' && result.output.content) {
                 printPager(result.output.content);
+            } else if (outputType === 'clear') {
+                clearOutput();
             } else {
                 printLine(JSON.stringify(result.output));
             }
@@ -258,4 +283,139 @@ function printLine(text, className = '') {
 
 function scrollToBottom() {
     output.scrollTop = output.scrollHeight;
+}
+
+function clearOutput() {
+    output.innerHTML = '';
+}
+
+async function executeWebCommand(command) {
+    const parts = command.trim().split(/\s+/);
+    const cmd = parts.shift() || '';
+
+    const api = async (path) => {
+        const res = await fetch(`${baseApi}${path}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+    };
+
+    const renderVerseOutput = (verse) => ({
+        output_type: 'verse',
+        surah: verse.surah.number,
+        ayah: verse.ayah,
+        text: verse.text,
+        tokens: (verse.tokens || []).map((t) => t.form || t.text || ''),
+        legend: 'layers: general on',
+    });
+
+    const buildAnalysisFromMorph = (verse, morph) => ({
+        output_type: 'analysis',
+        header: '=== Morphological Analysis ===',
+        verse_ref: `${verse.surah.number}:${verse.ayah}`,
+        text: verse.text,
+        tokens: (morph || []).map((seg) => ({
+            text: seg.text || '',
+            root: seg.root || null,
+            pos: seg.pos || null,
+            form: seg.form || null,
+        })),
+    });
+
+    const setPrompt = () => {
+        if (webCurrentVerse) {
+            currentPrompt = `kalima (${webCurrentVerse.surah.number}:${webCurrentVerse.ayah}) >`;
+            promptSpan.textContent = currentPrompt;
+        } else {
+            currentPrompt = 'kalima >';
+            promptSpan.textContent = currentPrompt;
+        }
+    };
+
+    try {
+        if (cmd === 'clear') {
+            clearOutput();
+            return { output: { output_type: 'clear' }, prompt: currentPrompt };
+        }
+        if (cmd === 'status') {
+            return {
+                output: {
+                    output_type: 'info',
+                    message: `base_url: ${baseApi} | current_verse: ${webCurrentVerse ? `${webCurrentVerse.surah.number}:${webCurrentVerse.ayah}` : 'none'}`,
+                },
+                prompt: currentPrompt,
+            };
+        }
+        if (cmd === 'see') {
+            if (parts.length === 1 && parts[0].includes(':')) {
+                const [s, a] = parts[0].split(':').map((n) => parseInt(n, 10));
+                const verse = await api(`/api/verse/${s}/${a}`);
+                webCurrentVerse = verse;
+                setPrompt();
+                return { output: renderVerseOutput(verse), prompt: currentPrompt };
+            }
+            const sub = parts.shift();
+            const tail = parts.join(' ');
+            if (sub === 'book') {
+                const surahs = await api('/api/surahs');
+                let content = '=== The Noble Quran ===\n\n';
+                for (const s of surahs) {
+                    const surah = await api(`/api/surah/${s.number}`);
+                    content += `[${surah.surah.number}] ${surah.surah.name}\n`;
+                    for (const v of surah.verses) {
+                        content += `${surah.surah.number}:${v.ayah}  ${v.text}\n`;
+                    }
+                    content += '\n';
+                }
+                return { output: { output_type: 'pager', content }, prompt: currentPrompt };
+            }
+            if (sub === 'chapter') {
+                const n = parseInt(tail, 10);
+                const surah = await api(`/api/surah/${n}`);
+                let content = `=== Surah ${surah.surah.number}: ${surah.surah.name} ===\n\n`;
+                for (const v of surah.verses) {
+                    content += `${surah.surah.number}:${v.ayah}  ${v.text}\n`;
+                }
+                if (surah.verses.length > 0) {
+                    webCurrentVerse = await api(`/api/verse/${n}/${surah.verses[0].ayah}`);
+                    setPrompt();
+                }
+                return { output: { output_type: 'pager', content }, prompt: currentPrompt };
+            }
+            if (sub === 'verse') {
+                if (tail.includes(':')) {
+                    const [s, a] = tail.split(':').map((n) => parseInt(n, 10));
+                    const verse = await api(`/api/verse/${s}/${a}`);
+                    webCurrentVerse = verse;
+                    setPrompt();
+                    return { output: renderVerseOutput(verse), prompt: currentPrompt };
+                } else {
+                    if (!webCurrentVerse) throw new Error('No surah in context');
+                    const a = parseInt(tail, 10);
+                    const verse = await api(`/api/verse/${webCurrentVerse.surah.number}/${a}`);
+                    webCurrentVerse = verse;
+                    setPrompt();
+                    return { output: renderVerseOutput(verse), prompt: currentPrompt };
+                }
+            }
+            throw new Error(`unknown see subcommand: ${sub}`);
+        }
+        if (cmd === 'inspect') {
+            if (!webCurrentVerse) {
+                // Default to the first verse if none in focus to keep UX forgiving.
+                webCurrentVerse = await api('/api/verse/1/1');
+                setPrompt();
+            }
+            const morph = await api(`/api/morphology/${webCurrentVerse.surah.number}/${webCurrentVerse.ayah}`);
+            return {
+                output: buildAnalysisFromMorph(webCurrentVerse, morph.morphology || []),
+                prompt: currentPrompt,
+            };
+        }
+        throw new Error(`unknown command: ${cmd}`);
+    } catch (e) {
+        return {
+            output: { output_type: 'error', message: `Error: ${e.message}` },
+            prompt: currentPrompt,
+        };
+    }
 }

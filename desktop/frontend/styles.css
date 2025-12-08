@@ -6,26 +6,32 @@
     box-sizing: border-box;
 }
 
+:root {
+    --zoom: 1;
+}
+
 body {
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     background-color: #1e1e1e;
     color: #d4d4d4;
     height: 100vh;
     overflow: hidden;
+    font-size: calc(16px * var(--zoom));
 }
 
 #terminal {
     height: 100vh;
     display: flex;
     flex-direction: column;
-    padding: 20px;
+    padding: 1.25rem;
+    font-size: 1rem;
 }
 
 #output {
     flex: 1;
     overflow-y: auto;
-    margin-bottom: 10px;
-    font-size: 14px;
+    margin-bottom: 0.625rem;
+    font-size: 0.875rem;
     line-height: 1.6;
 }
 
@@ -49,7 +55,7 @@ body {
 #input-line {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
 }
 
 .prompt {
@@ -65,18 +71,18 @@ body {
     outline: none;
     color: #d4d4d4;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 14px;
+    font-size: 0.875rem;
 }
 
 .output-line {
-    margin-bottom: 4px;
+    margin-bottom: 0.25rem;
     white-space: pre-wrap;
     word-wrap: break-word;
 }
 
 .command-echo {
     color: #4ec9b0;
-    margin-bottom: 8px;
+    margin-bottom: 0.5rem;
 }
 
 .error {
@@ -98,7 +104,7 @@ body {
 /* Arabic text styling */
 .arabic {
     font-family: 'Scheherazade New', 'Traditional Arabic', 'Arial', sans-serif;
-    font-size: 18px;
+    font-size: 1.125rem;
     direction: rtl;
     text-align: right;
     line-height: 2;
@@ -123,14 +129,14 @@ body {
 .analysis-header {
     color: #4ec9b0;
     font-weight: bold;
-    margin: 12px 0 8px 0;
+    margin: 0.75rem 0 0.5rem 0;
     border-bottom: 1px solid #4ec9b0;
-    padding-bottom: 4px;
+    padding-bottom: 0.25rem;
 }
 
 .token-line {
-    margin: 4px 0;
-    padding-left: 20px;
+    margin: 0.25rem 0;
+    padding-left: 1.25rem;
 }
 
 .pos {

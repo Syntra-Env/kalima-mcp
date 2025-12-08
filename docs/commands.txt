@@ -13,8 +13,6 @@ To inspect the linguistic details of an ayah:
 		inspect surah_number:ayah_number
 		
 To change perspectives/recursion/layers/scales by zooming in or out, from an ayah to a sentence to a word to the word's morphological components.
-Specifically, to see the entire Quranic text at once:
-	see book
 To see a Surah:
 	see chapter <chapter_number>
 To see an ayah:

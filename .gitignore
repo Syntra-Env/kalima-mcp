@@ -21,6 +21,7 @@ data/database/
 data/search-index/
 /kalima-index/
 /kalima.db
+engine/search/kalima-index-test-local/
 
 # Backup files
 *.backup

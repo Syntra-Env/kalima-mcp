@@ -324,6 +324,34 @@ impl SqliteStorage {
             .collect())
     }
 
+    pub async fn list_unique_patterns(&self) -> EngineResult<Vec<String>> {
+        let rows = sqlx::query(
+            r#"SELECT DISTINCT pattern FROM segments WHERE pattern IS NOT NULL ORDER BY pattern"#
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| r.try_get::<String, _>(0).ok())
+            .collect())
+    }
+
+    pub async fn list_unique_pos(&self) -> EngineResult<Vec<String>> {
+        let rows = sqlx::query(
+            r#"SELECT DISTINCT pos FROM segments WHERE pos IS NOT NULL ORDER BY pos"#
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| r.try_get::<String, _>(0).ok())
+            .collect())
+    }
+
     pub async fn list_surahs(&self) -> EngineResult<Vec<SurahSummary>> {
         let rows = sqlx::query(
             r#"
@@ -479,17 +507,15 @@ impl SqliteStorage {
         tokens.sort_by_key(|(idx, _)| *idx);
         let tokens_array: Vec<_> = tokens.into_iter().map(|(_, token)| token).collect();
 
-        // If verse text is incomplete, reconstruct it from tokens
-        let verse_text = if let Some(t) = text {
-            t
-        } else {
-            // Build text from token texts
-            tokens_array
-                .iter()
-                .filter_map(|t| t.get("text").and_then(|v| v.as_str()))
-                .collect::<Vec<_>>()
-                .join(" ")
-        };
+        // Get verse text - use the longest token text (usually the full verse)
+        // or fall back to verse_texts table
+        let verse_text = tokens_array
+            .iter()
+            .filter_map(|t| t.get("text").and_then(|v| v.as_str()))
+            .max_by_key(|s| s.len())
+            .map(|s| s.to_string())
+            .or(text)
+            .unwrap_or_default();
 
         Ok(Some(serde_json::json!({
             "surah": {

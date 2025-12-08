@@ -39,6 +39,7 @@ async fn golden_search_annotation_connection() {
 
     storage.upsert_segment(&doc).await.unwrap();
     index.index_document(&doc).await.unwrap();
+    index.commit().unwrap(); // Commit the index to make the document searchable
 
     // Search by root
     let hits = index

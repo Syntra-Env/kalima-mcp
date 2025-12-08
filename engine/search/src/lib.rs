@@ -6,7 +6,8 @@ use common::{EngineError, EngineResult, QuerySpec, SearchBackend, SearchHit, Seg
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 use tantivy::{
-    collector::TopDocs, doc,
+    collector::TopDocs,
+    doc,
     schema::{Schema, Value, TEXT},
     Index, IndexReader, IndexWriter,
 };
@@ -52,12 +53,11 @@ impl TantivyIndex {
 
         let path = path.as_ref();
         let meta_path = path.join("meta.json");
-        
+
         let index = if meta_path.exists() {
             Index::open_in_dir(path).map_err(|e| EngineError::Search(e.to_string()))?
         } else {
-            std::fs::create_dir_all(path)
-                .map_err(|e| EngineError::Search(e.to_string()))?;
+            std::fs::create_dir_all(path).map_err(|e| EngineError::Search(e.to_string()))?;
             Index::create_in_dir(path, schema.clone())
                 .map_err(|e| EngineError::Search(e.to_string()))?
         };
@@ -196,7 +196,10 @@ impl SearchBackend for TantivyIndex {
     }
 
     async fn index_document(&self, doc: &SegmentView) -> EngineResult<()> {
-        let mut writer = self.writer.write().unwrap();
+        let writer = self
+            .writer
+            .write()
+            .map_err(|e| EngineError::Search(format!("Index writer lock poisoned: {}", e)))?;
         let mut roots = Vec::new();
         let mut lemmas = Vec::new();
         let mut pos = Vec::new();
@@ -293,12 +296,14 @@ impl SearchBackend for TantivyIndex {
 
         Ok(())
     }
-
 }
 
 impl TantivyIndex {
     pub fn commit(&self) -> EngineResult<()> {
-        let mut writer = self.writer.write().unwrap();
+        let mut writer = self
+            .writer
+            .write()
+            .map_err(|e| EngineError::Search(format!("Index writer lock poisoned: {}", e)))?;
         writer
             .commit()
             .map_err(|e| EngineError::Search(e.to_string()))?;
@@ -316,7 +321,9 @@ impl TantivyIndex {
             .map(|(field, values)| common::QueryFilter {
                 field,
                 op: "in".into(),
-                value: serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
+                value: serde_json::Value::Array(
+                    values.into_iter().map(serde_json::Value::from).collect(),
+                ),
             })
             .collect();
         let spec = common::QuerySpec {

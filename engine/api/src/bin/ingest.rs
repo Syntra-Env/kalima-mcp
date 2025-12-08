@@ -36,6 +36,7 @@ struct CorpusVerse {
 #[derive(Deserialize)]
 struct SurahMeta {
     number: i64,
+    #[allow(dead_code)]
     name: Option<String>,
 }
 

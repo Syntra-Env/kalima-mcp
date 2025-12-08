@@ -1,0 +1,4 @@
+# The Quran's Voice
+1. Open C:/Codex/Kalima/datasets/text/quran-clean.txt in notepad++
+2. Zoom out until the lengths of the lines of text begin to look like a vertically aligned sound wave
+3. convert it to actual sound waves and listen to it.

@@ -157,3 +157,11 @@ MIT OR Apache-2.0
 - Quranic Arabic Corpus Project
 - MASAQ Morphological Dataset
 - Quranic Treebank Project
+
+## Docs
+
+- Command laws/spec: `docs/COMMAND_LAWS.md`
+- API contracts: `docs/API_CONTRACTS.md`
+- Testing strategy: `docs/TESTING.md`
+- Fixtures guidance: `docs/fixtures.md`
+- Runbook (setup/test/troubleshoot): `docs/RUNBOOK.md`
