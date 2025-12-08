@@ -166,21 +166,6 @@ function printVerse(verse) {
     div.appendChild(arabic);
     output.appendChild(div);
 
-    if (verse.tokens && verse.tokens.length > 0) {
-        const tokensDiv = document.createElement('div');
-        tokensDiv.className = 'output-line';
-        let tokensText = '';
-        verse.tokens.forEach((token, idx) => {
-            tokensText += `${idx + 1}:${token} `;
-        });
-        tokensDiv.textContent = tokensText;
-        output.appendChild(tokensDiv);
-    }
-
-    if (verse.legend) {
-        printLine(verse.legend, 'info');
-    }
-
     scrollToBottom();
 }
 
@@ -209,27 +194,50 @@ function printAnalysis(analysis) {
             const tokenDiv = document.createElement('div');
             tokenDiv.className = 'token-line';
 
-            const tokenText = document.createElement('div');
-            tokenText.className = 'arabic';
-            tokenText.textContent = `${idx + 1}. ${token.text}`;
-            tokenDiv.appendChild(tokenText);
+            const headerLine = document.createElement('div');
+            headerLine.className = 'token-header';
+            const textSpan = document.createElement('span');
+            textSpan.className = 'arabic';
+            textSpan.textContent = `${idx + 1}. ${token.text}`;
+            headerLine.appendChild(textSpan);
 
-            if (token.root) {
-                const root = document.createElement('div');
-                root.innerHTML = `   Root: <span class="root arabic">${token.root}</span>`;
-                tokenDiv.appendChild(root);
+            if (token.role) {
+                const roleSpan = document.createElement('span');
+                roleSpan.className = `role-badge ${roleClass(token.role)}`;
+                roleSpan.textContent = token.role;
+                headerLine.appendChild(roleSpan);
             }
-
             if (token.pos) {
-                const pos = document.createElement('div');
-                pos.innerHTML = `   POS: <span class="pos">${token.pos}</span>`;
-                tokenDiv.appendChild(pos);
+                const posSpan = document.createElement('span');
+                posSpan.className = 'pos-badge';
+                posSpan.textContent = token.pos;
+                headerLine.appendChild(posSpan);
             }
+            if (token.case_) {
+                const caseSpan = document.createElement('span');
+                caseSpan.className = 'case-badge';
+                caseSpan.textContent = token.case_;
+                headerLine.appendChild(caseSpan);
+            }
+            tokenDiv.appendChild(headerLine);
 
-            if (token.form) {
-                const form = document.createElement('div');
-                form.innerHTML = `   Form: <span class="arabic">${token.form}</span>`;
-                tokenDiv.appendChild(form);
+            const fields = [];
+            if (token.root) fields.push(`Root: <span class="arabic">${token.root}</span>`);
+            if (token.lemma) fields.push(`Lemma: <span class="arabic">${token.lemma}</span>`);
+            if (token.form) fields.push(`Form: <span class="arabic">${token.form}</span>`);
+            if (token.gender) fields.push(`Gender: ${token.gender}`);
+            if (token.number) fields.push(`Number: ${token.number}`);
+            if (token.definiteness) fields.push(`Definite: ${token.definiteness}`);
+            if (token.determiner !== undefined && token.determiner !== null) {
+                fields.push(`Determiner: ${token.determiner ? 'yes' : 'no'}`);
+            }
+            if (token.features) fields.push(`Feat: ${token.features}`);
+
+            if (fields.length > 0) {
+                const detail = document.createElement('div');
+                detail.className = 'token-details';
+                detail.innerHTML = fields.join(' | ');
+                tokenDiv.appendChild(detail);
             }
 
             output.appendChild(tokenDiv);
@@ -237,6 +245,14 @@ function printAnalysis(analysis) {
     }
 
     scrollToBottom();
+}
+
+function roleClass(role) {
+    const r = role.toLowerCase();
+    if (r.includes('subj')) return 'role-subj';
+    if (r.includes('obj')) return 'role-obj';
+    if (r.includes('comp')) return 'role-comp';
+    return 'role-other';
 }
 
 function printPager(content) {

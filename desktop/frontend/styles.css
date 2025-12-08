@@ -170,40 +170,35 @@ body {
     border-radius: 0.3em;
     font-size: 0.85em;
     line-height: 1.4;
+    background: transparent;
+    border: none;
 }
 
 .pos-badge {
-    background: #223;
     color: #bcd;
 }
 
 .case-badge {
-    background: #233;
     color: #cbe;
 }
 
 .role-badge {
-    background: #2a2a2a;
     color: #eee;
 }
 
 .role-subj {
-    background: #204020;
-    color: #d2f5d2;
+    color: #9fde9f;
 }
 
 .role-obj {
-    background: #402020;
-    color: #f5d2d2;
+    color: #f5b0b0;
 }
 
 .role-comp {
-    background: #203540;
-    color: #d2e8f5;
+    color: #b0d8f5;
 }
 
 .role-other {
-    background: #404020;
     color: #f0f0d2;
 }
 

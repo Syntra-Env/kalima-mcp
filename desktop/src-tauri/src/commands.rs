@@ -474,26 +474,12 @@ fn see_letter(_state: &AppState, number: i64) -> Result<CommandOutput> {
 }
 
 fn render_verse(verse: &Verse) -> CommandOutput {
-    let tokens: Vec<String> = verse
-        .tokens
-        .iter()
-        .map(|t| {
-            t.form
-                .clone()
-                .unwrap_or_else(|| t.text.clone().unwrap_or_default())
-        })
-        .collect();
-
     CommandOutput::Verse(VerseOutput {
         surah: verse.surah.number,
         ayah: verse.ayah,
         text: verse.text.clone(),
-        tokens: if tokens.is_empty() {
-            None
-        } else {
-            Some(tokens)
-        },
-        legend: Some("layers: general on".to_string()),
+        tokens: None,
+        legend: None,
     })
 }
 
@@ -928,6 +914,13 @@ fn load_fallback_morphology(surah: i64, ayah: i64) -> Vec<Value> {
                 "text": surface,
                 "pos": pos,
                 "root": root,
+                "case": case_,
+                "gender": gender,
+                "number": number,
+                "definiteness": if features_parts.iter().any(|f| f.eq_ignore_ascii_case("def") || f.eq_ignore_ascii_case("indef")) {
+                    Some(features_parts.iter().find(|f| f.eq_ignore_ascii_case("def") || f.eq_ignore_ascii_case("indef")).unwrap().to_string())
+                } else { None::<String> },
+                "determiner": None::<bool>,
                 "lemma": lemma,
                 "features": features_str,
                 "form": surface,
@@ -1000,6 +993,9 @@ fn load_masaq_morphology(surah: i64, ayah: i64) -> Vec<Value> {
                 }
             }
 
+            let determiner = morph_tag.eq_ignore_ascii_case("DET") || morph_type.eq_ignore_ascii_case("DET");
+            let case_field = if !case_mood.is_empty() { Some(case_mood.to_string()) } else { None };
+
             map.entry((s, a)).or_default().push(serde_json::json!({
                 "text": word,
                 "lemma": if lemma.is_empty() { None::<String> } else { Some(lemma.to_string()) },
@@ -1007,7 +1003,12 @@ fn load_masaq_morphology(surah: i64, ayah: i64) -> Vec<Value> {
                 "form": if segmented.is_empty() { None::<String> } else { Some(segmented.to_string()) },
                 "features": if features.is_empty() { None::<String> } else { Some(features.join(" | ")) },
                 "type": if morph_type.is_empty() { None::<String> } else { Some(morph_type.to_string()) },
-                "role": if syntactic_role.is_empty() { None::<String> } else { Some(syntactic_role.to_string()) }
+                "role": if syntactic_role.is_empty() { None::<String> } else { Some(syntactic_role.to_string()) },
+                "case": case_field,
+                "gender": None::<String>,
+                "number": None::<String>,
+                "definiteness": None::<String>,
+                "determiner": Some(determiner),
             }));
         }
     }
