@@ -89,6 +89,16 @@ pub struct AnalysisToken {
     features: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     role: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    case_: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gender: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    definiteness: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    determiner: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -401,6 +411,11 @@ fn see_word(state: &AppState, word_num: i64) -> Result<CommandOutput> {
         lemma: None,
         features: None,
         role: None,
+        case_: None,
+        gender: None,
+        number: None,
+        definiteness: None,
+        determiner: None,
     });
 
     Ok(CommandOutput::Analysis(AnalysisOutput {
@@ -555,6 +570,14 @@ fn build_analysis_tokens(
                     .get("role")
                     .and_then(Value::as_str)
                     .map(|s| s.to_string()),
+                case_: seg.get("case").and_then(Value::as_str).map(|s| s.to_string()),
+                gender: seg.get("gender").and_then(Value::as_str).map(|s| s.to_string()),
+                number: seg.get("number").and_then(Value::as_str).map(|s| s.to_string()),
+                definiteness: seg
+                    .get("definiteness")
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string()),
+                determiner: seg.get("determiner").and_then(Value::as_bool),
             });
         }
     }
@@ -593,6 +616,11 @@ fn build_analysis_tokens(
                                 lemma: None,
                                 features: None,
                                 role: None,
+                                case_: None,
+                                gender: None,
+                                number: None,
+                                definiteness: None,
+                                determiner: None,
                             });
                         }
                         return word_tokens;
@@ -606,6 +634,11 @@ fn build_analysis_tokens(
                         lemma: None,
                         features: None,
                         role: None,
+                        case_: None,
+                        gender: None,
+                        number: None,
+                        definiteness: None,
+                        determiner: None,
                     }];
                 }
 
@@ -617,18 +650,23 @@ fn build_analysis_tokens(
                         if let Some(t) = &seg.pos {
                             label = format!("{} ({})", label, t);
                         }
-                    AnalysisToken {
-                        text: label,
-                        root: seg.root.clone(),
-                        pos: seg.pos.clone(),
-                        form: token.form.clone(),
-                        lemma: None,
-                        features: None,
-                        role: None,
-                    }
-                })
-                .collect::<Vec<_>>()
-        })
+                        AnalysisToken {
+                            text: label,
+                            root: seg.root.clone(),
+                            pos: seg.pos.clone(),
+                            form: token.form.clone(),
+                            lemma: None,
+                            features: None,
+                            role: None,
+                            case_: None,
+                            gender: None,
+                            number: None,
+                            definiteness: None,
+                            determiner: None,
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
             .collect();
 
         tokens.extend(verse_tokens);
@@ -648,6 +686,11 @@ fn build_analysis_tokens(
                     lemma: None,
                     features: None,
                     role: None,
+                    case_: None,
+                    gender: None,
+                    number: None,
+                    definiteness: None,
+                    determiner: None,
                 });
             }
         }
@@ -672,6 +715,11 @@ fn build_analysis_tokens(
                 lemma: None,
                 features: None,
                 role: Some(rel.to_string()),
+                case_: None,
+                gender: None,
+                number: None,
+                definiteness: None,
+                determiner: None,
             });
         }
     }
