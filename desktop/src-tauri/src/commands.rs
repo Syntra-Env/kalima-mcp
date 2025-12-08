@@ -164,6 +164,7 @@ impl AppState {
 lazy_static::lazy_static! {
     static ref APP_STATE: Mutex<AppState> = Mutex::new(AppState::new());
     static ref FALLBACK_MORPH: Mutex<Option<HashMap<(i64, i64), Vec<Value>>>> = Mutex::new(None);
+    static ref FALLBACK_MASAQ: Mutex<Option<HashMap<(i64, i64), Vec<Value>>>> = Mutex::new(None);
 }
 
 #[tauri::command]
@@ -301,10 +302,16 @@ fn inspect_specific(state: &AppState, verse: &Verse) -> Result<CommandOutput> {
         .max(verse.text.split_whitespace().count());
     let mut used_fallback = false;
     if morph_segments.len() < expected_tokens {
-        let fallback = load_fallback_morphology(verse.surah.number, verse.ayah);
-        if !fallback.is_empty() {
-            morph_segments = fallback;
+        let masaq = load_masaq_morphology(verse.surah.number, verse.ayah);
+        if !masaq.is_empty() {
+            morph_segments = masaq;
             used_fallback = true;
+        } else {
+            let fallback = load_fallback_morphology(verse.surah.number, verse.ayah);
+            if !fallback.is_empty() {
+                morph_segments = fallback;
+                used_fallback = true;
+            }
         }
     }
     let tokens = build_analysis_tokens(verse, &morph_segments, &dependencies, !used_fallback);
@@ -782,7 +789,7 @@ fn load_fallback_morphology(surah: i64, ayah: i64) -> Vec<Value> {
         let mut number: Option<String> = None;
         let mut person: Option<String> = None;
         let mut tense: Option<String> = None;
-        let mut aspect: Option<String> = None;
+        let aspect: Option<String> = None;
         let mut mood: Option<String> = None;
         let mut voice: Option<String> = None;
         let mut extra_feats: Vec<String> = Vec::new();
@@ -868,6 +875,82 @@ fn load_fallback_morphology(surah: i64, ayah: i64) -> Vec<Value> {
 
     let result = map.get(&(surah, ayah)).cloned().unwrap_or_default();
     let mut cache = FALLBACK_MORPH.lock().unwrap();
+    *cache = Some(map);
+    result
+}
+
+fn load_masaq_morphology(surah: i64, ayah: i64) -> Vec<Value> {
+    {
+        let cache = FALLBACK_MASAQ.lock().unwrap();
+        if let Some(map) = &*cache {
+            if let Some(vals) = map.get(&(surah, ayah)) {
+                return vals.clone();
+            }
+        }
+    }
+
+    let path = "datasets/MASAQ.csv";
+    let file = match fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return vec![],
+    };
+
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .flexible(true)
+        .from_reader(file);
+
+    let mut map: HashMap<(i64, i64), Vec<Value>> = HashMap::new();
+    for result in rdr.records() {
+        if let Ok(rec) = result {
+            let s: i64 = rec.get(1).and_then(|v| v.parse().ok()).unwrap_or(0);
+            let a: i64 = rec.get(2).and_then(|v| v.parse().ok()).unwrap_or(0);
+            let word = rec.get(5).unwrap_or("").trim();
+            let lemma = rec.get(6).unwrap_or("").trim();
+            let segmented = rec.get(7).unwrap_or("").trim();
+            let morph_tag = rec.get(8).unwrap_or("").trim();
+            let morph_type = rec.get(9).unwrap_or("").trim();
+            let punctuation = rec.get(10).unwrap_or("").trim();
+            let invariable = rec.get(11).unwrap_or("").trim();
+            let syntactic_role = rec.get(12).unwrap_or("").trim();
+            let possessive = rec.get(13).unwrap_or("").trim();
+            let case_mood = rec.get(14).unwrap_or("").trim();
+            let case_marker = rec.get(15).unwrap_or("").trim();
+            let phrase = rec.get(16).unwrap_or("").trim();
+            let phrase_fn = rec.get(17).unwrap_or("").trim();
+            let notes = rec.get(18).unwrap_or("").trim();
+
+            let mut features = Vec::new();
+            for (label, val) in [
+                ("type", morph_type),
+                ("punct", punctuation),
+                ("invar", invariable),
+                ("role", syntactic_role),
+                ("poss", possessive),
+                ("case", case_mood),
+                ("case_marker", case_marker),
+                ("phrase", phrase),
+                ("phrase_fn", phrase_fn),
+                ("notes", notes),
+            ] {
+                if !val.is_empty() {
+                    features.push(format!("{}:{}", label, val));
+                }
+            }
+
+            map.entry((s, a)).or_default().push(serde_json::json!({
+                "text": word,
+                "lemma": if lemma.is_empty() { None::<String> } else { Some(lemma.to_string()) },
+                "pos": if morph_tag.is_empty() { None::<String> } else { Some(morph_tag.to_string()) },
+                "form": if segmented.is_empty() { None::<String> } else { Some(segmented.to_string()) },
+                "features": if features.is_empty() { None::<String> } else { Some(features.join(" | ")) },
+                "type": if morph_type.is_empty() { None::<String> } else { Some(morph_type.to_string()) }
+            }));
+        }
+    }
+
+    let result = map.get(&(surah, ayah)).cloned().unwrap_or_default();
+    let mut cache = FALLBACK_MASAQ.lock().unwrap();
     *cache = Some(map);
     result
 }
