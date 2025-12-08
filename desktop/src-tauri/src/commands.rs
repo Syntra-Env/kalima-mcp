@@ -83,6 +83,10 @@ pub struct AnalysisToken {
     pos: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     form: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lemma: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    features: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -381,6 +385,8 @@ fn see_word(state: &AppState, word_num: i64) -> Result<CommandOutput> {
         root: token.segments.get(0).and_then(|s| s.root.clone()),
         pos: token.segments.get(0).and_then(|s| s.pos.clone()),
         form: token.form.clone(),
+        lemma: None,
+        features: None,
     });
 
     Ok(CommandOutput::Analysis(AnalysisOutput {
@@ -478,10 +484,7 @@ fn build_analysis_tokens(
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
-            let pos = seg
-                .get("pos")
-                .and_then(Value::as_str)
-                .map(|s| s.to_string());
+            let pos = seg.get("pos").and_then(Value::as_str).map(|s| s.to_string());
             let dep = seg
                 .get("dependency_rel")
                 .and_then(Value::as_str)
@@ -495,6 +498,11 @@ fn build_analysis_tokens(
                 .and_then(Value::as_str)
                 .map(|s| s.to_string());
             let seg_type = seg.get("type").and_then(Value::as_str);
+            let lemma = seg.get("lemma").and_then(Value::as_str).map(|s| s.to_string());
+            let features = seg
+                .get("features")
+                .and_then(Value::as_str)
+                .map(|s| s.to_string());
 
             let mut label = text.clone();
             if let Some(t) = seg_type {
@@ -526,6 +534,8 @@ fn build_analysis_tokens(
                 root,
                 pos: pos_label,
                 form: form.or_else(|| pos.clone()),
+                lemma,
+                features,
             });
         }
     }
@@ -560,6 +570,8 @@ fn build_analysis_tokens(
                             root: None,
                             pos: None,
                             form: None,
+                            lemma: None,
+                            features: None,
                         });
                     }
                     return word_tokens;
@@ -570,6 +582,8 @@ fn build_analysis_tokens(
                     root: None,
                     pos: None,
                     form: token.form.clone(),
+                    lemma: None,
+                    features: None,
                 }];
             }
 
@@ -586,6 +600,8 @@ fn build_analysis_tokens(
                         root: seg.root.clone(),
                         pos: seg.pos.clone(),
                         form: token.form.clone(),
+                        lemma: None,
+                        features: None,
                     }
                 })
                 .collect::<Vec<_>>()
@@ -604,6 +620,8 @@ fn build_analysis_tokens(
                 root: None,
                 pos: None,
                 form: None,
+                lemma: None,
+                features: None,
             });
         }
     }
@@ -624,6 +642,8 @@ fn build_analysis_tokens(
                 root: None,
                 pos,
                 form: None,
+                lemma: None,
+                features: None,
             });
         }
     }
@@ -748,15 +768,83 @@ fn load_fallback_morphology(surah: i64, ayah: i64) -> Vec<Value> {
         let tags = parts.get(3).map(|v| v.trim()).unwrap_or("");
 
         let mut root: Option<String> = None;
+        let mut lemma: Option<String> = None;
         let mut seg_type: Option<String> = None;
+        let mut case_: Option<String> = None;
+        let mut gender: Option<String> = None;
+        let mut number: Option<String> = None;
+        let mut person: Option<String> = None;
+        let mut tense: Option<String> = None;
+        let mut aspect: Option<String> = None;
+        let mut mood: Option<String> = None;
+        let mut voice: Option<String> = None;
+        let mut extra_feats: Vec<String> = Vec::new();
         for t in tags.split('|') {
             if t.starts_with("ROOT:") {
                 root = Some(t.trim_start_matches("ROOT:").to_string());
+                continue;
             }
-            if seg_type.is_none() && (t.eq_ignore_ascii_case("PREFIX") || t.eq_ignore_ascii_case("STEM")) {
+            if t.starts_with("LEM:") {
+                lemma = Some(t.trim_start_matches("LEM:").to_string());
+                continue;
+            }
+            if seg_type.is_none()
+                && (t.eq_ignore_ascii_case("PREFIX") || t.eq_ignore_ascii_case("STEM"))
+            {
                 seg_type = Some(t.to_string());
+                continue;
+            }
+
+            let upper = t.to_uppercase();
+            match upper.as_str() {
+                "GEN" | "ACC" | "NOM" => case_ = Some(upper),
+                "DEF" | "INDEF" => extra_feats.push(upper),
+                "M" | "F" => gender = Some(upper),
+                "SG" | "PL" | "DU" => number = Some(upper),
+                "P1" | "P2" | "P3" => person = Some(upper),
+                "IMPF" | "PERF" | "IMPV" => tense = Some(upper),
+                "SUBJ" | "JUS" | "IND" => mood = Some(upper),
+                "ACT" | "PASS" => voice = Some(upper),
+                _ => {
+                    // Keep anything else we don't explicitly map.
+                    extra_feats.push(t.to_string());
+                }
             }
         }
+
+        let mut features_parts = Vec::new();
+        if let Some(c) = &case_ {
+            features_parts.push(format!("case:{}", c));
+        }
+        if let Some(g) = &gender {
+            features_parts.push(format!("gender:{}", g));
+        }
+        if let Some(n) = &number {
+            features_parts.push(format!("number:{}", n));
+        }
+        if let Some(p) = &person {
+            features_parts.push(format!("person:{}", p));
+        }
+        if let Some(t) = &tense {
+            features_parts.push(format!("tense:{}", t));
+        }
+        if let Some(a) = &aspect {
+            features_parts.push(format!("aspect:{}", a));
+        }
+        if let Some(m) = &mood {
+            features_parts.push(format!("mood:{}", m));
+        }
+        if let Some(v) = &voice {
+            features_parts.push(format!("voice:{}", v));
+        }
+        if !extra_feats.is_empty() {
+            features_parts.extend(extra_feats.clone());
+        }
+        let features_str = if features_parts.is_empty() {
+            None
+        } else {
+            Some(features_parts.join(" | "))
+        };
 
         map.entry((s, a))
             .or_default()
@@ -764,6 +852,8 @@ fn load_fallback_morphology(surah: i64, ayah: i64) -> Vec<Value> {
                 "text": surface,
                 "pos": pos,
                 "root": root,
+                "lemma": lemma,
+                "features": features_str,
                 "form": surface,
                 "type": seg_type.unwrap_or_else(|| "stem".into())
             }));
