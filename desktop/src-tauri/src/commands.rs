@@ -713,7 +713,52 @@ fn build_analysis_tokens(
         }
     }
 
-    tokens
+    consolidate_tokens(tokens)
+}
+
+fn consolidate_tokens(tokens: Vec<AnalysisToken>) -> Vec<AnalysisToken> {
+    let mut map: HashMap<String, AnalysisToken> = HashMap::new();
+    for t in tokens {
+        let key = t.text.to_lowercase();
+        map.entry(key)
+            .and_modify(|existing| {
+                if existing.pos.is_none() {
+                    existing.pos = t.pos.clone();
+                }
+                if existing.root.is_none() {
+                    existing.root = t.root.clone();
+                }
+                if existing.lemma.is_none() {
+                    existing.lemma = t.lemma.clone();
+                }
+                if existing.form.is_none() {
+                    existing.form = t.form.clone();
+                }
+                if existing.features.is_none() {
+                    existing.features = t.features.clone();
+                }
+                if existing.role.is_none() {
+                    existing.role = t.role.clone();
+                }
+                if existing.case_.is_none() {
+                    existing.case_ = t.case_.clone();
+                }
+                if existing.gender.is_none() {
+                    existing.gender = t.gender.clone();
+                }
+                if existing.number.is_none() {
+                    existing.number = t.number.clone();
+                }
+                if existing.definiteness.is_none() {
+                    existing.definiteness = t.definiteness.clone();
+                }
+                if existing.determiner.is_none() {
+                    existing.determiner = t.determiner;
+                }
+            })
+            .or_insert(t);
+    }
+    map.into_values().collect()
 }
 
 fn fetch_surah(state: &AppState, number: i64) -> Result<SurahData> {
