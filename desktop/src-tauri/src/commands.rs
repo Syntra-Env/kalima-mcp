@@ -283,6 +283,9 @@ fn handle_command(state: &mut AppState, line: &str) -> Result<CommandOutput> {
                 state.surahs.len()
             ),
         }),
+        "legend" => Ok(CommandOutput::Info {
+            message: "Colors: role subj=green, obj=red, comp=blue, other=gold. POS is blue text. Case is cyan text.".to_string(),
+        }),
         "exit" | "quit" => std::process::exit(0),
         _ => Err(anyhow!(
             "unknown command: {}. Type 'help' for available commands.",
@@ -1125,6 +1128,7 @@ fn print_help() -> String {
     help.push_str("General:\n");
     help.push_str("  clear                     - Clear the interface output\n");
     help.push_str("  status                    - Show current base URL and context state\n");
+    help.push_str("  legend                    - Show color legend for syntax roles/POS/case\n");
     help.push_str("  help                      - Show this help\n");
     help.push_str("  exit | quit               - Exit the application\n");
     help
