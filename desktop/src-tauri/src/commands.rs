@@ -190,7 +190,9 @@ fn handle_command(state: &mut AppState, line: &str) -> Result<CommandOutput> {
                 state.current_verse = Some(verse.clone());
                 inspect_specific(state, &verse)
             } else {
-                inspect_dimension(state, &rest)
+                Err(anyhow!(
+                    "usage: inspect [<surah:ayah>] (single command shows all available linguistic data)"
+                ))
             }
         }
         "see" => {
@@ -290,63 +292,6 @@ fn inspect_specific(state: &AppState, verse: &Verse) -> Result<CommandOutput> {
         text: Some(verse.text.clone()),
         tokens: Some(tokens),
     }))
-}
-
-fn inspect_dimension(state: &AppState, dimension: &str) -> Result<CommandOutput> {
-    if let Some(v) = &state.current_verse {
-        match dimension {
-            "morphology" | "morph" => {
-                let segments = fetch_morphology(state, v.surah.number, v.ayah).unwrap_or_default();
-                let tokens: Vec<AnalysisToken> = build_analysis_tokens(v, &segments, &[]);
-
-                Ok(CommandOutput::Analysis(AnalysisOutput {
-                    header: Some("=== Morphological Analysis ===".to_string()),
-                    verse_ref: Some(format!("{}:{}", v.surah.number, v.ayah)),
-                    text: None,
-                    tokens: Some(tokens),
-                }))
-            }
-            "syntax" => {
-                let deps = fetch_dependency(state, v.surah.number, v.ayah).unwrap_or_default();
-                if deps.is_empty() {
-                    return Ok(CommandOutput::Warning {
-                        message: "No dependency data available for this verse.".to_string(),
-                    });
-                }
-
-                let mut tokens = Vec::new();
-                for dep in deps {
-                    let rel = dep
-                        .get("rel_label")
-                        .and_then(Value::as_str)
-                        .unwrap_or("dep");
-                    let word = dep.get("word").and_then(Value::as_str).unwrap_or("");
-                    let pos = dep
-                        .get("pos")
-                        .and_then(Value::as_str)
-                        .map(|s| s.to_string());
-                    tokens.push(AnalysisToken {
-                        text: format!("{} -> {}", rel, word),
-                        root: None,
-                        pos,
-                        form: None,
-                    });
-                }
-
-                Ok(CommandOutput::Analysis(AnalysisOutput {
-                    header: Some("=== Dependency / Syntax ===".to_string()),
-                    verse_ref: Some(format!("{}:{}", v.surah.number, v.ayah)),
-                    text: None,
-                    tokens: Some(tokens),
-                }))
-            }
-            _ => Err(anyhow!("unknown linguistic dimension: {}", dimension)),
-        }
-    } else {
-        Err(anyhow!(
-            "No verse in focus. Use 'search <surah:ayah>' first."
-        ))
-    }
 }
 
 fn see_chapter(state: &mut AppState, number: i64) -> Result<CommandOutput> {
@@ -793,7 +738,6 @@ fn print_help() -> String {
     help.push_str("  see letter <N>            - View a specific letter (placeholder)\n\n");
     help.push_str("Inspect Linguistic Details:\n");
     help.push_str("  inspect                   - Show full linguistic analysis of current verse\n");
-    help.push_str("  inspect <dimension>       - Show specific dimension (morphology, syntax)\n");
     help.push_str("  inspect <surah:ayah>      - Inspect a specific verse directly\n\n");
     help.push_str("General:\n");
     help.push_str("  clear                     - Clear the interface output\n");

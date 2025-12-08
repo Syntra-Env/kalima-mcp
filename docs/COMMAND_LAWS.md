@@ -8,8 +8,6 @@ Minimal algebraic-style laws to keep the CLI behavior consistent. Each command i
 - `see verse s:a`: `state'.current_verse = verse(s, a)`, `output' = render(verse)`.
 - `inspect` (with `state.current_verse = v`): `output' = render(analysis(v, morphology(v), dependency(v)))`, `state' = state`.
 - `inspect s:a`: same as `inspect` after setting `current_verse = verse(s, a)`.
-- `inspect morphology`: `output' = render(morphology(v))`.
-- `inspect syntax`: `output' = render(dependency(v))`.
 
 Invariants:
 - `render(verse)` always includes `surah:ayah` and token forms/text.

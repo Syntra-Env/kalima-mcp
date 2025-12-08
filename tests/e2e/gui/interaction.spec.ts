@@ -27,17 +27,17 @@ test.describe('Kalima GUI CLI interactions', () => {
     await expect(page.locator('#prompt')).toContainText('kalima (1:1) >');
   });
 
-  test('shows morphology analysis output', async ({ page }) => {
+  test('shows full analysis output', async ({ page }) => {
     const input = page.locator('#command-input');
     await input.fill('see 1:1');
     await input.press('Enter');
     await expect(page.locator('#output')).toContainText('1:1');
-    await input.fill('inspect morphology');
+    await input.fill('inspect');
     await input.press('Enter');
 
     const output = page.locator('#output');
-    await expect(output).toContainText('=== Morphological Analysis ===');
-    await expect(output).toContainText('POS:');
+    await expect(output).toContainText('=== Full Linguistic Analysis ===');
+    await expect(output).toContainText('1:1');
   });
 
   test('clears output when clear command is issued', async ({ page }) => {

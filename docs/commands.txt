@@ -3,13 +3,10 @@
 To search for an ayah:
 	search surah_number:ayah_number 
 	
-To inspect the linguistic details of an ayah:
-	if already focused on an linguistic unit and want to see all its available linguistic details:
+To inspect the linguistic details of an ayah (all available data at once):
+	if already focused on a linguistic unit:
 		inspect
-	else to inspect a specific linguistic dimension of the linguistic unit {
-		inspect <linguistic dimension> |
-	}
-	else
+	else:
 		inspect surah_number:ayah_number
 		
 To change perspectives/recursion/layers/scales by zooming in or out, from an ayah to a sentence to a word to the word's morphological components.
