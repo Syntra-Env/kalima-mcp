@@ -135,8 +135,24 @@ body {
 }
 
 .token-line {
-    margin: 0.25rem 0;
-    padding-left: 1.25rem;
+    margin: 0.35rem 0;
+    padding: 0.5rem 0.75rem;
+    border-left: 3px solid #444;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.token-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.15rem;
+}
+
+.token-details {
+    margin-top: 0.15rem;
+    color: #ccc;
+    font-size: 0.85rem;
 }
 
 .pos {
@@ -145,6 +161,50 @@ body {
 
 .root {
     color: #89d185;
+}
+
+.pos-badge,
+.case-badge,
+.role-badge {
+    padding: 0.15em 0.45em;
+    border-radius: 0.3em;
+    font-size: 0.85em;
+    line-height: 1.4;
+}
+
+.pos-badge {
+    background: #223;
+    color: #bcd;
+}
+
+.case-badge {
+    background: #233;
+    color: #cbe;
+}
+
+.role-badge {
+    background: #2a2a2a;
+    color: #eee;
+}
+
+.role-subj {
+    background: #204020;
+    color: #d2f5d2;
+}
+
+.role-obj {
+    background: #402020;
+    color: #f5d2d2;
+}
+
+.role-comp {
+    background: #203540;
+    color: #d2e8f5;
+}
+
+.role-other {
+    background: #404020;
+    color: #f0f0d2;
 }
 
 /* Pager view */
