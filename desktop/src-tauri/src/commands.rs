@@ -746,7 +746,7 @@ fn load_fallback_morphology(surah: i64, ayah: i64) -> Vec<Value> {
         }
     }
 
-    let path = "datasets/morphology/quranic-corpus-morphology-0.4.txt";
+    let path = "datasets/quranic-corpus-morphology-0.4.txt";
     let content = match fs::read_to_string(path) {
         Ok(c) => c,
         Err(_) => return vec![],
