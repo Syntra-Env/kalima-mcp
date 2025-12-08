@@ -1,7 +1,11 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::HashSet, sync::Mutex};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    sync::Mutex,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
@@ -155,6 +159,7 @@ impl AppState {
 
 lazy_static::lazy_static! {
     static ref APP_STATE: Mutex<AppState> = Mutex::new(AppState::new());
+    static ref FALLBACK_MORPH: Mutex<Option<HashMap<(i64, i64), Vec<Value>>>> = Mutex::new(None);
 }
 
 #[tauri::command]
@@ -281,9 +286,19 @@ fn inspect_current(state: &AppState) -> Result<CommandOutput> {
 
 fn inspect_specific(state: &AppState, verse: &Verse) -> Result<CommandOutput> {
     // Try to pull full morphology and dependency data; fall back to verse tokens.
-    let morph_segments =
+    let mut morph_segments =
         fetch_morphology(state, verse.surah.number, verse.ayah).unwrap_or_default();
     let dependencies = fetch_dependency(state, verse.surah.number, verse.ayah).unwrap_or_default();
+
+    // If morphology is missing or clearly incomplete, try a local fallback corpus.
+    let expected_tokens = verse
+        .tokens
+        .len()
+        .max(verse.text.split_whitespace().count());
+    if morph_segments.len() < expected_tokens {
+        let fallback = load_fallback_morphology(verse.surah.number, verse.ayah);
+        morph_segments.extend(fallback);
+    }
     let tokens = build_analysis_tokens(verse, &morph_segments, &dependencies);
 
     Ok(CommandOutput::Analysis(AnalysisOutput {
@@ -531,6 +546,25 @@ fn build_analysis_tokens(
             }
 
             if token.segments.is_empty() {
+                // If the token text looks like an entire verse (contains whitespace), split into words.
+                if base_text.contains(char::is_whitespace) {
+                    let mut word_tokens = Vec::new();
+                    for w in base_text.split_whitespace() {
+                        let key = w.to_lowercase();
+                        if key.is_empty() || seen_keys.contains(&key) {
+                            continue;
+                        }
+                        seen_keys.insert(key);
+                        word_tokens.push(AnalysisToken {
+                            text: w.to_string(),
+                            root: None,
+                            pos: None,
+                            form: None,
+                        });
+                    }
+                    return word_tokens;
+                }
+
                 return vec![AnalysisToken {
                     text: base_text.clone(),
                     root: None,
@@ -559,6 +593,20 @@ fn build_analysis_tokens(
         .collect();
 
     tokens.extend(verse_tokens);
+
+    // Final fallback: ensure every whitespace-delimited word in the verse text is present.
+    for w in verse.text.split_whitespace() {
+        let key = w.to_lowercase();
+        if !key.is_empty() && !seen_keys.contains(&key) {
+            seen_keys.insert(key);
+            tokens.push(AnalysisToken {
+                text: w.to_string(),
+                root: None,
+                pos: None,
+                form: None,
+            });
+        }
+    }
 
     if !dependencies.is_empty() {
         for dep in dependencies {
@@ -658,6 +706,73 @@ fn fetch_dependency(state: &AppState, surah: i64, ayah: i64) -> Result<Vec<Value
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default())
+}
+
+fn load_fallback_morphology(surah: i64, ayah: i64) -> Vec<Value> {
+    // Load and cache the corpus once.
+    {
+        let cache = FALLBACK_MORPH.lock().unwrap();
+        if let Some(map) = &*cache {
+            if let Some(vals) = map.get(&(surah, ayah)) {
+                return vals.clone();
+            }
+        }
+    }
+
+    let path = "datasets/morphology/quranic-corpus-morphology-0.4.txt";
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    let mut map: HashMap<(i64, i64), Vec<Value>> = HashMap::new();
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() < 3 {
+            continue;
+        }
+        // parts[0] like "(1:1:1:1)"
+        let ref_str = parts[0].trim_matches('(').trim_matches(')');
+        let ref_parts: Vec<&str> = ref_str.split(':').collect();
+        if ref_parts.len() < 2 {
+            continue;
+        }
+        let s: i64 = ref_parts.get(0).and_then(|v| v.parse().ok()).unwrap_or(0);
+        let a: i64 = ref_parts.get(1).and_then(|v| v.parse().ok()).unwrap_or(0);
+        let surface = parts[1].trim();
+        let pos = parts[2].trim();
+        let tags = parts.get(3).map(|v| v.trim()).unwrap_or("");
+
+        let mut root: Option<String> = None;
+        let mut seg_type: Option<String> = None;
+        for t in tags.split('|') {
+            if t.starts_with("ROOT:") {
+                root = Some(t.trim_start_matches("ROOT:").to_string());
+            }
+            if seg_type.is_none() && (t.eq_ignore_ascii_case("PREFIX") || t.eq_ignore_ascii_case("STEM")) {
+                seg_type = Some(t.to_string());
+            }
+        }
+
+        map.entry((s, a))
+            .or_default()
+            .push(serde_json::json!({
+                "text": surface,
+                "pos": pos,
+                "root": root,
+                "form": surface,
+                "type": seg_type.unwrap_or_else(|| "stem".into())
+            }));
+    }
+
+    let result = map.get(&(surah, ayah)).cloned().unwrap_or_default();
+    let mut cache = FALLBACK_MORPH.lock().unwrap();
+    *cache = Some(map);
+    result
 }
 
 fn parse_verse_ref(s: &str) -> Result<(i64, i64)> {
@@ -881,10 +996,9 @@ mod tests {
         })];
         let deps: Vec<Value> = vec![];
         let tokens = build_analysis_tokens(&verse, &morph, &deps);
-        assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0].text, "word (noun)");
-        assert_eq!(tokens[0].root.as_deref(), Some("r"));
-        assert_eq!(tokens[0].pos.as_deref(), Some("N | dep: subj"));
+        assert!(tokens.iter().any(|t| t.text == "word (noun)"));
+        assert!(tokens.iter().any(|t| t.root.as_deref() == Some("r")));
+        assert!(tokens.iter().any(|t| t.pos.as_deref() == Some("N | dep: subj")));
     }
 
     #[test]
@@ -906,9 +1020,9 @@ mod tests {
             }],
         };
         let tokens = build_analysis_tokens(&verse, &[], &[]);
-        assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0].text, "form (POS)");
-        assert_eq!(tokens[0].root.as_deref(), Some("root"));
+        assert_eq!(tokens.len(), 2);
+        assert!(tokens.iter().any(|t| t.text == "form (POS)" && t.root.as_deref() == Some("root")));
+        assert!(tokens.iter().any(|t| t.text == "text"));
     }
 
     #[test]
@@ -929,9 +1043,9 @@ mod tests {
             "pos": "N"
         })];
         let tokens = build_analysis_tokens(&verse, &morph, &deps);
-        assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0].text, "subj -> foo");
-        assert_eq!(tokens[0].pos.as_deref(), Some("N"));
+        assert_eq!(tokens.len(), 2);
+        assert!(tokens.iter().any(|t| t.text == "text"));
+        assert!(tokens.iter().any(|t| t.text == "subj -> foo" && t.pos.as_deref() == Some("N")));
     }
 
     #[test]
@@ -969,8 +1083,31 @@ mod tests {
         })];
         let deps: Vec<Value> = vec![];
         let tokens = build_analysis_tokens(&verse, &morph, &deps);
-        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens.len(), 3);
         assert!(tokens.iter().any(|t| t.text.contains("first") && t.root.as_deref() == Some("r1")));
         assert!(tokens.iter().any(|t| t.text.contains("second") && t.root.as_deref() == Some("r2")));
+        assert!(tokens.iter().any(|t| t.text == "text"));
+    }
+
+    #[test]
+    fn build_tokens_splits_whole_verse_tokens_into_words() {
+        let verse = Verse {
+            surah: SurahInfo {
+                number: 1,
+                name: "Test".into(),
+            },
+            ayah: 1,
+            text: "foo bar baz".into(),
+            tokens: vec![Token {
+                text: Some("foo bar baz".into()),
+                form: Some("foo bar baz".into()),
+                segments: vec![],
+            }],
+        };
+        let tokens = build_analysis_tokens(&verse, &[], &[]);
+        assert_eq!(tokens.len(), 3);
+        assert!(tokens.iter().any(|t| t.text == "foo"));
+        assert!(tokens.iter().any(|t| t.text == "bar"));
+        assert!(tokens.iter().any(|t| t.text == "baz"));
     }
 }
