@@ -87,6 +87,8 @@ pub struct AnalysisToken {
     lemma: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     features: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    role: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -398,6 +400,7 @@ fn see_word(state: &AppState, word_num: i64) -> Result<CommandOutput> {
         form: token.form.clone(),
         lemma: None,
         features: None,
+        role: None,
     });
 
     Ok(CommandOutput::Analysis(AnalysisOutput {
@@ -548,65 +551,72 @@ fn build_analysis_tokens(
                 form: form.or_else(|| pos.clone()),
                 lemma,
                 features,
+                role: seg
+                    .get("role")
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string()),
             });
         }
     }
 
-    // Append any verse tokens not already represented in morphology.
-    let verse_tokens: Vec<AnalysisToken> = verse
-        .tokens
-        .iter()
-        .flat_map(|token| {
-            let base_text = token
-                .form
-                .clone()
-                .or_else(|| token.text.clone())
-                .unwrap_or_default();
-            let key = base_text.to_lowercase();
-            if !key.is_empty() && seen_keys.contains(&key) {
-                return Vec::new();
-            }
-
-            if token.segments.is_empty() {
-                // If the token text looks like an entire verse (contains whitespace), split into words.
-                if base_text.contains(char::is_whitespace) {
-                    let mut word_tokens = Vec::new();
-                    for w in base_text.split_whitespace() {
-                        let key = w.to_lowercase();
-                        if key.is_empty() || seen_keys.contains(&key) {
-                            continue;
-                        }
-                        seen_keys.insert(key);
-                        word_tokens.push(AnalysisToken {
-                            text: w.to_string(),
-                            root: None,
-                            pos: None,
-                            form: None,
-                            lemma: None,
-                            features: None,
-                        });
-                    }
-                    return word_tokens;
+    if include_text_fallback {
+        // Append any verse tokens not already represented in morphology.
+        let verse_tokens: Vec<AnalysisToken> = verse
+            .tokens
+            .iter()
+            .flat_map(|token| {
+                let base_text = token
+                    .form
+                    .clone()
+                    .or_else(|| token.text.clone())
+                    .unwrap_or_default();
+                let key = base_text.to_lowercase();
+                if !key.is_empty() && seen_keys.contains(&key) {
+                    return Vec::new();
                 }
 
-                return vec![AnalysisToken {
-                    text: base_text.clone(),
-                    root: None,
-                    pos: None,
-                    form: token.form.clone(),
-                    lemma: None,
-                    features: None,
-                }];
-            }
-
-            token
-                .segments
-                .iter()
-                .map(|seg| {
-                    let mut label = base_text.clone();
-                    if let Some(t) = &seg.pos {
-                        label = format!("{} ({})", label, t);
+                if token.segments.is_empty() {
+                    // If the token text looks like an entire verse (contains whitespace), split into words.
+                    if base_text.contains(char::is_whitespace) {
+                        let mut word_tokens = Vec::new();
+                        for w in base_text.split_whitespace() {
+                            let key = w.to_lowercase();
+                            if key.is_empty() || seen_keys.contains(&key) {
+                                continue;
+                            }
+                            seen_keys.insert(key);
+                            word_tokens.push(AnalysisToken {
+                                text: w.to_string(),
+                                root: None,
+                                pos: None,
+                                form: None,
+                                lemma: None,
+                                features: None,
+                                role: None,
+                            });
+                        }
+                        return word_tokens;
                     }
+
+                    return vec![AnalysisToken {
+                        text: base_text.clone(),
+                        root: None,
+                        pos: None,
+                        form: token.form.clone(),
+                        lemma: None,
+                        features: None,
+                        role: None,
+                    }];
+                }
+
+                token
+                    .segments
+                    .iter()
+                    .map(|seg| {
+                        let mut label = base_text.clone();
+                        if let Some(t) = &seg.pos {
+                            label = format!("{} ({})", label, t);
+                        }
                     AnalysisToken {
                         text: label,
                         root: seg.root.clone(),
@@ -614,13 +624,15 @@ fn build_analysis_tokens(
                         form: token.form.clone(),
                         lemma: None,
                         features: None,
+                        role: None,
                     }
                 })
                 .collect::<Vec<_>>()
         })
-        .collect();
+            .collect();
 
-    tokens.extend(verse_tokens);
+        tokens.extend(verse_tokens);
+    }
 
     // Final fallback: ensure every whitespace-delimited word in the verse text is present.
     if include_text_fallback {
@@ -635,6 +647,7 @@ fn build_analysis_tokens(
                     form: None,
                     lemma: None,
                     features: None,
+                    role: None,
                 });
             }
         }
@@ -658,6 +671,7 @@ fn build_analysis_tokens(
                 form: None,
                 lemma: None,
                 features: None,
+                role: Some(rel.to_string()),
             });
         }
     }
@@ -944,7 +958,8 @@ fn load_masaq_morphology(surah: i64, ayah: i64) -> Vec<Value> {
                 "pos": if morph_tag.is_empty() { None::<String> } else { Some(morph_tag.to_string()) },
                 "form": if segmented.is_empty() { None::<String> } else { Some(segmented.to_string()) },
                 "features": if features.is_empty() { None::<String> } else { Some(features.join(" | ")) },
-                "type": if morph_type.is_empty() { None::<String> } else { Some(morph_type.to_string()) }
+                "type": if morph_type.is_empty() { None::<String> } else { Some(morph_type.to_string()) },
+                "role": if syntactic_role.is_empty() { None::<String> } else { Some(syntactic_role.to_string()) }
             }));
         }
     }
