@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::sync::Mutex;
+use std::{collections::HashSet, sync::Mutex};
 
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
@@ -452,89 +452,113 @@ fn build_analysis_tokens(
     morphology: &[Value],
     dependencies: &[Value],
 ) -> Vec<AnalysisToken> {
-    let mut tokens: Vec<AnalysisToken> = if !morphology.is_empty() {
-        morphology
-            .iter()
-            .map(|seg| {
-                let text = seg
-                    .get("text")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string();
-                let pos = seg
-                    .get("pos")
-                    .and_then(Value::as_str)
-                    .map(|s| s.to_string());
-                let dep = seg
-                    .get("dependency_rel")
-                    .and_then(Value::as_str)
-                    .map(|s| s.to_string());
-                let root = seg
-                    .get("root")
-                    .and_then(Value::as_str)
-                    .map(|s| s.to_string());
-                let form = seg
-                    .get("form")
-                    .and_then(Value::as_str)
-                    .map(|s| s.to_string());
-                let seg_type = seg.get("type").and_then(Value::as_str);
+    let mut seen_keys: HashSet<String> = HashSet::new();
+    let mut tokens: Vec<AnalysisToken> = Vec::new();
 
-                let mut label = text;
-                if let Some(t) = seg_type {
-                    label = format!("{} ({})", label, t);
-                }
-                let pos_label = if let Some(dep_rel) = dep {
-                    Some(if let Some(p) = &pos {
-                        format!("{} | dep: {}", p, dep_rel)
-                    } else {
-                        format!("dep: {}", dep_rel)
-                    })
+    // Prefer morphology when available, but we will append any verse tokens not covered.
+    if !morphology.is_empty() {
+        for seg in morphology {
+            let text = seg
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let pos = seg
+                .get("pos")
+                .and_then(Value::as_str)
+                .map(|s| s.to_string());
+            let dep = seg
+                .get("dependency_rel")
+                .and_then(Value::as_str)
+                .map(|s| s.to_string());
+            let root = seg
+                .get("root")
+                .and_then(Value::as_str)
+                .map(|s| s.to_string());
+            let form = seg
+                .get("form")
+                .and_then(Value::as_str)
+                .map(|s| s.to_string());
+            let seg_type = seg.get("type").and_then(Value::as_str);
+
+            let mut label = text.clone();
+            if let Some(t) = seg_type {
+                label = format!("{} ({})", label, t);
+            }
+            let pos_label = if let Some(dep_rel) = dep {
+                Some(if let Some(p) = &pos {
+                    format!("{} | dep: {}", p, dep_rel)
                 } else {
-                    pos.clone()
-                };
+                    format!("dep: {}", dep_rel)
+                })
+            } else {
+                pos.clone()
+            };
 
-                AnalysisToken {
-                    text: label,
-                    root,
-                    pos: pos_label,
-                    form: form.or_else(|| pos.clone()),
-                }
-            })
-            .collect()
-    } else {
-        verse
-            .tokens
-            .iter()
-            .flat_map(|token| {
-                let base_text = token.text.clone().unwrap_or_default();
-                if token.segments.is_empty() {
-                    return vec![AnalysisToken {
-                        text: base_text.clone(),
-                        root: None,
-                        pos: None,
+            let key = form
+                .as_ref()
+                .map(|s| s.to_lowercase())
+                .unwrap_or_else(|| text.to_lowercase());
+            if !key.is_empty() {
+                seen_keys.insert(key.clone());
+            }
+            if !text.is_empty() {
+                seen_keys.insert(text.to_lowercase());
+            }
+
+            tokens.push(AnalysisToken {
+                text: label,
+                root,
+                pos: pos_label,
+                form: form.or_else(|| pos.clone()),
+            });
+        }
+    }
+
+    // Append any verse tokens not already represented in morphology.
+    let verse_tokens: Vec<AnalysisToken> = verse
+        .tokens
+        .iter()
+        .flat_map(|token| {
+            let base_text = token
+                .form
+                .clone()
+                .or_else(|| token.text.clone())
+                .unwrap_or_default();
+            let key = base_text.to_lowercase();
+            if !key.is_empty() && seen_keys.contains(&key) {
+                return Vec::new();
+            }
+
+            if token.segments.is_empty() {
+                return vec![AnalysisToken {
+                    text: base_text.clone(),
+                    root: None,
+                    pos: None,
+                    form: token.form.clone(),
+                }];
+            }
+
+            token
+                .segments
+                .iter()
+                .map(|seg| {
+                    let mut label = base_text.clone();
+                    if let Some(t) = &seg.pos {
+                        label = format!("{} ({})", label, t);
+                    }
+                    AnalysisToken {
+                        text: label,
+                        root: seg.root.clone(),
+                        pos: seg.pos.clone(),
                         form: token.form.clone(),
-                    }];
-                }
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
 
-                token
-                    .segments
-                    .iter()
-                    .map(|seg| {
-                        let mut label = base_text.clone();
-                        if let Some(t) = &seg.pos {
-                            label = format!("{} ({})", label, t);
-                        }
-                        AnalysisToken {
-                            text: label,
-                            root: seg.root.clone(),
-                            pos: seg.pos.clone(),
-                            form: token.form.clone(),
-                        }
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect()
-    };
+    tokens.extend(verse_tokens);
 
     if !dependencies.is_empty() {
         for dep in dependencies {
@@ -883,7 +907,7 @@ mod tests {
         };
         let tokens = build_analysis_tokens(&verse, &[], &[]);
         assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0].text, "base (POS)");
+        assert_eq!(tokens[0].text, "form (POS)");
         assert_eq!(tokens[0].root.as_deref(), Some("root"));
     }
 
@@ -908,5 +932,45 @@ mod tests {
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].text, "subj -> foo");
         assert_eq!(tokens[0].pos.as_deref(), Some("N"));
+    }
+
+    #[test]
+    fn build_tokens_merges_partial_morphology_with_verse() {
+        let verse = Verse {
+            surah: SurahInfo {
+                number: 1,
+                name: "Test".into(),
+            },
+            ayah: 1,
+            text: "text".into(),
+            tokens: vec![
+                Token {
+                    text: Some("first".into()),
+                    form: Some("first".into()),
+                    segments: vec![],
+                },
+                Token {
+                    text: Some("second".into()),
+                    form: Some("second".into()),
+                    segments: vec![Segment {
+                        root: Some("r2".into()),
+                        pos: Some("POS2".into()),
+                    }],
+                },
+            ],
+        };
+        // Morphology only covers the first token
+        let morph = vec![json!({
+            "text": "first",
+            "pos": "POS1",
+            "root": "r1",
+            "form": "f1",
+            "type": "noun",
+        })];
+        let deps: Vec<Value> = vec![];
+        let tokens = build_analysis_tokens(&verse, &morph, &deps);
+        assert_eq!(tokens.len(), 2);
+        assert!(tokens.iter().any(|t| t.text.contains("first") && t.root.as_deref() == Some("r1")));
+        assert!(tokens.iter().any(|t| t.text.contains("second") && t.root.as_deref() == Some("r2")));
     }
 }
