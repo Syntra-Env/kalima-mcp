@@ -33,23 +33,12 @@ body {
     margin-bottom: 0.625rem;
     font-size: 0.875rem;
     line-height: 1.6;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
 }
 
 #output::-webkit-scrollbar {
-    width: 10px;
-}
-
-#output::-webkit-scrollbar-track {
-    background: #2d2d2d;
-}
-
-#output::-webkit-scrollbar-thumb {
-    background: #555;
-    border-radius: 5px;
-}
-
-#output::-webkit-scrollbar-thumb:hover {
-    background: #777;
+    display: none; /* WebKit */
 }
 
 #input-line {

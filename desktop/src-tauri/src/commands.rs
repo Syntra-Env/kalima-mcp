@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fs,
     sync::Mutex,
 };
@@ -61,6 +61,12 @@ struct Verse {
     text: String,
     #[serde(default)]
     tokens: Vec<Token>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Read,
+    Write,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -139,8 +145,127 @@ pub struct AppState {
     current_verse: Option<Verse>,
     base_url: String,
     surahs: Vec<SurahSummary>,
+    interpretations: HashMap<String, String>,
+    mode: Mode,
     client: reqwest::blocking::Client,
 }
+
+const ARABIC_SURAH_NAMES: [&str; 114] = [
+    "الفاتحة",
+    "البقرة",
+    "آل عمران",
+    "النساء",
+    "المائدة",
+    "الأنعام",
+    "الأعراف",
+    "الأنفال",
+    "التوبة",
+    "يونس",
+    "هود",
+    "يوسف",
+    "الرعد",
+    "إبراهيم",
+    "الحجر",
+    "النحل",
+    "الإسراء",
+    "الكهف",
+    "مريم",
+    "طه",
+    "الأنبياء",
+    "الحج",
+    "المؤمنون",
+    "النور",
+    "الفرقان",
+    "الشعراء",
+    "النمل",
+    "القصص",
+    "العنكبوت",
+    "الروم",
+    "لقمان",
+    "السجدة",
+    "الأحزاب",
+    "سبإ",
+    "فاطر",
+    "يس",
+    "الصافات",
+    "ص",
+    "الزمر",
+    "غافر",
+    "فصلت",
+    "الشورى",
+    "الزخرف",
+    "الدخان",
+    "الجاثية",
+    "الأحقاف",
+    "محمد",
+    "الفتح",
+    "الحجرات",
+    "ق",
+    "الذاريات",
+    "الطور",
+    "النجم",
+    "القمر",
+    "الرحمن",
+    "الواقعة",
+    "الحديد",
+    "المجادلة",
+    "الحشر",
+    "الممتحنة",
+    "الصف",
+    "الجمعة",
+    "المنافقون",
+    "التغابن",
+    "الطلاق",
+    "التحريم",
+    "الملك",
+    "القلم",
+    "الحاقة",
+    "المعارج",
+    "نوح",
+    "الجن",
+    "المزمل",
+    "المدثر",
+    "القيامة",
+    "الإنسان",
+    "المرسلات",
+    "النبإ",
+    "النازعات",
+    "عبس",
+    "التكوير",
+    "الانفطار",
+    "المطففين",
+    "الانشقاق",
+    "البروج",
+    "الطارق",
+    "الأعلى",
+    "الغاشية",
+    "الفجر",
+    "البلد",
+    "الشمس",
+    "الليل",
+    "الضحى",
+    "الشرح",
+    "التين",
+    "العلق",
+    "القدر",
+    "البينة",
+    "الزلزلة",
+    "العاديات",
+    "القارعة",
+    "التكاثر",
+    "العصر",
+    "الهمزة",
+    "الفيل",
+    "قريش",
+    "الماعون",
+    "الكوثر",
+    "الكافرون",
+    "النصر",
+    "المسد",
+    "الإخلاص",
+    "الفلق",
+    "الناس",
+];
 
 impl AppState {
     fn new() -> Self {
@@ -148,6 +273,8 @@ impl AppState {
             current_verse: None,
             base_url: "http://127.0.0.1:8080".to_string(),
             surahs: Vec::new(),
+            interpretations: HashMap::new(),
+            mode: Mode::Read,
             client: reqwest::blocking::Client::builder()
                 .build()
                 .expect("reqwest client"),
@@ -160,6 +287,8 @@ impl AppState {
             current_verse: None,
             base_url: base.to_string(),
             surahs: Vec::new(),
+            interpretations: HashMap::new(),
+            mode: Mode::Read,
             client: reqwest::blocking::Client::builder()
                 .build()
                 .expect("reqwest client"),
@@ -173,6 +302,17 @@ impl AppState {
             "kalima >".to_string()
         }
     }
+}
+
+fn surah_name_or_fallback(number: i64, name: &str) -> String {
+    let trimmed = name.trim();
+    if !trimmed.is_empty() {
+        return trimmed.to_string();
+    }
+    if (1..=114).contains(&number) {
+        return ARABIC_SURAH_NAMES[(number - 1) as usize].to_string();
+    }
+    format!("Surah {}", number)
 }
 
 lazy_static::lazy_static! {
@@ -219,56 +359,75 @@ fn handle_command(state: &mut AppState, line: &str) -> Result<CommandOutput> {
                 ))
             }
         }
-        "see" => {
-            // Shorthand: allow `see <surah:ayah>` without the `verse` keyword
-            if !rest.contains(' ') && rest.contains(':') {
-                let (s, a) = parse_verse_ref(&rest)?;
-                return see_specific_verse(state, s, a);
+        "read" => {
+            state.mode = Mode::Read;
+            let trimmed = rest.trim();
+
+            // No args: show current verse if present.
+            if trimmed.is_empty() {
+                if let Some(v) = &state.current_verse {
+                    return read_specific_verse(state, v.surah.number, v.ayah);
+                } else {
+                    anyhow::bail!("No verse in focus. Use 'read <surah:ayah>' first.");
+                }
             }
 
-            let mut args = rest.split_whitespace();
+            // Shorthand: allow `read <surah:ayah>` without the `verse` keyword
+            if !trimmed.contains(' ') && trimmed.contains(':') {
+                let (s, a) = parse_verse_ref(trimmed)?;
+                return read_specific_verse(state, s, a);
+            }
+            // Shorthand: allow `read <ayah>` within current surah
+            if !trimmed.contains(' ') && trimmed.chars().all(|c| c.is_ascii_digit()) {
+                let num = parse_number(trimmed)?;
+                return read_verse(state, num);
+            }
+
+            let mut args = trimmed.split_whitespace();
             let subtype = args.next().ok_or_else(|| {
-                anyhow!("usage: see <book|chapter|verse|sentence|word|morpheme|letter> [value]")
+                anyhow!("usage: read <book|chapters|chapter|verse|sentence|word|morpheme|letter> [value]")
             })?;
             let tail = args.collect::<Vec<_>>().join(" ");
             match subtype {
+                "chapters" => read_chapters(state),
                 "chapter" => {
                     let num = parse_number(&tail)?;
-                    see_chapter(state, num)
+                    read_chapter(state, num)
                 }
                 "verse" => {
                     // Allow either a simple ayah number (if a surah is in scope) or a fully-qualified surah:ayah
                     if tail.contains(':') {
                         let (s, a) = parse_verse_ref(&tail)?;
-                        see_specific_verse(state, s, a)
+                        read_specific_verse(state, s, a)
                     } else {
                         let num = parse_number(&tail)?;
-                        see_verse(state, num)
+                        read_verse(state, num)
                     }
                 }
                 "sentence" => {
                     let num = parse_number(&tail)?;
-                    see_sentence(num)
+                    read_sentence(num)
                 }
                 "word" => {
                     let num = parse_number(&tail)?;
-                    see_word(state, num)
+                    read_word(state, num)
                 }
                 "morpheme" => {
                     let key = tail.trim();
                     if key.is_empty() {
-                        Err(anyhow!("usage: see morpheme <morpheme_letter>"))
+                        Err(anyhow!("usage: read morpheme <morpheme_letter>"))
                     } else {
-                        see_morpheme(state, key)
+                        read_morpheme(state, key)
                     }
                 }
                 "letter" => {
                     let num = parse_number(&tail)?;
-                    see_letter(state, num)
+                    read_letter(state, num)
                 }
-                _ => Err(anyhow!("unknown see subcommand: {}", subtype)),
+                _ => Err(anyhow!("unknown read subcommand: {}", subtype)),
             }
         }
+        "write" => handle_write(state, &rest),
         "clear" => Ok(CommandOutput::Clear),
         "help" => Ok(CommandOutput::Info {
             message: print_help(),
@@ -339,13 +498,22 @@ fn inspect_specific(state: &AppState, verse: &Verse) -> Result<CommandOutput> {
         verse_ref: Some(format!("{}:{}", verse.surah.number, verse.ayah)),
         text: Some(verse.text.clone()),
         tree: Some(tree),
-        // Suppress flat tokens in favor of the tree view to avoid duplication
         tokens: None,
     }))
 }
 
-fn see_chapter(state: &mut AppState, number: i64) -> Result<CommandOutput> {
+fn render_verse_line(verse: &Verse, interp: Option<String>, mode: Mode) -> String {
+    let mut content = format!("{}:{}  {}\n", verse.surah.number, verse.ayah, verse.text);
+    if mode == Mode::Write {
+        let note = interp.unwrap_or_else(|| "(empty)".to_string());
+        content.push_str(&format!("> {}\n\n", note));
+    }
+    content
+}
+
+fn read_chapter(state: &mut AppState, number: i64) -> Result<CommandOutput> {
     let surah = fetch_surah(state, number)?;
+    let surah_name = surah_name_or_fallback(surah.surah.number, &surah.surah.name);
 
     // Keep context on the first ayah of this surah for follow-up commands.
     if let Some(first) = surah.verses.first() {
@@ -356,25 +524,107 @@ fn see_chapter(state: &mut AppState, number: i64) -> Result<CommandOutput> {
     let mut content = String::new();
     content.push_str(&format!(
         "=== Surah {}: {} ===\n\n",
-        surah.surah.number, surah.surah.name
+        surah.surah.number, surah_name
     ));
     for verse in &surah.verses {
-        content.push_str(&format!(
-            "{}:{}  {}\n",
-            surah.surah.number, verse.ayah, verse.text
-        ));
+        // Some datasets omit verse_texts for certain ayat (e.g., 1:1); fetch full verse as fallback.
+        let verse_full = if verse.text.trim().is_empty() {
+            fetch_verse(state, surah.surah.number, verse.ayah)?
+        } else {
+            Verse {
+                surah: SurahInfo {
+                    number: surah.surah.number,
+                    name: surah.surah.name.clone(),
+                },
+                ayah: verse.ayah,
+                text: verse.text.clone(),
+                tokens: vec![],
+            }
+        };
+        let interp = match state.mode {
+            Mode::Write => fetch_interpretation(state, surah.surah.number, verse.ayah)?,
+            Mode::Read => None,
+        };
+        content.push_str(&render_verse_line(&verse_full, interp, state.mode));
     }
 
     Ok(CommandOutput::Pager { content })
 }
 
-fn see_verse(state: &mut AppState, ayah: i64) -> Result<CommandOutput> {
+fn parse_write_target(state: &AppState, rest: &str) -> Result<((i64, i64), String)> {
+    let trimmed = rest.trim();
+    if trimmed.is_empty() {
+        if let Some(v) = &state.current_verse {
+            return Ok(((v.surah.number, v.ayah), String::new()));
+        } else {
+            anyhow::bail!("No verse in focus. Use 'write <surah:ayah>' to set a target.");
+        }
+    }
+
+    let mut parts = trimmed.splitn(2, ' ');
+    let first = parts.next().unwrap_or_default();
+    let remaining = parts.next().unwrap_or("").trim_start().to_string();
+
+    if first.contains(':') {
+        let (s, a) = parse_verse_ref(first)?;
+        Ok(((s, a), remaining))
+    } else {
+        let ayah = parse_number(first)?;
+        let surah = state
+            .current_verse
+            .as_ref()
+            .map(|v| v.surah.number)
+            .ok_or_else(|| anyhow!("No surah in context. Use 'write <surah:ayah>' first."))?;
+        Ok(((surah, ayah), remaining))
+    }
+}
+
+fn handle_write(state: &mut AppState, rest: &str) -> Result<CommandOutput> {
+    state.mode = Mode::Write;
+
+    let trimmed = rest.trim();
+    if let Some(rem) = trimmed.strip_prefix("chapter") {
+        let num = parse_number(rem.trim())?;
+        return read_chapter(state, num);
+    }
+
+    let ((surah, ayah), note_text) = parse_write_target(state, trimmed)?;
+    if !note_text.is_empty() {
+        save_interpretation(state, surah, ayah, &note_text)?;
+    }
+
+    let verse = fetch_verse(state, surah, ayah)?;
+    state.current_verse = Some(verse.clone());
+    let interp = fetch_interpretation(state, surah, ayah)?;
+
+    let mut content = String::new();
+    content.push_str("=== Interpretation (write mode) ===\n\n");
+    content.push_str(&render_verse_line(&verse, interp, Mode::Write));
+
+    Ok(CommandOutput::Pager { content })
+}
+
+fn read_chapters(state: &mut AppState) -> Result<CommandOutput> {
+    if state.surahs.is_empty() {
+        state.surahs = fetch_surah_list(state)?;
+    }
+
+    let mut content = String::from("=== Chapters ===\n\n");
+    for s in &state.surahs {
+        let name = surah_name_or_fallback(s.number, &s.name);
+        content.push_str(&format!("{}. {}\n", s.number, name));
+    }
+
+    Ok(CommandOutput::Pager { content })
+}
+
+fn read_verse(state: &mut AppState, ayah: i64) -> Result<CommandOutput> {
     let surah_num = state
         .current_verse
         .as_ref()
         .map(|v| v.surah.number)
         .ok_or_else(|| {
-            anyhow!("No surah in context. Use 'see chapter <N>' or 'see verse <surah:ayah>' first.")
+            anyhow!("No surah in context. Use 'read chapter <N>' or 'read verse <surah:ayah>' first.")
         })?;
 
     let verse = fetch_verse(state, surah_num, ayah)?;
@@ -382,13 +632,13 @@ fn see_verse(state: &mut AppState, ayah: i64) -> Result<CommandOutput> {
     Ok(render_verse(&verse))
 }
 
-fn see_specific_verse(state: &mut AppState, surah: i64, ayah: i64) -> Result<CommandOutput> {
+fn read_specific_verse(state: &mut AppState, surah: i64, ayah: i64) -> Result<CommandOutput> {
     let verse = fetch_verse(state, surah, ayah)?;
     state.current_verse = Some(verse.clone());
     Ok(render_verse(&verse))
 }
 
-fn see_sentence(number: i64) -> Result<CommandOutput> {
+fn read_sentence(number: i64) -> Result<CommandOutput> {
     Ok(CommandOutput::Warning {
         message: format!(
             "Sentence {} view is not available yet (sentences can span multiple ayat).",
@@ -397,7 +647,7 @@ fn see_sentence(number: i64) -> Result<CommandOutput> {
     })
 }
 
-fn see_word(state: &AppState, word_num: i64) -> Result<CommandOutput> {
+fn read_word(state: &AppState, word_num: i64) -> Result<CommandOutput> {
     let verse = state
         .current_verse
         .as_ref()
@@ -435,7 +685,7 @@ fn see_word(state: &AppState, word_num: i64) -> Result<CommandOutput> {
     }))
 }
 
-fn see_morpheme(state: &AppState, key: &str) -> Result<CommandOutput> {
+fn read_morpheme(state: &AppState, key: &str) -> Result<CommandOutput> {
     let verse = state
         .current_verse
         .as_ref()
@@ -473,7 +723,7 @@ fn see_morpheme(state: &AppState, key: &str) -> Result<CommandOutput> {
     Ok(CommandOutput::Pager { content })
 }
 
-fn see_letter(_state: &AppState, number: i64) -> Result<CommandOutput> {
+fn read_letter(_state: &AppState, number: i64) -> Result<CommandOutput> {
     Ok(CommandOutput::Warning {
         message: format!(
             "Letter-level zoom for letter {} is not supported yet.",
@@ -767,51 +1017,161 @@ fn consolidate_tokens(tokens: Vec<AnalysisToken>) -> Vec<AnalysisToken> {
     map.into_values().collect()
 }
 
+fn pos_long_form(tag: &str) -> String {
+    let upper = tag.trim().to_uppercase();
+    let long = match upper.as_str() {
+        "DET" => "Determiner",
+        "PREP" => "Preposition",
+        "NOUN" => "Noun",
+        "PROP-NOUN" | "PROPN" => "Proper Noun",
+        "ADJ" => "Adjective",
+        "VERB" | "V" => "Verb",
+        "ADV" => "Adverb",
+        "PRON" => "Pronoun",
+        "CONJ" => "Conjunction",
+        "PART" => "Particle",
+        "NUM" => "Numeral",
+        "INTERJ" => "Interjection",
+        _ => {
+            let cleaned = upper.replace('_', " ").replace('-', " ");
+            let titled = cleaned
+                .split_whitespace()
+                .map(|w| {
+                    let mut chars = w.chars();
+                    match chars.next() {
+                        Some(first) => format!("{}{}", first.to_uppercase(), chars.as_str().to_lowercase()),
+                        None => String::new(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            return if titled.is_empty() { tag.to_string() } else { titled };
+        }
+    };
+    format!("{} ({})", long, tag)
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct AnnotationRecord {
+    id: String,
+    target_id: String,
+    layer: String,
+    payload: Value,
+}
+
+fn interp_key(surah: i64, ayah: i64) -> String {
+    format!("{}:{}", surah, ayah)
+}
+
+fn extract_annotation_text(payload: &Value) -> Option<String> {
+    if let Some(s) = payload.as_str() {
+        return Some(s.to_string());
+    }
+    payload
+        .get("text")
+        .and_then(Value::as_str)
+        .map(|s| s.to_string())
+}
+
+fn fetch_interpretation(
+    state: &mut AppState,
+    surah: i64,
+    ayah: i64,
+) -> Result<Option<String>> {
+    let key = interp_key(surah, ayah);
+    if let Some(cached) = state.interpretations.get(&key) {
+        return Ok(Some(cached.clone()));
+    }
+
+    let url = format!("{}/annotations", state.base_url);
+    let resp: Vec<AnnotationRecord> = state
+        .client
+        .get(url)
+        .query(&[("target_id", key.as_str())])
+        .send()?
+        .error_for_status()?
+        .json()?;
+
+    for ann in resp {
+        if ann.layer.eq_ignore_ascii_case("interpretation") {
+            if let Some(text) = extract_annotation_text(&ann.payload) {
+                state.interpretations.insert(key.clone(), text.clone());
+                return Ok(Some(text));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+fn save_interpretation(state: &mut AppState, surah: i64, ayah: i64, text: &str) -> Result<()> {
+    let key = interp_key(surah, ayah);
+    let body = serde_json::json!({
+        "id": format!("interp-{}-{}", surah, ayah),
+        "target_id": key,
+        "layer": "interpretation",
+        "payload": { "text": text },
+    });
+
+    state
+        .client
+        .post(format!("{}/annotations", state.base_url))
+        .json(&body)
+        .send()?
+        .error_for_status()?;
+
+    state.interpretations.insert(key, text.to_string());
+    Ok(())
+}
+
 fn build_tree_display(verse: &Verse, segments: &[Value]) -> String {
     #[derive(Default)]
     struct Node {
-        surface: Option<String>,
-        prefix_details: Vec<String>,
-        stem_details: Vec<String>,
+        surface: String,
+        segments: Vec<SegmentRender>,
     }
 
-    let mut nodes: BTreeMap<usize, Node> = BTreeMap::new();
-    // Establish word surfaces in verse order
-    let word_surfaces: Vec<String> = if !verse.tokens.is_empty() {
-        verse
+    #[derive(Default, Clone)]
+    struct SegmentRender {
+        kind: String,
+        text: String,
+        details: Vec<String>,
+    }
+
+    // Anchor to the verse text order to avoid mis-grouping.
+    let mut word_surfaces: Vec<String> = verse
+        .text
+        .split_whitespace()
+        .map(|s| s.to_string())
+        .collect();
+    if word_surfaces.is_empty() && !verse.tokens.is_empty() {
+        word_surfaces = verse
             .tokens
             .iter()
-            .map(|t| {
-                t.form
-                    .clone()
-                    .or_else(|| t.text.clone())
-                    .unwrap_or_default()
-            })
-            .collect()
-    } else {
-        verse
-            .text
-            .split_whitespace()
-            .map(|s| s.to_string())
-            .collect()
-    };
-    for (i, w) in word_surfaces.iter().enumerate() {
-        nodes.entry(i + 1).or_insert_with(|| Node {
-            surface: Some(w.clone()),
-            prefix_details: vec![],
-            stem_details: vec![],
-        });
+            .map(|t| t.form.clone().or_else(|| t.text.clone()).unwrap_or_default())
+            .collect();
     }
 
+    let mut nodes: Vec<Node> = word_surfaces
+        .iter()
+        .map(|w| Node {
+            surface: w.clone(),
+            ..Default::default()
+        })
+        .collect();
+
+    // Capture phrase metadata for header, if present.
+    let mut phrase_label: Option<String> = None;
+    let mut phrase_role: Option<String> = None;
+
+    let mut cursor = 1usize;
     for seg in segments {
-        let idx = seg
+        let mut idx = seg
             .get("word_index")
             .and_then(Value::as_u64)
             .map(|v| v as usize)
+            .filter(|v| *v >= 1 && *v <= word_surfaces.len())
             .unwrap_or(0);
-        if idx == 0 {
-            continue;
-        }
         let kind = seg
             .get("type")
             .and_then(Value::as_str)
@@ -822,14 +1182,48 @@ fn build_tree_display(verse: &Verse, segments: &[Value]) -> String {
         let role = seg.get("role").and_then(Value::as_str).unwrap_or("");
         let case_ = seg.get("case").and_then(Value::as_str).unwrap_or("");
         let root = seg.get("root").and_then(Value::as_str).unwrap_or("");
-        let features = seg
-            .get("features")
-            .and_then(Value::as_str)
-            .unwrap_or("");
+        let features = seg.get("features").and_then(Value::as_str).unwrap_or("");
+
+        // Extract phrase info from feature set.
+        if phrase_label.is_none() || phrase_role.is_none() {
+            for part in features.split(" | ") {
+                if let Some((k, v)) = part.split_once(':') {
+                    match k {
+                        "phrase" if !v.is_empty() && phrase_label.is_none() => {
+                            phrase_label = Some(v.to_string())
+                        }
+                        "phrase_fn" if !v.is_empty() && phrase_role.is_none() => {
+                            phrase_role = Some(v.to_string())
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        if idx == 0 {
+            idx = cursor.min(word_surfaces.len()).max(1);
+        }
+        if idx == 0 || idx > word_surfaces.len() {
+            continue;
+        }
 
         let mut parts = Vec::new();
+        let mut grammar_state: Option<String> = None;
+        let mut inflection: Option<String> = None;
+        if !features.is_empty() {
+            for part in features.split(" | ") {
+                if let Some((k, v)) = part.split_once(':') {
+                    match k {
+                        "poss" if !v.is_empty() => grammar_state = Some(v.to_string()),
+                        "invar" if !v.is_empty() => inflection = Some(v.to_string()),
+                        _ => {}
+                    }
+                }
+            }
+        }
         if !pos.is_empty() {
-            parts.push(format!("POS: {}", pos));
+            parts.push(format!("POS: {}", pos_long_form(pos)));
         }
         if !role.is_empty() {
             parts.push(format!("Role: {}", role));
@@ -837,65 +1231,86 @@ fn build_tree_display(verse: &Verse, segments: &[Value]) -> String {
         if !case_.is_empty() {
             parts.push(format!("Case: {}", case_));
         }
+        if let Some(inf) = inflection.clone() {
+            parts.push(format!("Inflection: {}", inf));
+        }
+        if let Some(gs) = grammar_state.clone() {
+            parts.push(format!("Grammar: {}", gs));
+        }
         if !root.is_empty() {
             parts.push(format!("Root: {}", root));
         }
-        if !features.is_empty() {
-            parts.push(format!("Feat: {}", features));
-        }
-        let line = if parts.is_empty() {
-            text.to_string()
-        } else {
-            format!("{} ({})", text, parts.join(" | "))
-        };
-
-        let entry = nodes.entry(idx).or_default();
-        if entry.surface.is_none() {
-            let verse_surface = word_surfaces
-                .get(idx.saturating_sub(1))
-                .cloned()
-                .unwrap_or_else(|| text.to_string());
-            entry.surface = Some(verse_surface);
-        }
 
         let label = if kind.contains("prefix") { "Prefix" } else { "Stem" };
-        let target = if kind.contains("prefix") {
-            &mut entry.prefix_details
-        } else {
-            &mut entry.stem_details
+        let mut segment = SegmentRender {
+            kind: label.to_string(),
+            text: text.to_string(),
+            details: Vec::new(),
         };
+        if !parts.is_empty() {
+            segment.details.extend(parts);
+        }
 
-        let normalized = format!("{}: {}", label, line);
-        if !target.iter().any(|v| v == &normalized) {
-            target.push(normalized);
+        if let Some(node) = nodes.get_mut(idx - 1) {
+            node.segments.push(segment);
+        }
+
+        if kind.contains("stem") && idx >= cursor {
+            cursor = (idx + 1).min(word_surfaces.len());
         }
     }
 
+    // Helper to append optional glosses to phrase/role.
+    fn with_gloss(value: Option<String>, gloss: Option<&str>) -> Option<String> {
+        match (value, gloss) {
+            (Some(v), Some(g)) => Some(format!("{} ({})", v, g)),
+            (Some(v), None) => Some(v),
+            _ => None,
+        }
+    }
+
+    let phrase_gloss = with_gloss(
+        phrase_label.clone(),
+        phrase_label
+            .as_deref()
+            .and_then(|v| if v == "شبه جملة" { Some("Semi-Sentence") } else { None }),
+    );
+    let role_gloss = with_gloss(
+        phrase_role.clone(),
+        phrase_role
+            .as_deref()
+            .and_then(|v| if v == "خبر" { Some("Predicate") } else { None }),
+    );
+
     let mut out = String::new();
     out.push_str("Clause (Sentence)\n");
-    out.push_str("└─ Phrase\n");
-    let total = nodes.len();
-    for (i, (idx, node)) in nodes.iter().enumerate() {
-        let is_last_word = i == total - 1;
-        let word_prefix = if is_last_word { "   └─" } else { "   ├─" };
-        out.push_str(&format!(
-            "{} Word {}: {}\n",
-            word_prefix,
-            idx,
-            node.surface.clone().unwrap_or_else(|| "".to_string())
-        ));
+    let phrase_line = match (phrase_gloss, role_gloss) {
+        (Some(p), Some(r)) => format!("└─ Phrase: {} | Role: {}", p, r),
+        (Some(p), None) => format!("└─ Phrase: {}", p),
+        (None, Some(r)) => format!("└─ Phrase | Role: {}", r),
+        _ => "└─ Phrase".to_string(),
+    };
+    out.push_str(&format!("{}\n", phrase_line));
 
-        let seg_count = node.prefix_details.len() + node.stem_details.len();
-        let mut seg_idx = 0;
-        for line in &node.prefix_details {
-            seg_idx += 1;
-            let connector = if seg_idx == seg_count { "   │   └─" } else { "   │   ├─" };
-            out.push_str(&format!("{} {}\n", connector, line));
-        }
-        for line in &node.stem_details {
-            seg_idx += 1;
-            let connector = if seg_idx == seg_count { "   │   └─" } else { "   │   ├─" };
-            out.push_str(&format!("{} {}\n", connector, line));
+    let total = nodes.len();
+    for (i, node) in nodes.iter().enumerate() {
+        let is_last_word = i + 1 == total;
+        let word_prefix = if is_last_word { "   └─" } else { "   ├─" };
+        out.push_str(&format!("{} Word {}: {}\n", word_prefix, i + 1, node.surface));
+
+        let seg_count = node.segments.len();
+        for (j, seg) in node.segments.iter().enumerate() {
+            let is_last_seg = j + 1 == seg_count;
+            let mid = if is_last_word { "      " } else { "   │   " };
+            let connector = if is_last_seg { "└─" } else { "├─" };
+            out.push_str(&format!("{}{} {}: {}\n", mid, connector, seg.kind, seg.text));
+
+            if !seg.details.is_empty() {
+                let detail_indent = if is_last_seg { format!("{}    ", mid) } else { format!("{}│   ", mid) };
+                for detail in &seg.details {
+                    out.push_str(&format!("{}{}\n", detail_indent, detail));
+                }
+            }
         }
     }
 
@@ -910,6 +1325,24 @@ fn fetch_surah(state: &AppState, number: i64) -> Result<SurahData> {
         .error_for_status()?
         .json::<SurahData>()?;
     Ok(surah)
+}
+
+fn fetch_surah_list(state: &AppState) -> Result<Vec<SurahSummary>> {
+    let surahs = state
+        .client
+        .get(format!("{}/api/surahs", state.base_url))
+        .send()?
+        .error_for_status()?
+        .json::<Vec<SurahSummary>>()?;
+    Ok(surahs
+        .into_iter()
+        .map(|mut s| {
+            if s.name.trim().is_empty() {
+                s.name = surah_name_or_fallback(s.number, &s.name);
+            }
+            s
+        })
+        .collect())
 }
 
 fn fetch_verse(state: &AppState, surah: i64, ayah: i64) -> Result<Verse> {
@@ -1151,7 +1584,7 @@ fn load_masaq_morphology(surah: i64, ayah: i64) -> Vec<Value> {
         if let Ok(rec) = result {
             let s: i64 = rec.get(1).and_then(|v| v.parse().ok()).unwrap_or(0);
             let a: i64 = rec.get(2).and_then(|v| v.parse().ok()).unwrap_or(0);
-            let word_idx = rec.get(4).and_then(|v| v.parse().ok()).unwrap_or(0usize);
+                    let word_idx = rec.get(3).and_then(|v| v.parse().ok()).unwrap_or(0usize);
             let word = rec.get(5).unwrap_or("").trim();
             let lemma = rec.get(6).unwrap_or("").trim();
             let segmented = rec.get(7).unwrap_or("").trim();
@@ -1319,14 +1752,20 @@ fn parse_number(s: &str) -> Result<i64> {
 fn print_help() -> String {
     let mut help = String::new();
     help.push_str("=== Kalima CLI Commands ===\n\n");
-    help.push_str("Search & Navigate:\n");
-    help.push_str("  see chapter <N>           - View a surah\n");
-    help.push_str("  see verse <N>             - View an ayah in the current surah\n");
-    help.push_str("  see verse <S:A>           - View a specific ayah by surah:ayah\n");
-    help.push_str("  see sentence <N>          - View a sentence (may span ayat)\n");
-    help.push_str("  see word <N>              - View a specific word in the current verse\n");
-    help.push_str("  see morpheme <letter>     - View morpheme details (best-effort)\n");
-    help.push_str("  see letter <N>            - View a specific letter (placeholder)\n\n");
+    help.push_str("Read (navigate):\n");
+    help.push_str("  read chapters             - List all surahs with their Arabic names\n");
+    help.push_str("  read chapter <N>          - View a surah\n");
+    help.push_str("  read verse <N>            - View an ayah in the current surah\n");
+    help.push_str("  read <S:A>                - View a specific ayah by surah:ayah\n");
+    help.push_str("  read sentence <N>         - View a sentence (may span ayat)\n");
+    help.push_str("  read word <N>             - View a specific word in the current verse\n");
+    help.push_str("  read morpheme <letter>    - View morpheme details (best-effort)\n");
+    help.push_str("  read letter <N>           - View a specific letter (placeholder)\n\n");
+    help.push_str("Interpret (write mode):\n");
+    help.push_str("  write                     - Enter write mode for the current ayah\n");
+    help.push_str("  write <ayah> [text]       - Use current surah context; save text if provided\n");
+    help.push_str("  write <S:A> [text]        - Target a specific ayah and optionally save text\n");
+    help.push_str("  write chapter <N>         - View a surah with interpretation slots\n\n");
     help.push_str("Inspect Linguistic Details:\n");
     help.push_str("  inspect                   - Show full linguistic analysis of current verse\n");
     help.push_str("  inspect <surah:ayah>      - Inspect a specific verse directly\n\n");
@@ -1423,9 +1862,10 @@ mod tests {
         assert_eq!(analysis.verse_ref.as_deref(), Some("1:1"));
         assert_eq!(analysis.text.as_deref(), Some("بِسْمِ ٱللَّهِ"));
 
-        let tokens = analysis.tokens.unwrap();
-        assert!(tokens.iter().any(|t| t.text.contains("بِسْمِ") && t.pos.as_deref() == Some("N | dep: obj")));
-        assert!(tokens.iter().any(|t| t.text.contains("subj -> الله") && t.pos.as_deref() == Some("N")));
+        assert!(
+            analysis.tree.is_some(),
+            "expected hierarchical tree output to be present"
+        );
     }
 
     #[test]
@@ -1562,5 +2002,39 @@ mod tests {
         assert!(tokens.iter().any(|t| t.text == "foo"));
         assert!(tokens.iter().any(|t| t.text == "bar"));
         assert!(tokens.iter().any(|t| t.text == "baz"));
+    }    #[test]
+    fn build_tree_display_groups_segments_by_word_order() {
+        let verse = Verse {
+            surah: SurahInfo {
+                number: 1,
+                name: "Al-Fatiha".into(),
+            },
+            ayah: 1,
+            text: "بِسْمِ ٱللَّهِ ٱلرَحْمَٰنِ ٱلرَّحِيمِ".into(),
+            tokens: vec![],
+        };
+        // Simulated segments with explicit word indices.
+        let segments = vec![
+            json!({"text":"ب","type":"Prefix","pos":"PREP","role":"??? ??","case":"????","features":"type:Prefix | invar:???? | role:??? ?? | phrase:شبه جملة | phrase_fn:خبر","word_index":1}),
+            json!({"text":"سم","type":"Stem","pos":"NOUN","role":"??? ?????","case":"?????","features":"type:Stem | poss:????","root":"? ? ?","word_index":1}),
+            json!({"text":"??","type":"Prefix","pos":"DET","word_index":2}),
+            json!({"text":"له","type":"Stem","pos":"PROP-NOUN","role":"???? ????","case":"?????","root":"? ? ?","word_index":2}),
+            json!({"text":"??","type":"Prefix","pos":"DET","word_index":3}),
+            json!({"text":"رحمن","type":"Stem","pos":"ADJ","role":"???","case":"?????","root":"? ? ?","word_index":3}),
+            json!({"text":"??","type":"Prefix","pos":"DET","word_index":4}),
+            json!({"text":"رحيم","type":"Stem","pos":"ADJ","role":"???","case":"?????","root":"? ? ?","word_index":4}),
+        ];
+
+        let tree = build_tree_display(&verse, &segments);
+        assert!(tree.contains("Word 1: بِسْمِ"), "word 1 surface missing");
+        assert!(tree.contains("Word 2: ٱللَّهِ"), "word 2 surface missing");
+        assert!(tree.contains("Word 3: ٱلرَحْمَٰنِ"), "word 3 surface missing");
+        assert!(tree.contains("Word 4: ٱلرَّحِيمِ"), "word 4 surface missing");
+        assert!(tree.contains("Prefix: ب"), "prefix for word1 missing");
+        assert!(tree.contains("Stem: سم"), "stem for word1 missing");
+        assert!(tree.contains("Stem: له"), "stem for word2 missing");
+        assert!(tree.contains("Stem: رحمن"), "stem for word3 missing");
+        assert!(tree.contains("Stem: رحيم"), "stem for word4 missing");
     }
+
 }
