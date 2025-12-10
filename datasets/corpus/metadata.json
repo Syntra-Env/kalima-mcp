@@ -1,9 +1,0 @@
-{
-  "version": "1.0.0",
-  "source": "Tanzil Project - quran-clean.txt (Uthmani 1.0.2)",
-  "import_date": "2025-11-15T22:34:57.466444",
-  "verse_count": 6236,
-  "surah_count": 114,
-  "schema_version": "0.1.0",
-  "notes": "Full Quran import with Arabic surah names"
-}

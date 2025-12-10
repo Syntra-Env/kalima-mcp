@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fs,
     sync::Mutex,
 };
@@ -109,6 +109,8 @@ pub struct AnalysisOutput {
     verse_ref: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tree: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tokens: Option<Vec<AnalysisToken>>,
 }
@@ -329,13 +331,16 @@ fn inspect_specific(state: &AppState, verse: &Verse) -> Result<CommandOutput> {
             }
         }
     }
-    let tokens = build_analysis_tokens(verse, &morph_segments, &dependencies, !used_fallback);
+    let _tokens = build_analysis_tokens(verse, &morph_segments, &dependencies, !used_fallback);
+    let tree = build_tree_display(verse, &morph_segments);
 
     Ok(CommandOutput::Analysis(AnalysisOutput {
         header: Some("=== Full Linguistic Analysis ===".to_string()),
         verse_ref: Some(format!("{}:{}", verse.surah.number, verse.ayah)),
         text: Some(verse.text.clone()),
-        tokens: Some(tokens),
+        tree: Some(tree),
+        // Suppress flat tokens in favor of the tree view to avoid duplication
+        tokens: None,
     }))
 }
 
@@ -425,6 +430,7 @@ fn see_word(state: &AppState, word_num: i64) -> Result<CommandOutput> {
         header: Some(format!("=== Word {} ===", word_num)),
         verse_ref: Some(format!("{}:{}", verse.surah.number, verse.ayah)),
         text: Some(token_text),
+        tree: None,
         tokens: Some(details),
     }))
 }
@@ -761,6 +767,141 @@ fn consolidate_tokens(tokens: Vec<AnalysisToken>) -> Vec<AnalysisToken> {
     map.into_values().collect()
 }
 
+fn build_tree_display(verse: &Verse, segments: &[Value]) -> String {
+    #[derive(Default)]
+    struct Node {
+        surface: Option<String>,
+        prefix_details: Vec<String>,
+        stem_details: Vec<String>,
+    }
+
+    let mut nodes: BTreeMap<usize, Node> = BTreeMap::new();
+    // Establish word surfaces in verse order
+    let word_surfaces: Vec<String> = if !verse.tokens.is_empty() {
+        verse
+            .tokens
+            .iter()
+            .map(|t| {
+                t.form
+                    .clone()
+                    .or_else(|| t.text.clone())
+                    .unwrap_or_default()
+            })
+            .collect()
+    } else {
+        verse
+            .text
+            .split_whitespace()
+            .map(|s| s.to_string())
+            .collect()
+    };
+    for (i, w) in word_surfaces.iter().enumerate() {
+        nodes.entry(i + 1).or_insert_with(|| Node {
+            surface: Some(w.clone()),
+            prefix_details: vec![],
+            stem_details: vec![],
+        });
+    }
+
+    for seg in segments {
+        let idx = seg
+            .get("word_index")
+            .and_then(Value::as_u64)
+            .map(|v| v as usize)
+            .unwrap_or(0);
+        if idx == 0 {
+            continue;
+        }
+        let kind = seg
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_lowercase();
+        let text = seg.get("text").and_then(Value::as_str).unwrap_or("");
+        let pos = seg.get("pos").and_then(Value::as_str).unwrap_or("");
+        let role = seg.get("role").and_then(Value::as_str).unwrap_or("");
+        let case_ = seg.get("case").and_then(Value::as_str).unwrap_or("");
+        let root = seg.get("root").and_then(Value::as_str).unwrap_or("");
+        let features = seg
+            .get("features")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+
+        let mut parts = Vec::new();
+        if !pos.is_empty() {
+            parts.push(format!("POS: {}", pos));
+        }
+        if !role.is_empty() {
+            parts.push(format!("Role: {}", role));
+        }
+        if !case_.is_empty() {
+            parts.push(format!("Case: {}", case_));
+        }
+        if !root.is_empty() {
+            parts.push(format!("Root: {}", root));
+        }
+        if !features.is_empty() {
+            parts.push(format!("Feat: {}", features));
+        }
+        let line = if parts.is_empty() {
+            text.to_string()
+        } else {
+            format!("{} ({})", text, parts.join(" | "))
+        };
+
+        let entry = nodes.entry(idx).or_default();
+        if entry.surface.is_none() {
+            let verse_surface = word_surfaces
+                .get(idx.saturating_sub(1))
+                .cloned()
+                .unwrap_or_else(|| text.to_string());
+            entry.surface = Some(verse_surface);
+        }
+
+        let label = if kind.contains("prefix") { "Prefix" } else { "Stem" };
+        let target = if kind.contains("prefix") {
+            &mut entry.prefix_details
+        } else {
+            &mut entry.stem_details
+        };
+
+        let normalized = format!("{}: {}", label, line);
+        if !target.iter().any(|v| v == &normalized) {
+            target.push(normalized);
+        }
+    }
+
+    let mut out = String::new();
+    out.push_str("Clause (Sentence)\n");
+    out.push_str("└─ Phrase\n");
+    let total = nodes.len();
+    for (i, (idx, node)) in nodes.iter().enumerate() {
+        let is_last_word = i == total - 1;
+        let word_prefix = if is_last_word { "   └─" } else { "   ├─" };
+        out.push_str(&format!(
+            "{} Word {}: {}\n",
+            word_prefix,
+            idx,
+            node.surface.clone().unwrap_or_else(|| "".to_string())
+        ));
+
+        let seg_count = node.prefix_details.len() + node.stem_details.len();
+        let mut seg_idx = 0;
+        for line in &node.prefix_details {
+            seg_idx += 1;
+            let connector = if seg_idx == seg_count { "   │   └─" } else { "   │   ├─" };
+            out.push_str(&format!("{} {}\n", connector, line));
+        }
+        for line in &node.stem_details {
+            seg_idx += 1;
+            let connector = if seg_idx == seg_count { "   │   └─" } else { "   │   ├─" };
+            out.push_str(&format!("{} {}\n", connector, line));
+        }
+    }
+
+    out
+}
+
 fn fetch_surah(state: &AppState, number: i64) -> Result<SurahData> {
     let surah = state
         .client
@@ -873,6 +1014,7 @@ fn load_fallback_morphology(surah: i64, ayah: i64) -> Vec<Value> {
         }
         let s: i64 = ref_parts.get(0).and_then(|v| v.parse().ok()).unwrap_or(0);
         let a: i64 = ref_parts.get(1).and_then(|v| v.parse().ok()).unwrap_or(0);
+        let w_idx: usize = ref_parts.get(2).and_then(|v| v.parse().ok()).unwrap_or(0);
         let surface = parts[1].trim();
         let pos = parts[2].trim();
         let tags = parts.get(3).map(|v| v.trim()).unwrap_or("");
@@ -962,6 +1104,7 @@ fn load_fallback_morphology(surah: i64, ayah: i64) -> Vec<Value> {
                 "text": surface,
                 "pos": pos,
                 "root": root,
+                "word_index": w_idx,
                 "case": case_,
                 "gender": gender,
                 "number": number,
@@ -1008,6 +1151,7 @@ fn load_masaq_morphology(surah: i64, ayah: i64) -> Vec<Value> {
         if let Ok(rec) = result {
             let s: i64 = rec.get(1).and_then(|v| v.parse().ok()).unwrap_or(0);
             let a: i64 = rec.get(2).and_then(|v| v.parse().ok()).unwrap_or(0);
+            let word_idx = rec.get(4).and_then(|v| v.parse().ok()).unwrap_or(0usize);
             let word = rec.get(5).unwrap_or("").trim();
             let lemma = rec.get(6).unwrap_or("").trim();
             let segmented = rec.get(7).unwrap_or("").trim();
@@ -1064,6 +1208,7 @@ fn load_masaq_morphology(surah: i64, ayah: i64) -> Vec<Value> {
                 "lemma": if lemma.is_empty() { None::<String> } else { Some(lemma.to_string()) },
                 "pos": if morph_tag.is_empty() { None::<String> } else { Some(morph_tag.to_string()) },
                 "form": norm_form,
+                "word_index": word_idx,
                 "features": if features.is_empty() { None::<String> } else { Some(features.join(" | ")) },
                 "type": if morph_type.is_empty() { None::<String> } else { Some(morph_type.to_string()) },
                 "role": if syntactic_role.is_empty() { None::<String> } else { Some(syntactic_role.to_string()) },

@@ -6,7 +6,7 @@ let commandHistory = [];
 let historyIndex = -1;
 let currentPrompt = 'kalima >';
 let invoke;
-let baseApi = window.KALIMA_BASE_URL ?? '';
+let baseApi = window.KALIMA_BASE_URL ?? 'http://127.0.0.1:8080';
 let webCurrentVerse = null;
 let baseFontSize = 16;
 let zoomFactor = 1;
@@ -187,6 +187,13 @@ function printAnalysis(analysis) {
         textDiv.textContent = analysis.text;
         output.appendChild(textDiv);
         printLine('');
+    }
+
+    if (analysis.tree) {
+        const treePre = document.createElement('pre');
+        treePre.className = 'tree';
+        treePre.textContent = analysis.tree;
+        output.appendChild(treePre);
     }
 
     if (analysis.tokens) {

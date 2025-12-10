@@ -224,6 +224,13 @@ body {
     animation: dots 1.5s steps(4, end) infinite;
 }
 
+.tree {
+    white-space: pre;
+    font-family: 'Consolas', 'Monaco', monospace;
+    color: #d4d4d4;
+    margin-top: 0.5rem;
+}
+
 @keyframes dots {
     0%, 20% { content: ''; }
     40% { content: '.'; }
