@@ -5,6 +5,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     sync::Mutex,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -138,6 +139,8 @@ pub struct CommandResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output: Option<CommandOutput>,
     pub prompt: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefill: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -145,9 +148,16 @@ pub struct AppState {
     current_verse: Option<Verse>,
     base_url: String,
     surahs: Vec<SurahSummary>,
-    interpretations: HashMap<String, String>,
+    interpretations: HashMap<String, Vec<(String, String)>>, // (id, text)
     mode: Mode,
+    editing: Option<(i64, i64, usize)>, // surah, ayah, index (0-based)
     client: reqwest::blocking::Client,
+}
+
+#[derive(Debug, Clone)]
+struct CommandResponse {
+    output: CommandOutput,
+    prefill: Option<String>,
 }
 
 const ARABIC_SURAH_NAMES: [&str; 114] = [
@@ -275,6 +285,7 @@ impl AppState {
             surahs: Vec::new(),
             interpretations: HashMap::new(),
             mode: Mode::Read,
+            editing: None,
             client: reqwest::blocking::Client::builder()
                 .build()
                 .expect("reqwest client"),
@@ -289,6 +300,7 @@ impl AppState {
             surahs: Vec::new(),
             interpretations: HashMap::new(),
             mode: Mode::Read,
+            editing: None,
             client: reqwest::blocking::Client::builder()
                 .build()
                 .expect("reqwest client"),
@@ -296,6 +308,9 @@ impl AppState {
     }
 
     fn prompt(&self) -> String {
+        if let Some((s, a, _)) = self.editing {
+            return format!("kalima editing ({}:{}) >", s, a);
+        }
         if let Some(v) = &self.current_verse {
             format!("kalima ({}:{}) >", v.surah.number, v.ayah)
         } else {
@@ -326,20 +341,65 @@ pub fn execute_command(command: String) -> CommandResult {
     let mut state = APP_STATE.lock().unwrap();
 
     match handle_command(&mut state, &command) {
-        Ok(output) => CommandResult {
-            output: Some(output),
+        Ok(resp) => CommandResult {
+            output: Some(resp.output),
             prompt: state.prompt(),
+            prefill: resp.prefill,
         },
         Err(e) => CommandResult {
             output: Some(CommandOutput::Error {
                 message: format!("Error: {}", e),
             }),
             prompt: state.prompt(),
+            prefill: None,
         },
     }
 }
 
-fn handle_command(state: &mut AppState, line: &str) -> Result<CommandOutput> {
+fn resp(output: CommandOutput) -> Result<CommandResponse> {
+    Ok(CommandResponse {
+        output,
+        prefill: None,
+    })
+}
+
+fn handle_command(state: &mut AppState, line: &str) -> Result<CommandResponse> {
+    // When in editing mode, any non-empty line replaces the targeted interpretation.
+    if state.editing.is_some() && !line.trim().is_empty() {
+        let (s, a, idx) = state.editing.unwrap();
+        let list = state
+            .interpretations
+            .get(&interp_key(s, a))
+            .cloned()
+            .unwrap_or_else(Vec::new);
+        if idx >= list.len() {
+            anyhow::bail!("editing target out of range; try 'write' again.");
+        }
+        let old_id = &list[idx].0;
+
+        // Delete existing annotation, then save replacement.
+        let _ = state
+            .client
+            .delete(format!("{}/annotations/{}", state.base_url, old_id))
+            .send();
+        save_interpretation(state, s, a, line.trim())?;
+        state.editing = None;
+
+        // Refresh list
+        let interp = Some(fetch_interpretations_with_ids(state, s, a)?);
+        let verse = fetch_verse(state, s, a)?;
+        state.current_verse = Some(verse.clone());
+        state.mode = Mode::Write;
+
+        return resp(CommandOutput::Pager {
+            content: {
+                let mut c = String::from("=== Interpretation (write mode) ===\n\n");
+                c.push_str(&render_verse_line(&verse, interp, Mode::Write));
+                c
+            },
+        });
+    }
+
     let mut parts = line.split_whitespace();
     let cmd = parts.next().ok_or_else(|| anyhow!("empty command"))?;
     let rest = parts.collect::<Vec<_>>().join(" ");
@@ -347,12 +407,12 @@ fn handle_command(state: &mut AppState, line: &str) -> Result<CommandOutput> {
     match cmd {
         "inspect" => {
             if rest.is_empty() {
-                inspect_current(state)
+                resp(inspect_current(state)?)
             } else if rest.contains(':') {
                 let (s, a) = parse_verse_ref(&rest)?;
                 let verse = fetch_verse(state, s, a)?;
                 state.current_verse = Some(verse.clone());
-                inspect_specific(state, &verse)
+                resp(inspect_specific(state, &verse)?)
             } else {
                 Err(anyhow!(
                     "usage: inspect [<surah:ayah>] (single command shows all available linguistic data)"
@@ -366,7 +426,7 @@ fn handle_command(state: &mut AppState, line: &str) -> Result<CommandOutput> {
             // No args: show current verse if present.
             if trimmed.is_empty() {
                 if let Some(v) = &state.current_verse {
-                    return read_specific_verse(state, v.surah.number, v.ayah);
+                    return resp(read_specific_verse(state, v.surah.number, v.ayah)?);
                 } else {
                     anyhow::bail!("No verse in focus. Use 'read <surah:ayah>' first.");
                 }
@@ -375,12 +435,12 @@ fn handle_command(state: &mut AppState, line: &str) -> Result<CommandOutput> {
             // Shorthand: allow `read <surah:ayah>` without the `verse` keyword
             if !trimmed.contains(' ') && trimmed.contains(':') {
                 let (s, a) = parse_verse_ref(trimmed)?;
-                return read_specific_verse(state, s, a);
+                return resp(read_specific_verse(state, s, a)?);
             }
             // Shorthand: allow `read <ayah>` within current surah
             if !trimmed.contains(' ') && trimmed.chars().all(|c| c.is_ascii_digit()) {
                 let num = parse_number(trimmed)?;
-                return read_verse(state, num);
+                return resp(read_verse(state, num)?);
             }
 
             let mut args = trimmed.split_whitespace();
@@ -389,50 +449,51 @@ fn handle_command(state: &mut AppState, line: &str) -> Result<CommandOutput> {
             })?;
             let tail = args.collect::<Vec<_>>().join(" ");
             match subtype {
-                "chapters" => read_chapters(state),
+                "chapters" => resp(read_chapters(state)?),
                 "chapter" => {
                     let num = parse_number(&tail)?;
-                    read_chapter(state, num)
+                    resp(read_chapter(state, num)?)
                 }
                 "verse" => {
                     // Allow either a simple ayah number (if a surah is in scope) or a fully-qualified surah:ayah
                     if tail.contains(':') {
                         let (s, a) = parse_verse_ref(&tail)?;
-                        read_specific_verse(state, s, a)
+                        resp(read_specific_verse(state, s, a)?)
                     } else {
                         let num = parse_number(&tail)?;
-                        read_verse(state, num)
+                        resp(read_verse(state, num)?)
                     }
                 }
                 "sentence" => {
                     let num = parse_number(&tail)?;
-                    read_sentence(num)
+                    resp(read_sentence(num)?)
                 }
                 "word" => {
                     let num = parse_number(&tail)?;
-                    read_word(state, num)
+                    resp(read_word(state, num)?)
                 }
                 "morpheme" => {
                     let key = tail.trim();
                     if key.is_empty() {
                         Err(anyhow!("usage: read morpheme <morpheme_letter>"))
                     } else {
-                        read_morpheme(state, key)
+                        resp(read_morpheme(state, key)?)
                     }
                 }
                 "letter" => {
                     let num = parse_number(&tail)?;
-                    read_letter(state, num)
+                    resp(read_letter(state, num)?)
                 }
                 _ => Err(anyhow!("unknown read subcommand: {}", subtype)),
             }
         }
-        "write" => handle_write(state, &rest),
-        "clear" => Ok(CommandOutput::Clear),
-        "help" => Ok(CommandOutput::Info {
+        "write" => resp(handle_write(state, &rest)?),
+        "edit" => handle_edit(state, &rest),
+        "clear" => resp(CommandOutput::Clear),
+        "help" => resp(CommandOutput::Info {
             message: print_help(),
         }),
-        "status" => Ok(CommandOutput::Info {
+        "status" => resp(CommandOutput::Info {
             message: format!(
                 "base_url: {} | current_verse: {} | surahs_cached: {}",
                 state.base_url,
@@ -444,7 +505,7 @@ fn handle_command(state: &mut AppState, line: &str) -> Result<CommandOutput> {
                 state.surahs.len()
             ),
         }),
-        "legend" => Ok(CommandOutput::Info {
+        "legend" => resp(CommandOutput::Info {
             message: "Colors: role subj=green, obj=red, comp=blue, other=gold. POS is blue text. Case is cyan text.".to_string(),
         }),
         "exit" | "quit" => std::process::exit(0),
@@ -467,30 +528,66 @@ fn inspect_current(state: &AppState) -> Result<CommandOutput> {
 
 fn inspect_specific(state: &AppState, verse: &Verse) -> Result<CommandOutput> {
     // Try to pull full morphology and dependency data; fall back to verse tokens.
-    let mut morph_segments =
+    let morph_segments =
         fetch_morphology(state, verse.surah.number, verse.ayah).unwrap_or_default();
     let dependencies = fetch_dependency(state, verse.surah.number, verse.ayah).unwrap_or_default();
 
-    // If morphology is missing or clearly incomplete, try a local fallback corpus.
-    let expected_tokens = verse
-        .tokens
-        .len()
-        .max(verse.text.split_whitespace().count());
-    let mut used_fallback = false;
-    if morph_segments.len() < expected_tokens {
-        let masaq = load_masaq_morphology(verse.surah.number, verse.ayah);
-        if !masaq.is_empty() {
-            morph_segments = masaq;
-            used_fallback = true;
-        } else {
-            let fallback = load_fallback_morphology(verse.surah.number, verse.ayah);
-            if !fallback.is_empty() {
-                morph_segments = fallback;
-                used_fallback = true;
-            }
+    // Validate morphology coverage based on actual indices present.
+    if morph_segments.is_empty() {
+        anyhow::bail!(
+            "No morphology data for {}:{}; check database ingestion.",
+            verse.surah.number,
+            verse.ayah
+        );
+    }
+
+    let mut raw_indices: Vec<usize> = Vec::new();
+    for seg in &morph_segments {
+        if let Some(idx) = seg
+            .get("word_index")
+            .and_then(Value::as_u64)
+            .map(|v| v as usize)
+        {
+            raw_indices.push(idx);
+        } else if let Some(idx) = seg
+            .get("token_index")
+            .and_then(Value::as_u64)
+            .map(|v| v as usize)
+        {
+            raw_indices.push(idx);
         }
     }
-    let _tokens = build_analysis_tokens(verse, &morph_segments, &dependencies, !used_fallback);
+    if raw_indices.is_empty() {
+        anyhow::bail!(
+            "Morphology for {}:{} has no word indices; check dataset.",
+            verse.surah.number,
+            verse.ayah
+        );
+    }
+    let min_idx = *raw_indices.iter().min().unwrap_or(&1);
+    let normalized: HashSet<usize> = raw_indices
+        .iter()
+        .map(|i| if min_idx == 0 { i + 1 } else { *i })
+        .collect();
+    let max_idx = *normalized.iter().max().unwrap_or(&1);
+    let expected_tokens = if verse.tokens.is_empty() {
+        max_idx
+    } else {
+        verse.tokens.len().max(max_idx)
+    };
+    for idx in 1..=expected_tokens {
+        if !normalized.contains(&idx) {
+            anyhow::bail!(
+                "Incomplete morphology for {}:{}; missing word {} of {}.",
+                verse.surah.number,
+                verse.ayah,
+                idx,
+                expected_tokens
+            );
+        }
+    }
+
+    let _tokens = build_analysis_tokens(verse, &morph_segments, &dependencies, false);
     let tree = build_tree_display(verse, &morph_segments);
 
     Ok(CommandOutput::Analysis(AnalysisOutput {
@@ -502,11 +599,18 @@ fn inspect_specific(state: &AppState, verse: &Verse) -> Result<CommandOutput> {
     }))
 }
 
-fn render_verse_line(verse: &Verse, interp: Option<String>, mode: Mode) -> String {
+fn render_verse_line(verse: &Verse, interp: Option<Vec<(String, String)>>, mode: Mode) -> String {
     let mut content = format!("{}:{}  {}\n", verse.surah.number, verse.ayah, verse.text);
     if mode == Mode::Write {
-        let note = interp.unwrap_or_else(|| "(empty)".to_string());
-        content.push_str(&format!("> {}\n\n", note));
+        let list = interp.unwrap_or_else(Vec::new);
+        if list.is_empty() {
+            content.push_str("(no interpretations yet)\n\n");
+        } else {
+            for (idx, item) in list.iter().enumerate() {
+                content.push_str(&format!("{}. {}\n", idx + 1, item.1));
+            }
+            content.push('\n');
+        }
     }
     content
 }
@@ -542,7 +646,11 @@ fn read_chapter(state: &mut AppState, number: i64) -> Result<CommandOutput> {
             }
         };
         let interp = match state.mode {
-            Mode::Write => fetch_interpretation(state, surah.surah.number, verse.ayah)?,
+            Mode::Write => Some(fetch_interpretations_with_ids(
+                state,
+                surah.surah.number,
+                verse.ayah,
+            )?),
             Mode::Read => None,
         };
         content.push_str(&render_verse_line(&verse_full, interp, state.mode));
@@ -581,6 +689,7 @@ fn parse_write_target(state: &AppState, rest: &str) -> Result<((i64, i64), Strin
 
 fn handle_write(state: &mut AppState, rest: &str) -> Result<CommandOutput> {
     state.mode = Mode::Write;
+    state.editing = None;
 
     let trimmed = rest.trim();
     if let Some(rem) = trimmed.strip_prefix("chapter") {
@@ -595,13 +704,45 @@ fn handle_write(state: &mut AppState, rest: &str) -> Result<CommandOutput> {
 
     let verse = fetch_verse(state, surah, ayah)?;
     state.current_verse = Some(verse.clone());
-    let interp = fetch_interpretation(state, surah, ayah)?;
+        let interp_ids = fetch_interpretations_with_ids(state, surah, ayah)?;
+        let interp = Some(interp_ids.clone());
 
-    let mut content = String::new();
-    content.push_str("=== Interpretation (write mode) ===\n\n");
-    content.push_str(&render_verse_line(&verse, interp, Mode::Write));
+        let mut content = String::new();
+        content.push_str("=== Interpretation (write mode) ===\n\n");
+        content.push_str(&render_verse_line(&verse, interp, Mode::Write));
 
-    Ok(CommandOutput::Pager { content })
+        Ok(CommandOutput::Pager { content })
+}
+
+fn handle_edit(state: &mut AppState, rest: &str) -> Result<CommandResponse> {
+    if state.mode != Mode::Write {
+        anyhow::bail!("edit only works in write mode. Use 'write' first.");
+    }
+    let (surah_num, ayah_num) = {
+        let verse = state
+            .current_verse
+            .as_ref()
+            .ok_or_else(|| anyhow!("No verse in focus. Use 'write <surah:ayah>' first."))?;
+        (verse.surah.number, verse.ayah)
+    };
+
+    let idx: usize = rest
+        .trim()
+        .parse()
+        .map_err(|_| anyhow!("usage: edit <interpretation_number>"))?;
+    let list = fetch_interpretations_with_ids(state, surah_num, ayah_num)?;
+    if idx == 0 || idx > list.len() {
+        anyhow::bail!("interpretation {} not found ({} total).", idx, list.len());
+    }
+    let text = list[idx - 1].1.clone();
+    state.editing = Some((surah_num, ayah_num, idx - 1));
+
+    Ok(CommandResponse {
+        output: CommandOutput::Info {
+            message: format!("Editing interpretation {}.", idx),
+        },
+        prefill: Some(text),
+    })
 }
 
 fn read_chapters(state: &mut AppState) -> Result<CommandOutput> {
@@ -1051,14 +1192,6 @@ fn pos_long_form(tag: &str) -> String {
     format!("{} ({})", long, tag)
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct AnnotationRecord {
-    id: String,
-    target_id: String,
-    layer: String,
-    payload: Value,
-}
-
 fn interp_key(surah: i64, ayah: i64) -> String {
     format!("{}:{}", surah, ayah)
 }
@@ -1073,18 +1206,18 @@ fn extract_annotation_text(payload: &Value) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-fn fetch_interpretation(
+fn fetch_interpretations_with_ids(
     state: &mut AppState,
     surah: i64,
     ayah: i64,
-) -> Result<Option<String>> {
+) -> Result<Vec<(String, String)>> {
     let key = interp_key(surah, ayah);
     if let Some(cached) = state.interpretations.get(&key) {
-        return Ok(Some(cached.clone()));
+        return Ok(cached.clone());
     }
 
     let url = format!("{}/annotations", state.base_url);
-    let resp: Vec<AnnotationRecord> = state
+    let resp: Vec<serde_json::Value> = state
         .client
         .get(url)
         .query(&[("target_id", key.as_str())])
@@ -1092,22 +1225,39 @@ fn fetch_interpretation(
         .error_for_status()?
         .json()?;
 
+    let mut out = Vec::new();
     for ann in resp {
-        if ann.layer.eq_ignore_ascii_case("interpretation") {
-            if let Some(text) = extract_annotation_text(&ann.payload) {
-                state.interpretations.insert(key.clone(), text.clone());
-                return Ok(Some(text));
+        if ann
+            .get("layer")
+            .and_then(Value::as_str)
+            .map(|l| l.eq_ignore_ascii_case("interpretation"))
+            .unwrap_or(false)
+        {
+            if let (Some(id), Some(payload)) = (ann.get("id"), ann.get("payload")) {
+                if let Some(text) = extract_annotation_text(payload) {
+                    let id_str = if let Some(s) = id.as_str() {
+                        s.to_string()
+                    } else {
+                        id.to_string()
+                    };
+                    out.push((id_str, text));
+                }
             }
         }
     }
-
-    Ok(None)
+    state.interpretations.insert(key, out.clone());
+    Ok(out)
 }
 
 fn save_interpretation(state: &mut AppState, surah: i64, ayah: i64, text: &str) -> Result<()> {
     let key = interp_key(surah, ayah);
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let id = format!("interp-{}-{}-{}", surah, ayah, ts);
     let body = serde_json::json!({
-        "id": format!("interp-{}-{}", surah, ayah),
+        "id": id,
         "target_id": key,
         "layer": "interpretation",
         "payload": { "text": text },
@@ -1120,7 +1270,11 @@ fn save_interpretation(state: &mut AppState, surah: i64, ayah: i64, text: &str) 
         .send()?
         .error_for_status()?;
 
-    state.interpretations.insert(key, text.to_string());
+    state
+        .interpretations
+        .entry(interp_key(surah, ayah))
+        .or_default()
+        .push((id, text.to_string()));
     Ok(())
 }
 
@@ -1766,6 +1920,7 @@ fn print_help() -> String {
     help.push_str("  write <ayah> [text]       - Use current surah context; save text if provided\n");
     help.push_str("  write <S:A> [text]        - Target a specific ayah and optionally save text\n");
     help.push_str("  write chapter <N>         - View a surah with interpretation slots\n\n");
+    help.push_str("  edit <N>                  - Prefill interpretation number N for editing (write mode)\n\n");
     help.push_str("Inspect Linguistic Details:\n");
     help.push_str("  inspect                   - Show full linguistic analysis of current verse\n");
     help.push_str("  inspect <surah:ayah>      - Inspect a specific verse directly\n\n");

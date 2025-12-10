@@ -245,6 +245,14 @@ async function executeCommand(command) {
             currentPrompt = result.prompt;
             promptSpan.textContent = currentPrompt;
         }
+
+        if (result.prefill) {
+            commandInput.value = result.prefill;
+            commandInput.focus();
+            const len = result.prefill.length;
+            commandInput.setSelectionRange(len, len);
+            promptSpan.textContent = currentPrompt; // already updated from result.prompt
+        }
     } catch (error) {
         printLine(`Error: ${error}`, 'error');
     }
@@ -347,21 +355,62 @@ function printAnalysis(analysis) {
             tokenDiv.appendChild(headerLine);
 
             const fields = [];
-            if (token.root) fields.push(`Root: <span class="arabic">${token.root}</span>`);
-            if (token.lemma) fields.push(`Lemma: <span class="arabic">${token.lemma}</span>`);
-            if (token.form) fields.push(`Form: <span class="arabic">${token.form}</span>`);
-            if (token.gender) fields.push(`Gender: ${token.gender}`);
-            if (token.number) fields.push(`Number: ${token.number}`);
-            if (token.definiteness) fields.push(`Definite: ${token.definiteness}`);
-            if (token.determiner !== undefined && token.determiner !== null) {
-                fields.push(`Determiner: ${token.determiner ? 'yes' : 'no'}`);
+
+            // Build safe DOM elements instead of HTML strings
+            if (token.root) {
+                const label = document.createTextNode('Root: ');
+                const arabic = document.createElement('span');
+                arabic.className = 'arabic';
+                arabic.textContent = token.root;
+                fields.push({ label, value: arabic });
             }
-            if (token.features) fields.push(`Feat: ${token.features}`);
+            if (token.lemma) {
+                const label = document.createTextNode('Lemma: ');
+                const arabic = document.createElement('span');
+                arabic.className = 'arabic';
+                arabic.textContent = token.lemma;
+                fields.push({ label, value: arabic });
+            }
+            if (token.form) {
+                const label = document.createTextNode('Form: ');
+                const arabic = document.createElement('span');
+                arabic.className = 'arabic';
+                arabic.textContent = token.form;
+                fields.push({ label, value: arabic });
+            }
+            if (token.gender) {
+                fields.push({ text: `Gender: ${token.gender}` });
+            }
+            if (token.number) {
+                fields.push({ text: `Number: ${token.number}` });
+            }
+            if (token.definiteness) {
+                fields.push({ text: `Definite: ${token.definiteness}` });
+            }
+            if (token.determiner !== undefined && token.determiner !== null) {
+                fields.push({ text: `Determiner: ${token.determiner ? 'yes' : 'no'}` });
+            }
+            if (token.features) {
+                fields.push({ text: `Feat: ${token.features}` });
+            }
 
             if (fields.length > 0) {
                 const detail = document.createElement('div');
                 detail.className = 'token-details';
-                detail.innerHTML = fields.join(' | ');
+
+                // Safely append each field
+                fields.forEach((field, idx) => {
+                    if (idx > 0) {
+                        detail.appendChild(document.createTextNode(' | '));
+                    }
+                    if (field.text) {
+                        detail.appendChild(document.createTextNode(field.text));
+                    } else {
+                        detail.appendChild(field.label);
+                        detail.appendChild(field.value);
+                    }
+                });
+
                 tokenDiv.appendChild(detail);
             }
 
@@ -373,7 +422,9 @@ function printAnalysis(analysis) {
 }
 
 function roleClass(role) {
-    const r = role.toLowerCase();
+    // Sanitize input to prevent CSS class injection
+    if (typeof role !== 'string') return 'role-other';
+    const r = role.toLowerCase().trim();
     if (r.includes('subj')) return 'role-subj';
     if (r.includes('obj')) return 'role-obj';
     if (r.includes('comp')) return 'role-comp';
