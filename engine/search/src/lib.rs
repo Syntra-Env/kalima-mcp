@@ -28,7 +28,6 @@ pub struct TantivyIndex {
     pattern_field: tantivy::schema::Field,
     voice_field: tantivy::schema::Field,
     mood_field: tantivy::schema::Field,
-    tense_field: tantivy::schema::Field,
     aspect_field: tantivy::schema::Field,
 }
 
@@ -47,7 +46,6 @@ impl TantivyIndex {
         let pattern_field = schema_builder.add_text_field("pattern", TEXT);
         let voice_field = schema_builder.add_text_field("voice", TEXT);
         let mood_field = schema_builder.add_text_field("mood", TEXT);
-        let tense_field = schema_builder.add_text_field("tense", TEXT);
         let aspect_field = schema_builder.add_text_field("aspect", TEXT);
         let schema = schema_builder.build();
 
@@ -85,7 +83,6 @@ impl TantivyIndex {
             pattern_field,
             voice_field,
             mood_field,
-            tense_field,
             aspect_field,
         })
     }
@@ -130,7 +127,6 @@ impl TantivyIndex {
                 "case" | "case_" => Some(self.case_field),
                 "voice" => Some(self.voice_field),
                 "mood" => Some(self.mood_field),
-                "tense" => Some(self.tense_field),
                 "aspect" => Some(self.aspect_field),
                 _ => None,
             };
@@ -210,7 +206,6 @@ impl SearchBackend for TantivyIndex {
         let mut patterns = Vec::new();
         let mut voices = Vec::new();
         let mut moods = Vec::new();
-        let mut tenses = Vec::new();
         let mut aspects = Vec::new();
 
         for seg in &doc.segments {
@@ -243,9 +238,6 @@ impl SearchBackend for TantivyIndex {
             }
             if let Some(v) = &seg.mood {
                 moods.push(v.clone());
-            }
-            if let Some(v) = &seg.tense {
-                tenses.push(v.clone());
             }
             if let Some(v) = &seg.aspect {
                 aspects.push(v.clone());
@@ -282,9 +274,6 @@ impl SearchBackend for TantivyIndex {
         }
         for v in moods {
             tdoc.add_text(self.mood_field, v);
-        }
-        for v in tenses {
-            tdoc.add_text(self.tense_field, v);
         }
         for v in aspects {
             tdoc.add_text(self.aspect_field, v);

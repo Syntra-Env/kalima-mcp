@@ -70,8 +70,6 @@ pub struct Segment {
     #[serde(default)]
     pub mood: Option<String>,
     #[serde(default)]
-    pub tense: Option<String>,
-    #[serde(default)]
     pub aspect: Option<String>,
     #[serde(default)]
     pub person: Option<String>,
@@ -83,6 +81,12 @@ pub struct Segment {
     pub case_: Option<String>,
     #[serde(default)]
     pub dependency_rel: Option<String>,
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub derived_noun_type: Option<String>,
+    #[serde(default)]
+    pub state: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

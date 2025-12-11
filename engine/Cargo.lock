@@ -67,6 +67,7 @@ dependencies = [
  "search",
  "serde",
  "serde_json",
+ "sqlx",
  "store",
  "structopt",
  "tempfile",

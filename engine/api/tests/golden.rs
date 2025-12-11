@@ -26,7 +26,6 @@ async fn golden_search_annotation_connection() {
             verb_form: None,
             voice: None,
             mood: None,
-            tense: None,
             aspect: None,
             person: None,
             number: None,

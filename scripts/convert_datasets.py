@@ -7,7 +7,33 @@ from typing import Dict, List, Tuple
 
 MASAQ_PATH = Path("datasets/MASAQ.csv")
 QC_PATH = Path("datasets/quranic-corpus-morphology-0.4.txt")
-OUTPUT_PATH = Path("combined.jsonl")
+QURAN_CLEAN_PATH = Path("datasets/quran-clean.txt")
+OUTPUT_PATH = Path("datasets/combined.jsonl")
+
+
+def load_quran_clean() -> list:
+    if not QURAN_CLEAN_PATH.exists():
+        raise FileNotFoundError(f"Missing {QURAN_CLEAN_PATH}")
+    with QURAN_CLEAN_PATH.open(encoding="utf-8") as f:
+        return [line.strip() for line in f if line.strip()]
+
+# Simple Buckwalter -> Arabic mapping for common characters.
+BUCKWALTER_MAP = str.maketrans({
+    "O": "ا", "I": "إ", "A": "أ", "G": "ء", "'": "ء", "|": "آ", "p": "ة", "t": "ت",
+    "{": "أ", "}": "ى", "b": "ب", "P": "ب", "v": "ث", "j": "ج", "H": "ح", "x": "خ",
+    "d": "د", "*": "ذ", "r": "ر", "z": "ز", "s": "س", "$": "ش", "S": "ص", "D": "ض",
+    "T": "ط", "Z": "ظ", "E": "ع", "g": "غ", "_": "ـ", "f": "ف", "q": "ق", "k": "ك",
+    "l": "ل", "m": "م", "n": "ن", "h": "ه", "w": "و", "Y": "ي", "y": "ي", " ": " ",
+    "+": "َ", "^": "ً", "F": "ً", "K": "ٍ", "N": "ٌ", "o": "ُ", "u": "ُ", "i": "ِ",
+    "a": "َ", "~": "ّ", "0": "٠", "1": "١", "2": "٢", "3": "٣", "4": "٤", "5": "٥",
+    "6": "٦", "7": "٧", "8": "٨", "9": "٩",
+})
+
+
+def to_arabic(text: str) -> str:
+    if not text:
+        return text
+    return text.translate(BUCKWALTER_MAP)
 
 
 def clean(s: str) -> str:
@@ -165,6 +191,9 @@ def parse_qc() -> Dict[Tuple[int, int, int], Tuple[str, List[dict]]]:
 
 
 def merge_and_write(masaq, qc):
+    verse_texts = load_quran_clean()
+    if len(verse_texts) < 6236:
+        print(f"Warning: quran-clean.txt has only {len(verse_texts)} lines; expected 6236.")
     verses: Dict[Tuple[int, int], Dict[int, Tuple[str, List[dict]]]] = defaultdict(dict)
     all_keys = set((s, a) for (s, a, _) in masaq.keys()) | set((s, a) for (s, a, _) in qc.keys())
 
@@ -178,22 +207,68 @@ def merge_and_write(masaq, qc):
             elif (s, a, w) in qc:
                 verses[(s, a)][w] = qc[(s, a, w)]
 
+    verse_counter = 0
     with OUTPUT_PATH.open("w", encoding="utf-8") as out:
         for (s, a), toks in sorted(verses.items()):
             token_list = []
-            for w, (form, segments) in sorted(toks.items()):
+            clean_text = verse_texts[verse_counter] if verse_counter < len(verse_texts) else ""
+            clean_words = clean_text.split()
+            max_w = max(toks.keys()) if toks else 0
+
+            for idx in range(1, max_w + 1):
+                form, segments = toks.get(idx, ("", []))
+                if idx - 1 < len(clean_words):
+                    token_form = clean_words[idx - 1]
+                else:
+                    token_form = to_arabic(form) or form
+
+                norm_segments = []
+                for seg in segments:
+                    seg_copy = dict(seg)
+                    if seg_copy.get("form"):
+                        seg_copy["form"] = to_arabic(seg_copy["form"])
+                    if seg_copy.get("lemma"):
+                        seg_copy["lemma"] = to_arabic(seg_copy["lemma"])
+                    if seg_copy.get("root"):
+                        seg_copy["root"] = to_arabic(seg_copy["root"])
+                    norm_segments.append(seg_copy)
+
+                # If no segments, still emit token to preserve verse shape.
+                if not norm_segments:
+                    norm_segments.append(
+                        {
+                            "type": "Stem",
+                            "form": token_form,
+                            "root": None,
+                            "lemma": None,
+                            "pattern": None,
+                            "pos": None,
+                            "verb_form": None,
+                            "voice": None,
+                            "mood": None,
+                            "aspect": None,
+                            "person": None,
+                            "number": None,
+                            "gender": None,
+                            "case": None,
+                            "dependency_rel": None,
+                            "role": None,
+                        }
+                    )
+
                 token_list.append(
                     {
-                        "form": form,
-                        "segments": segments,
+                        "form": token_form,
+                        "segments": norm_segments,
                     }
                 )
             record = {
                 "surah": {"number": s, "name": None},
                 "ayah": a,
-                "text": None,
+                "text": clean_text if clean_text else None,
                 "tokens": token_list,
             }
+            verse_counter += 1
             out.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 

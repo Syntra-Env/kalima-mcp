@@ -12,7 +12,9 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(sqlite3:*)",
-      "Bash(engine/target/release/kalima-cli.exe:*)"
+      "Bash(engine/target/release/kalima-cli.exe:*)",
+      "Bash(python3:*)",
+      "Bash(python -m json.tool:*)"
     ],
     "deny": [],
     "ask": []

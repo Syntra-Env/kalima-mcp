@@ -50,7 +50,8 @@ pub async fn start_server_with_config(config: ServerConfig) {
     );
 
     // Seed with a tiny doc so the API has something to return (dev only).
-    seed_demo(&storage, &search).await.expect("seed");
+    // DISABLED: We now have a full database, so demo seed is not needed and causes duplicates
+    // seed_demo(&storage, &search).await.expect("seed");
 
     let state = AppState { storage, search };
 
@@ -147,13 +148,15 @@ async fn seed_demo(storage: &SqliteStorage, search: &TantivyIndex) -> Result<(),
             verb_form: None,
             voice: None,
             mood: None,
-            tense: None,
             aspect: None,
             person: None,
             number: None,
             gender: None,
             case_: Some("gen".into()),
             dependency_rel: None,
+            role: None,
+            derived_noun_type: None,
+            state: None,
         }],
         annotations: vec![],
     };

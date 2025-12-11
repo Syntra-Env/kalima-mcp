@@ -87,20 +87,8 @@ impl SqliteStorage {
         .await
         .map_err(|e| EngineError::Storage(e.to_string()))?;
 
-        // Upsert verse text if present
-        sqlx::query(
-            r#"
-            INSERT INTO verse_texts (surah_number, ayah_number, text)
-            VALUES (?1, ?2, ?3)
-            ON CONFLICT(surah_number, ayah_number) DO UPDATE SET text=excluded.text;
-            "#,
-        )
-        .bind(surah_num as i64)
-        .bind(ayah_num as i64)
-        .bind(&doc.text)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| EngineError::Storage(e.to_string()))?;
+        // Note: verse text is managed by the caller (ingest.rs) to avoid overwriting
+        // with token text. The ingest process stores complete verse text separately.
 
         // Upsert token row
         let token_uid = format!("{}:{}:{}", surah_num, ayah_num, doc.token_index);
@@ -126,9 +114,9 @@ impl SqliteStorage {
                 r#"
                 INSERT INTO segments (
                     id, token_id, type, form, root, lemma, pattern, pos, verb_form,
-                    voice, mood, tense, aspect, person, number, gender, case_value, dependency_rel
+                    voice, mood, aspect, person, number, gender, case_value, dependency_rel, role, derived_noun_type, state
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
                 ON CONFLICT(id) DO UPDATE SET
                     token_id=excluded.token_id,
                     type=excluded.type,
@@ -140,13 +128,15 @@ impl SqliteStorage {
                     verb_form=excluded.verb_form,
                     voice=excluded.voice,
                     mood=excluded.mood,
-                    tense=excluded.tense,
                     aspect=excluded.aspect,
                     person=excluded.person,
                     number=excluded.number,
                     gender=excluded.gender,
                     case_value=excluded.case_value,
-                    dependency_rel=excluded.dependency_rel;
+                    dependency_rel=excluded.dependency_rel,
+                    role=excluded.role,
+                    derived_noun_type=excluded.derived_noun_type,
+                    state=excluded.state;
                 "#,
             )
             .bind(&seg.id)
@@ -160,13 +150,15 @@ impl SqliteStorage {
             .bind(seg.verb_form.as_ref())
             .bind(seg.voice.as_ref())
             .bind(seg.mood.as_ref())
-            .bind(seg.tense.as_ref())
             .bind(seg.aspect.as_ref())
             .bind(seg.person.as_ref())
             .bind(seg.number.as_ref())
             .bind(seg.gender.as_ref())
             .bind(seg.case_.as_ref())
             .bind(seg.dependency_rel.as_ref())
+            .bind(seg.role.as_ref())
+            .bind(seg.derived_noun_type.as_ref())
+            .bind(seg.state.as_ref())
             .execute(&self.pool)
             .await
             .map_err(|e| EngineError::Storage(e.to_string()))?;
@@ -442,7 +434,7 @@ impl SqliteStorage {
             r#"
             SELECT t.id as token_id, t.token_index, t.text as token_text,
                    s.id, s.type, s.form, s.root, s.lemma, s.pattern, s.pos,
-                   s.verb_form, s.voice, s.mood, s.tense, s.aspect, s.person,
+                   s.verb_form, s.voice, s.mood, s.aspect, s.person,
                    s.number, s.gender, s.case_value, s.dependency_rel
             FROM tokens t
             LEFT JOIN segments s ON s.token_id = t.id
@@ -486,7 +478,6 @@ impl SqliteStorage {
                         "verb_form": row.try_get::<Option<String>, _>("verb_form").unwrap_or(None),
                         "voice": row.try_get::<Option<String>, _>("voice").unwrap_or(None),
                         "mood": row.try_get::<Option<String>, _>("mood").unwrap_or(None),
-                        "tense": row.try_get::<Option<String>, _>("tense").unwrap_or(None),
                         "aspect": row.try_get::<Option<String>, _>("aspect").unwrap_or(None),
                         "person": row.try_get::<Option<String>, _>("person").unwrap_or(None),
                         "number": row.try_get::<Option<String>, _>("number").unwrap_or(None),
@@ -507,14 +498,17 @@ impl SqliteStorage {
         tokens.sort_by_key(|(idx, _)| *idx);
         let tokens_array: Vec<_> = tokens.into_iter().map(|(_, token)| token).collect();
 
-        // Get verse text - use the longest token text (usually the full verse)
-        // or fall back to verse_texts table
-        let verse_text = tokens_array
-            .iter()
-            .filter_map(|t| t.get("text").and_then(|v| v.as_str()))
-            .max_by_key(|s| s.len())
-            .map(|s| s.to_string())
-            .or(text)
+        // Prefer the stored verse text when present; otherwise fall back to the longest token text.
+        let verse_text = text
+            .clone()
+            .filter(|t| !t.is_empty())
+            .or_else(|| {
+                tokens_array
+                    .iter()
+                    .filter_map(|t| t.get("text").and_then(|v| v.as_str()))
+                    .max_by_key(|s| s.len())
+                    .map(|s| s.to_string())
+            })
             .unwrap_or_default();
 
         Ok(Some(serde_json::json!({
@@ -595,7 +589,7 @@ impl SqliteStorage {
         let rows = sqlx::query(
             r#"
             SELECT s.id, s.type, s.form, s.root, s.lemma, s.pattern, s.pos,
-                   s.verb_form, s.voice, s.mood, s.tense, s.aspect, s.person,
+                   s.verb_form, s.voice, s.mood, s.aspect, s.person,
                    s.number, s.gender, s.case_value, s.dependency_rel,
                    t.token_index, t.text as token_text
             FROM segments s
@@ -624,7 +618,6 @@ impl SqliteStorage {
                     "verb_form": r.try_get::<Option<String>, _>("verb_form").unwrap_or(None),
                     "voice": r.try_get::<Option<String>, _>("voice").unwrap_or(None),
                     "mood": r.try_get::<Option<String>, _>("mood").unwrap_or(None),
-                    "tense": r.try_get::<Option<String>, _>("tense").unwrap_or(None),
                     "aspect": r.try_get::<Option<String>, _>("aspect").unwrap_or(None),
                     "person": r.try_get::<Option<String>, _>("person").unwrap_or(None),
                     "number": r.try_get::<Option<String>, _>("number").unwrap_or(None),
@@ -632,7 +625,10 @@ impl SqliteStorage {
                     "case": r.try_get::<Option<String>, _>("case_value").unwrap_or(None),
                     "dependency_rel": r.try_get::<Option<String>, _>("dependency_rel").unwrap_or(None),
                     "token_index": r.try_get::<i64, _>("token_index").unwrap_or(0),
-                    "text": r.try_get::<String, _>("token_text").unwrap_or_default()
+                    "word_index": r.try_get::<i64, _>("token_index").unwrap_or(0) + 1,
+                    // Prefer the segment form for morphology display; keep token text separately for context.
+                    "text": r.try_get::<String, _>("form").unwrap_or_default(),
+                    "token_text": r.try_get::<String, _>("token_text").unwrap_or_default()
                 })
             })
             .collect())
@@ -777,7 +773,7 @@ impl StorageBackend for SqliteStorage {
         let text: String = token.try_get("text").map_err(|e| EngineError::Storage(e.to_string()))?;
 
         let seg_rows = sqlx::query(
-            r#"SELECT id, type, form, root, lemma, pattern, pos, verb_form, voice, mood, tense, aspect, person, number, gender, case_value, dependency_rel
+            r#"SELECT id, type, form, root, lemma, pattern, pos, verb_form, voice, mood, aspect, person, number, gender, case_value, dependency_rel, role, derived_noun_type, state
                 FROM segments WHERE token_id = ?1"#,
         )
         .bind(id)
@@ -798,13 +794,15 @@ impl StorageBackend for SqliteStorage {
                 verb_form: r.try_get::<Option<String>, _>("verb_form").unwrap_or(None),
                 voice: r.try_get::<Option<String>, _>("voice").unwrap_or(None),
                 mood: r.try_get::<Option<String>, _>("mood").unwrap_or(None),
-                tense: r.try_get::<Option<String>, _>("tense").unwrap_or(None),
                 aspect: r.try_get::<Option<String>, _>("aspect").unwrap_or(None),
                 person: r.try_get::<Option<String>, _>("person").unwrap_or(None),
                 number: r.try_get::<Option<String>, _>("number").unwrap_or(None),
                 gender: r.try_get::<Option<String>, _>("gender").unwrap_or(None),
                 case_: r.try_get::<Option<String>, _>("case_value").unwrap_or(None),
                 dependency_rel: r.try_get::<Option<String>, _>("dependency_rel").unwrap_or(None),
+                role: r.try_get::<Option<String>, _>("role").unwrap_or(None),
+                derived_noun_type: r.try_get::<Option<String>, _>("derived_noun_type").unwrap_or(None),
+                state: r.try_get::<Option<String>, _>("state").unwrap_or(None),
             });
         }
 
@@ -872,13 +870,15 @@ CREATE TABLE IF NOT EXISTS segments (
     verb_form TEXT,
     voice TEXT,
     mood TEXT,
-    tense TEXT,
     aspect TEXT,
     person TEXT,
     number TEXT,
     gender TEXT,
     case_value TEXT,
-    dependency_rel TEXT
+    dependency_rel TEXT,
+    role TEXT,
+    derived_noun_type TEXT,
+    state TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_segments_token ON segments(token_id);
