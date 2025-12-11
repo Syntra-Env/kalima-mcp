@@ -92,10 +92,14 @@ def build_combined_jsonl(quranic_csv, quran_text, output_file):
 
     print(f"Building combined.jsonl for {len(verses_data)} verses...")
 
+    # Bismillah pattern to detect and strip (extract from first line which is 1:1)
+    BISMILLAH = verse_texts[0] if verse_texts else 'بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ'
+
     # Surah metadata (names to be added manually later)
     # For now, just use numbers
 
     verse_counter = 0
+    normalized_count = 0
     with open(output_file, 'w', encoding='utf-8') as out:
         # Iterate through surahs and ayahs in order
         for surah in range(1, 115):  # 114 surahs
@@ -132,6 +136,15 @@ def build_combined_jsonl(quranic_csv, quran_text, output_file):
                     }
                     tokens.append(token)
 
+                # Normalize verse text: strip Bismillah if present in text but not in tokens
+                if text and text.startswith(BISMILLAH):
+                    # Check if first token matches Bismillah start
+                    first_token_form = tokens[0]['form'] if tokens else ''
+                    if not first_token_form.startswith('بِسْمِ'):
+                        # Bismillah is in text but not in tokens, strip it
+                        text = text[len(BISMILLAH):].strip()
+                        normalized_count += 1
+
                 # Build verse entry
                 verse_entry = {
                     'surah': {
@@ -147,6 +160,7 @@ def build_combined_jsonl(quranic_csv, quran_text, output_file):
                 out.write(json.dumps(verse_entry, ensure_ascii=False) + '\n')
 
     print(f"[OK] Written {verse_counter} verses to {output_file}")
+    print(f"[OK] Normalized {normalized_count} verses (stripped Bismillah from text)")
 
 def main():
     # Paths
