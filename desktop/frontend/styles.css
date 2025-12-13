@@ -226,3 +226,66 @@ body {
     60% { content: '..'; }
     80%, 100% { content: '...'; }
 }
+
+/* Interactive verse display */
+.verse-container {
+    margin-bottom: 1.5rem;
+}
+
+.verse-ref-header {
+    color: #4ec9b0;
+    font-family: 'Consolas', 'Monaco', monospace;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.verse-content {
+    font-family: 'Scheherazade New', 'Traditional Arabic', 'Arial', sans-serif;
+    font-size: 1.5rem;
+    line-height: 2.2;
+    direction: rtl;
+    text-align: right;
+}
+
+.token {
+    display: inline;
+    cursor: pointer;
+    padding: 0.1rem 0.2rem;
+    border-radius: 3px;
+    transition: background-color 0.15s ease, color 0.15s ease;
+    position: relative;
+}
+
+.token:hover {
+    background-color: rgba(78, 201, 176, 0.15);
+    color: #4ec9b0;
+}
+
+.token.editing {
+    background-color: rgba(78, 201, 176, 0.25);
+    outline: 1px solid #4ec9b0;
+}
+
+.token.annotated {
+    border-bottom: 1px dotted #89d185;
+}
+
+/* Inline editor */
+.inline-editor {
+    display: inline;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid #4ec9b0;
+    outline: none;
+    color: #d4d4d4;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 1.2rem;
+    direction: ltr;
+    text-align: left;
+    padding: 0.1rem 0.2rem;
+    width: auto;
+}
+
+.annotation-text {
+    display: inline;
+}

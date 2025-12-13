@@ -8,6 +8,7 @@ use common::{EngineError, SearchBackend};
 use search::TantivyIndex;
 use store::SqliteStorage;
 use std::sync::Arc;
+use tower_http::cors::{CorsLayer, Any};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Clone)]
@@ -21,10 +22,11 @@ pub async fn start_server() {
 }
 
 pub async fn start_server_with_config(config: ServerConfig) {
-    tracing_subscriber::registry()
+    // Try to initialize tracing, but ignore error if already initialized (e.g., when embedded in Tauri)
+    let _ = tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(&config.log_level))
         .with(tracing_subscriber::fmt::layer())
-        .init();
+        .try_init();
 
     // Validate configuration
     if let Err(e) = config.validate() {
@@ -122,6 +124,12 @@ pub async fn start_server_with_config(config: ServerConfig) {
         .route("/api/tags", get(handlers::research::get_tags))
         .route("/api/tags/:tag_name", get(handlers::research::get_tag).put(handlers::research::update_tag))
         .route("/api/stats", get(handlers::research::get_stats))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any)
+        )
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&config.bind_address)

@@ -14,7 +14,9 @@
       "Bash(sqlite3:*)",
       "Bash(engine/target/release/kalima-cli.exe:*)",
       "Bash(python3:*)",
-      "Bash(python -m json.tool:*)"
+      "Bash(python -m json.tool:*)",
+      "Bash(cargo run:*)",
+      "Bash(cargo tauri dev:*)"
     ],
     "deny": [],
     "ask": []

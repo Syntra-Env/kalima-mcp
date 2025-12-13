@@ -154,9 +154,23 @@ window.addEventListener('DOMContentLoaded', async () => {
     commandInput.focus();
 });
 
-// Keep focus on input
-document.addEventListener('click', () => {
-    commandInput.focus();
+// Handle clicks on tokens for inline editing, otherwise focus command input
+document.addEventListener('click', (e) => {
+    const token = e.target.closest('.token');
+    if (token && !token.classList.contains('editing')) {
+        startInlineEdit(token);
+    } else if (!e.target.closest('.inline-editor')) {
+        commandInput.focus();
+    }
+});
+
+// Handle right-click to toggle between annotation and original text
+document.addEventListener('contextmenu', (e) => {
+    const token = e.target.closest('.token');
+    if (token && !token.classList.contains('editing')) {
+        e.preventDefault();
+        toggleLayer(token);
+    }
 });
 
 // Handle trackpad pinch / two-finger zoom (Ctrl + wheel in Chromium)
@@ -276,23 +290,264 @@ function printOutput(content, type) {
     }
 }
 
+// Toggle between annotation and original Arabic text
+function toggleLayer(tokenElement) {
+    const annotation = tokenElement.dataset.annotation;
+    const originalArabic = tokenElement.dataset.originalText;
+
+    // Only toggle if there's an annotation
+    if (!annotation || !originalArabic) return;
+
+    // Check current state by looking at child elements
+    const isShowingAnnotation = tokenElement.querySelector('.annotation-text');
+
+    if (isShowingAnnotation) {
+        // Switch to Arabic
+        tokenElement.textContent = originalArabic;
+    } else {
+        // Switch to annotation
+        const wrapper = document.createElement('span');
+        wrapper.className = 'annotation-text';
+        wrapper.dir = 'ltr';
+        wrapper.textContent = annotation;
+        tokenElement.textContent = '';
+        tokenElement.appendChild(wrapper);
+    }
+}
+
+// Inline annotation editing
+function startInlineEdit(tokenElement) {
+    // Prevent multiple edits at once
+    const existing = document.querySelector('.inline-editor');
+    if (existing) {
+        cancelInlineEdit(existing);
+    }
+
+    // Get original Arabic text (might be stored in dataset if already annotated)
+    const originalArabic = tokenElement.dataset.originalText || tokenElement.textContent;
+    const currentAnnotation = tokenElement.dataset.annotation || '';
+    const surah = tokenElement.dataset.surah;
+    const ayah = tokenElement.dataset.ayah;
+    const index = tokenElement.dataset.index;
+
+    // Create inline input
+    const input = document.createElement('input');
+    input.className = 'inline-editor';
+    input.type = 'text';
+    input.value = currentAnnotation; // Load existing annotation if present
+    input.size = 1; // Start small
+    input.dataset.originalArabic = originalArabic;
+    input.dataset.surah = surah;
+    input.dataset.ayah = ayah;
+    input.dataset.index = index;
+
+    // Mark token as editing
+    tokenElement.classList.add('editing');
+
+    // Replace token text with input
+    tokenElement.textContent = '';
+    tokenElement.appendChild(input);
+
+    // Auto-resize input as user types
+    function resizeInput() {
+        input.size = Math.max(1, input.value.length || 1);
+    }
+    input.addEventListener('input', resizeInput);
+    resizeInput();
+
+    // Focus input
+    input.focus();
+
+    // Handle Enter to save, Escape to cancel
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            saveInlineEdit(input, tokenElement);
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            cancelInlineEdit(input, tokenElement);
+        }
+    });
+
+    // Handle blur (clicking outside)
+    input.addEventListener('blur', () => {
+        setTimeout(() => saveInlineEdit(input, tokenElement), 100);
+    });
+}
+
+async function saveInlineEdit(input, tokenElement) {
+    if (!input || !input.parentElement) return;
+
+    const annotation = input.value.trim();
+    const originalArabic = input.dataset.originalArabic;
+    const surah = input.dataset.surah;
+    const ayah = input.dataset.ayah;
+    const index = input.dataset.index;
+    const targetId = `${surah}:${ayah}:${index}`;
+
+    tokenElement.classList.remove('editing');
+
+    if (annotation) {
+        // Save annotation to backend via API
+        try {
+            const response = await fetch('http://localhost:8080/annotations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    target_id: targetId,
+                    layer: 'inline',
+                    payload: { annotation }
+                })
+            });
+            const data = await response.json();
+            if (data.id) {
+                tokenElement.dataset.annotationId = data.id;
+            }
+        } catch (err) {
+            console.error('Failed to save annotation:', err);
+        }
+
+        // Show annotation (substitution) wrapped for RTL handling
+        const wrapper = document.createElement('span');
+        wrapper.className = 'annotation-text';
+        wrapper.dir = 'ltr';
+        wrapper.textContent = annotation;
+
+        tokenElement.textContent = '';
+        tokenElement.appendChild(wrapper);
+        tokenElement.classList.add('annotated');
+        tokenElement.dataset.annotation = annotation;
+        tokenElement.dataset.originalText = originalArabic;
+
+        console.log(`Saved annotation for ${targetId}: "${annotation}"`);
+    } else {
+        // Delete annotation from backend if it exists
+        const annotationId = tokenElement.dataset.annotationId;
+        if (annotationId) {
+            try {
+                await fetch(`http://localhost:8080/annotations/${annotationId}`, {
+                    method: 'DELETE'
+                });
+            } catch (err) {
+                console.error('Failed to delete annotation:', err);
+            }
+        }
+
+        // Empty input - restore original
+        tokenElement.textContent = originalArabic;
+        tokenElement.classList.remove('annotated');
+        delete tokenElement.dataset.annotation;
+        delete tokenElement.dataset.originalText;
+        delete tokenElement.dataset.annotationId;
+        console.log(`Deleted annotation for ${targetId}`);
+    }
+}
+
+function cancelInlineEdit(input, tokenElement) {
+    if (!input || !tokenElement) return;
+
+    const originalArabic = input.dataset.originalArabic;
+    const currentAnnotation = tokenElement.dataset.annotation;
+
+    tokenElement.classList.remove('editing');
+
+    // Restore to whatever state it was before editing
+    if (currentAnnotation) {
+        const wrapper = document.createElement('span');
+        wrapper.className = 'annotation-text';
+        wrapper.dir = 'ltr';
+        wrapper.textContent = currentAnnotation;
+        tokenElement.textContent = '';
+        tokenElement.appendChild(wrapper);
+    } else {
+        tokenElement.textContent = originalArabic;
+    }
+}
+
 function printVerse(verse) {
-    const div = document.createElement('div');
-    div.className = 'verse-ref';
+    const container = document.createElement('div');
+    container.className = 'verse-container';
 
-    const ref = document.createElement('span');
-    ref.className = 'ref-num';
-    ref.textContent = `${verse.surah}:${verse.ayah} `;
+    const ref = document.createElement('div');
+    ref.className = 'verse-ref-header';
+    ref.textContent = `${verse.surah}:${verse.ayah}`;
 
-    const arabic = document.createElement('span');
-    arabic.className = 'arabic';
-    arabic.textContent = verse.text;
+    const verseContent = document.createElement('div');
+    verseContent.className = 'verse-content';
+    verseContent.dir = 'rtl';
 
-    div.appendChild(ref);
-    div.appendChild(arabic);
-    output.appendChild(div);
+    // If tokens are available, render them individually as clickable elements
+    if (verse.tokens && verse.tokens.length > 0) {
+        verse.tokens.forEach((tokenText, index) => {
+            const tokenSpan = document.createElement('span');
+            tokenSpan.className = 'token';
+            tokenSpan.dataset.surah = verse.surah;
+            tokenSpan.dataset.ayah = verse.ayah;
+            tokenSpan.dataset.index = index;
+            tokenSpan.textContent = tokenText;
+
+            verseContent.appendChild(tokenSpan);
+
+            // Add space after each token (except last)
+            if (index < verse.tokens.length - 1) {
+                verseContent.appendChild(document.createTextNode(' '));
+            }
+        });
+    } else {
+        // Fallback: render full text if no tokens
+        const arabic = document.createElement('span');
+        arabic.className = 'arabic';
+        arabic.textContent = verse.text;
+        verseContent.appendChild(arabic);
+    }
+
+    container.appendChild(ref);
+    container.appendChild(verseContent);
+    output.appendChild(container);
+
+    // Load existing annotations for this verse (pass container to scope the search)
+    loadAnnotations(verse.surah, verse.ayah, container);
 
     scrollToBottom();
+}
+
+// Load existing annotations from backend
+async function loadAnnotations(surah, ayah, container) {
+    try {
+        const response = await fetch(`http://localhost:8080/annotations?layer=inline`);
+        const annotations = await response.json();
+
+        // Filter annotations for this verse
+        annotations.forEach(annotation => {
+            const match = annotation.target_id.match(/^(\d+):(\d+):(\d+)$/);
+            if (match && parseInt(match[1]) === surah && parseInt(match[2]) === ayah) {
+                const tokenIndex = parseInt(match[3]);
+                const tokenElement = container.querySelector(
+                    `.token[data-surah="${surah}"][data-ayah="${ayah}"][data-index="${tokenIndex}"]`
+                );
+
+                if (tokenElement && annotation.payload && annotation.payload.annotation) {
+                    const originalArabic = tokenElement.textContent;
+                    const annotationText = annotation.payload.annotation;
+
+                    // Apply annotation
+                    const wrapper = document.createElement('span');
+                    wrapper.className = 'annotation-text';
+                    wrapper.dir = 'ltr';
+                    wrapper.textContent = annotationText;
+
+                    tokenElement.textContent = '';
+                    tokenElement.appendChild(wrapper);
+                    tokenElement.classList.add('annotated');
+                    tokenElement.dataset.annotation = annotationText;
+                    tokenElement.dataset.originalText = originalArabic;
+                    tokenElement.dataset.annotationId = annotation.id;
+                }
+            }
+        });
+    } catch (err) {
+        console.error('Failed to load annotations:', err);
+    }
 }
 
 function printAnalysis(analysis) {

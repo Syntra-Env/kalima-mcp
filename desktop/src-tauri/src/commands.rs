@@ -874,11 +874,17 @@ fn read_letter(_state: &AppState, number: i64) -> Result<CommandOutput> {
 }
 
 fn render_verse(verse: &Verse) -> CommandOutput {
+    let token_texts: Vec<String> = verse
+        .tokens
+        .iter()
+        .map(|t| t.text.clone().unwrap_or_default())
+        .collect();
+
     CommandOutput::Verse(VerseOutput {
         surah: verse.surah.number,
         ayah: verse.ayah,
         text: verse.text.clone(),
-        tokens: None,
+        tokens: if token_texts.is_empty() { None } else { Some(token_texts) },
         legend: None,
     })
 }

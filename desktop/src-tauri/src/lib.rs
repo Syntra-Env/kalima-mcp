@@ -39,18 +39,35 @@ fn configure_backend_paths() {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
     let resolve = |name: &str| -> PathBuf {
-        let candidates = [
+        let mut candidates = vec![
             exe_dir.join(name),
             exe_dir.join("resources").join(name),
+        ];
+
+        // For dev mode: go up from target/debug to project root
+        // exe_dir is typically: C:\...\desktop\src-tauri\target\debug
+        // We need to go up 3 levels to get to desktop, then up 1 more to project root
+        if let Some(parent) = exe_dir.parent() {
+            if let Some(grandparent) = parent.parent() {
+                if let Some(great_grandparent) = grandparent.parent() {
+                    // From desktop\src-tauri -> desktop
+                    candidates.push(great_grandparent.join("..").join(name));
+                    // Also try from desktop\src-tauri directly
+                    candidates.push(grandparent.join("..").join("..").join(name));
+                }
+            }
+        }
+
+        candidates.push(
             std::env::current_dir()
                 .unwrap_or_else(|_| PathBuf::from("."))
                 .join(name),
-            PathBuf::from(name),
-        ];
+        );
+        candidates.push(PathBuf::from(name));
 
         for path in candidates {
             if path.exists() {
-                return path;
+                return path.canonicalize().unwrap_or(path);
             }
         }
 

@@ -28,4 +28,4 @@ sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "macros"
 tantivy = "0.22"
 tempfile = "3"
 structopt = "0.3"
-tower-http = { version = "0.5", features = ["fs"] }
+tower-http = { version = "0.5", features = ["fs", "cors"] }
