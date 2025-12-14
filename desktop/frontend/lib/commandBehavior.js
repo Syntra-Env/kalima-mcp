@@ -1,6 +1,6 @@
 import { normalizeCommand } from './history.js';
 
-const NO_CLEAR_COMMANDS = new Set(['inspect']);
+const NO_CLEAR_COMMANDS = new Set([]);
 
 export function getCommandName(line) {
   const trimmed = normalizeCommand(line);
@@ -14,4 +14,3 @@ export function shouldClearForCommand(line) {
   if (cmd === 'history') return true;
   return !NO_CLEAR_COMMANDS.has(cmd);
 }
-

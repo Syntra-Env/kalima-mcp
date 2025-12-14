@@ -15,9 +15,17 @@ const LAYER_ALIASES = {
   'verb form': 9,
   verb: 9,
   voice: 10,
+  mood: 16,
+  aspect: 17,
   dependency: 11,
   dep: 11,
   role: 12,
+  'segment type': 14,
+  'segment form': 15,
+  form: 15,
+  'derived noun type': 18,
+  derived: 18,
+  state: 19,
   annotations: 13,
   annotation: 13,
   notes: 13,
@@ -42,7 +50,7 @@ export function handleLayerCommand(commandLine, { clearOutput, printLine, prompt
     });
     printLine?.('', 'info');
     printLine?.('Usage:', 'info');
-    printLine?.('  layer <number>     - Switch to layer by number (0-13)', 'info');
+    printLine?.(`  layer <number>     - Switch to layer by number (0-${LAYERS.length - 1})`, 'info');
     printLine?.('  layer <name>       - Switch to layer by name', 'info');
     printLine?.('  layer next         - Next layer', 'info');
     printLine?.('  layer prev         - Previous layer', 'info');
@@ -90,4 +98,3 @@ export function handleLayerCommand(commandLine, { clearOutput, printLine, prompt
     printLine?.('Use "layer" to see available layers', 'info');
   }
 }
-

@@ -4,12 +4,12 @@ mod types;
 
 use anyhow::{anyhow, Result};
 use serde_json::Value;
-use std::{
-    collections::{HashMap, HashSet},
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use http::{fetch_dependency, fetch_morphology, fetch_surah, fetch_surah_list, fetch_verse};
+#[cfg(test)]
+use std::collections::{HashMap, HashSet};
+
+use http::{fetch_surah, fetch_surah_list, fetch_verse};
 use state::{
     surah_name_or_fallback, AppState, CommandResponse, Mode, APP_STATE,
 };
@@ -201,20 +201,6 @@ fn handle_command(state: &mut AppState, line: &str) -> Result<CommandResponse> {
     let rest = parts.collect::<Vec<_>>().join(" ");
 
     match cmd {
-        "inspect" => {
-            if rest.is_empty() {
-                resp(inspect_current(state)?)
-            } else if rest.contains(':') {
-                let (s, a) = parse_verse_ref(&rest)?;
-                let verse = fetch_verse(state, s, a)?;
-                state.current_verse = Some(verse.clone());
-                resp(inspect_specific(state, &verse)?)
-            } else {
-                Err(anyhow!(
-                    "usage: inspect [<surah:ayah>] (single command shows all available linguistic data)"
-                ))
-            }
-        }
         "read" => {
             state.mode = Mode::Read;
             let trimmed = rest.trim();
@@ -241,7 +227,7 @@ fn handle_command(state: &mut AppState, line: &str) -> Result<CommandResponse> {
 
             let mut args = trimmed.split_whitespace();
             let subtype = args.next().ok_or_else(|| {
-                anyhow!("usage: read <book|chapters|chapter|verse|sentence|word|morpheme|letter> [value]")
+                anyhow!("usage: read <chapters|chapter|verse|sentence|word|morpheme|letter> [value]")
             })?;
             let tail = args.collect::<Vec<_>>().join(" ");
             match subtype {
@@ -310,89 +296,6 @@ fn handle_command(state: &mut AppState, line: &str) -> Result<CommandResponse> {
             cmd
         )),
     }
-}
-
-fn inspect_current(state: &AppState) -> Result<CommandOutput> {
-    if let Some(v) = &state.current_verse {
-        inspect_specific(state, v)
-    } else {
-        Err(anyhow!(
-            "No verse in focus. Use 'search <surah:ayah>' first."
-        ))
-    }
-}
-
-fn inspect_specific(state: &AppState, verse: &Verse) -> Result<CommandOutput> {
-    // Try to pull full morphology and dependency data; fall back to verse tokens.
-    let morph_segments =
-        fetch_morphology(state, verse.surah.number, verse.ayah).unwrap_or_default();
-    let dependencies = fetch_dependency(state, verse.surah.number, verse.ayah).unwrap_or_default();
-
-    // Validate morphology coverage based on actual indices present.
-    if morph_segments.is_empty() {
-        anyhow::bail!(
-            "No morphology data for {}:{}; check database ingestion.",
-            verse.surah.number,
-            verse.ayah
-        );
-    }
-
-    let mut raw_indices: Vec<usize> = Vec::new();
-    for seg in &morph_segments {
-        if let Some(idx) = seg
-            .get("word_index")
-            .and_then(Value::as_u64)
-            .map(|v| v as usize)
-        {
-            raw_indices.push(idx);
-        } else if let Some(idx) = seg
-            .get("token_index")
-            .and_then(Value::as_u64)
-            .map(|v| v as usize)
-        {
-            raw_indices.push(idx);
-        }
-    }
-    if raw_indices.is_empty() {
-        anyhow::bail!(
-            "Morphology for {}:{} has no word indices; check dataset.",
-            verse.surah.number,
-            verse.ayah
-        );
-    }
-    let min_idx = *raw_indices.iter().min().unwrap_or(&1);
-    let normalized: HashSet<usize> = raw_indices
-        .iter()
-        .map(|i| if min_idx == 0 { i + 1 } else { *i })
-        .collect();
-    let max_idx = *normalized.iter().max().unwrap_or(&1);
-    let expected_tokens = if verse.tokens.is_empty() {
-        max_idx
-    } else {
-        verse.tokens.len().max(max_idx)
-    };
-    for idx in 1..=expected_tokens {
-        if !normalized.contains(&idx) {
-            anyhow::bail!(
-                "Incomplete morphology for {}:{}; missing word {} of {}.",
-                verse.surah.number,
-                verse.ayah,
-                idx,
-                expected_tokens
-            );
-        }
-    }
-
-    let _tokens = build_analysis_tokens(verse, &morph_segments, &dependencies, false);
-    let tree = build_tree_display(verse, &morph_segments);
-
-    Ok(CommandOutput::Analysis(AnalysisOutput {
-        header: Some("=== Full Linguistic Analysis ===".to_string()),
-        verse_ref: Some(format!("{}:{}", verse.surah.number, verse.ayah)),
-        text: Some(verse.text.clone()),
-        tree: Some(tree),
-        tokens: None,
-    }))
 }
 
 fn render_verse_line(verse: &Verse, interp: Option<Vec<(String, String)>>, mode: Mode) -> String {
@@ -588,7 +491,7 @@ fn read_word(state: &AppState, word_num: i64) -> Result<CommandOutput> {
     let verse = state
         .current_verse
         .as_ref()
-        .ok_or_else(|| anyhow!("No verse in focus. Use 'search <surah:ayah>' first."))?;
+        .ok_or_else(|| anyhow!("No verse in focus. Use 'read <surah:ayah>' first."))?;
 
     let idx = (word_num - 1) as usize;
     let token = verse
@@ -626,7 +529,7 @@ fn read_morpheme(state: &AppState, key: &str) -> Result<CommandOutput> {
     let verse = state
         .current_verse
         .as_ref()
-        .ok_or_else(|| anyhow!("No verse in focus. Use 'search <surah:ayah>' first."))?;
+        .ok_or_else(|| anyhow!("No verse in focus. Use 'read <surah:ayah>' first."))?;
 
     // We do not have distinct morpheme labels; surface what we have so the command still responds.
     let mut lines = Vec::new();
@@ -685,6 +588,7 @@ fn render_verse(verse: &Verse) -> CommandOutput {
     })
 }
 
+#[cfg(test)]
 fn build_analysis_tokens(
     verse: &Verse,
     morphology: &[Value],
@@ -915,6 +819,7 @@ fn build_analysis_tokens(
     consolidate_tokens(tokens)
 }
 
+#[cfg(test)]
 fn consolidate_tokens(tokens: Vec<AnalysisToken>) -> Vec<AnalysisToken> {
     let mut map: HashMap<String, AnalysisToken> = HashMap::new();
     for t in tokens {
@@ -960,6 +865,7 @@ fn consolidate_tokens(tokens: Vec<AnalysisToken>) -> Vec<AnalysisToken> {
     map.into_values().collect()
 }
 
+#[cfg(test)]
 fn pos_long_form(tag: &str) -> String {
     let upper = tag.trim().to_uppercase();
     let long = match upper.as_str() {
@@ -1080,6 +986,7 @@ fn save_interpretation(state: &mut AppState, surah: i64, ayah: i64, text: &str) 
     Ok(())
 }
 
+#[cfg(test)]
 fn build_tree_display(verse: &Verse, segments: &[Value]) -> String {
     #[derive(Default)]
     struct Node {
@@ -1364,7 +1271,10 @@ fn parse_number(s: &str) -> Result<i64> {
 
 fn print_help() -> String {
     let mut help = String::new();
-    help.push_str("=== Kalima CLI Commands ===\n\n");
+    help.push_str(&format!(
+        "=== Kalima CLI v{} ===\n\n",
+        env!("CARGO_PKG_VERSION")
+    ));
     help.push_str("Read (navigate):\n");
     help.push_str("  read chapters             - List all surahs with their Arabic names\n");
     help.push_str("  read chapter <N>          - View a surah\n");
@@ -1380,11 +1290,13 @@ fn print_help() -> String {
     help.push_str("  write <S:A> [text]        - Target a specific ayah and optionally save text\n");
     help.push_str("  write chapter <N>         - View a surah with interpretation slots\n\n");
     help.push_str("  edit <N>                  - Prefill interpretation number N for editing (write mode)\n\n");
-    help.push_str("Inspect Linguistic Details:\n");
-    help.push_str("  inspect                   - Show full linguistic analysis of current verse\n");
-    help.push_str("  inspect <surah:ayah>      - Inspect a specific verse directly\n\n");
+    help.push_str("Layers (UI):\n");
+    help.push_str("  layer                     - Show current layer and list available layers\n");
+    help.push_str("  layer <number|name>       - Switch layer (e.g. 'layer root', 'layer 3')\n");
+    help.push_str("  layer next | prev         - Cycle layers\n\n");
     help.push_str("General:\n");
     help.push_str("  clear                     - Clear the interface output\n");
+    help.push_str("  history                   - Show command history (click to re-run)\n");
     help.push_str("  status                    - Show current base URL and context state\n");
     help.push_str("  legend                    - Show color legend for syntax roles/POS/case\n");
     help.push_str("  help                      - Show this help\n");
@@ -1416,71 +1328,6 @@ mod tests {
     fn parse_number_words_and_digits() {
         assert_eq!(parse_number("12").unwrap(), 12);
         assert_eq!(parse_number("twenty three").unwrap(), 23);
-    }
-
-    #[test]
-    fn inspect_current_uses_morphology_and_dependencies() {
-        let server = httpmock::MockServer::start();
-
-        // Mock morphology and dependency endpoints for 1:1
-        let _morph = server.mock(|when, then| {
-            when.method(httpmock::Method::GET)
-                .path("/api/morphology/1/1");
-            then.status(200).json_body(json!({
-                "surah": 1,
-                "ayah": 1,
-                "morphology": [{
-                    "text": "بِسْمِ",
-                    "pos": "N",
-                    "root": "ب س م",
-                    "form": "basm",
-                    "type": "noun",
-                    "dependency_rel": "obj",
-                    "word_index": 1
-                }]
-            }));
-        });
-
-        let _deps = server.mock(|when, then| {
-            when.method(httpmock::Method::GET)
-                .path("/api/dependency/1/1");
-            then.status(200).json_body(json!({
-                "surah": 1,
-                "ayah": 1,
-                "dependency_tree": [{
-                    "rel_label": "subj",
-                    "word": "الله",
-                    "pos": "N"
-                }]
-            }));
-        });
-
-        let mut state = AppState::new_with_base_url(&server.base_url());
-        state.current_verse = Some(Verse {
-            surah: SurahInfo { number: 1, name: "Al-Fatiha".into() },
-            ayah: 1,
-            text: "بِسْمِ ٱللَّهِ".into(),
-            tokens: vec![Token {
-                text: Some("بِسْمِ".into()),
-                form: Some("بِسْمِ".into()),
-                segments: vec![],
-            }],
-        });
-
-        let output = inspect_current(&state).expect("inspect should succeed");
-        let analysis = match output {
-            CommandOutput::Analysis(a) => a,
-            _ => panic!("expected analysis output"),
-        };
-
-        assert_eq!(analysis.header.as_deref(), Some("=== Full Linguistic Analysis ==="));
-        assert_eq!(analysis.verse_ref.as_deref(), Some("1:1"));
-        assert_eq!(analysis.text.as_deref(), Some("بِسْمِ ٱللَّهِ"));
-
-        assert!(
-            analysis.tree.is_some(),
-            "expected hierarchical tree output to be present"
-        );
     }
 
     #[test]

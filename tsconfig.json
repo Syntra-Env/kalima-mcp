@@ -3,14 +3,13 @@
     "target": "ESNext",
     "module": "CommonJS",
     "moduleResolution": "Node",
-    "types": ["node", "@playwright/test"],
+    "types": ["node"],
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "allowJs": true,
     "skipLibCheck": true
   },
   "include": [
-    "tests/**/*",
-    "playwright.config.ts"
+    "tests/**/*"
   ]
 }

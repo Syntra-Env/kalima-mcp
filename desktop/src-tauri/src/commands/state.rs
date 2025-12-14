@@ -44,21 +44,6 @@ impl AppState {
         }
     }
 
-    #[cfg(test)]
-    pub(super) fn new_with_base_url(base: &str) -> Self {
-        Self {
-            current_verse: None,
-            base_url: base.to_string(),
-            surahs: Vec::new(),
-            interpretations: HashMap::new(),
-            mode: Mode::Read,
-            editing: None,
-            client: reqwest::blocking::Client::builder()
-                .build()
-                .expect("reqwest client"),
-        }
-    }
-
     pub(crate) fn prompt(&self) -> String {
         if let Some((s, a, _)) = self.editing {
             return format!("kalima editing ({}:{}) >", s, a);

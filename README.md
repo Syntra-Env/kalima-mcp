@@ -1,12 +1,14 @@
 # Kalima - Quran Research Platform
 
-High-performance web application for Quranic text analysis, morphological research, and linguistic exploration.
+Tauri desktop application for Quranic text analysis, morphological research, and linguistic exploration.
 
 ## Quick Start
 
 ### Prerequisites
-- Rust 1.70+ ([Install Rust](https://rustup.rs/))
+- Rust 1.77+ ([Install Rust](https://rustup.rs/))
 - Tauri CLI: `cargo install tauri-cli --locked`
+- Node.js (for E2E tests): see `docs/TESTING.md`
+- Python 3 (optional; used for dataset scripts)
 
 ### Desktop App (no browser required)
 
@@ -14,9 +16,12 @@ High-performance web application for Quranic text analysis, morphological resear
 ```bash
 cd Kalima
 
-# Build and run data ingestion (only needed once)
+# Build the combined JSONL corpus (only needed once)
+python scripts/build_combined_jsonl.py
+
+# Ingest data into SQLite + Tantivy (only needed once)
 cd engine
-cargo run --release --bin ingest -- --db ../data/database/kalima.db --index ../data/search-index --input ../datasets/corpus/quran.jsonl
+cargo run -p api --release --bin ingest -- --db ../data/database/kalima.db --index ../data/search-index --input ../datasets/combined.jsonl
 cd ..
 ```
 
@@ -29,9 +34,11 @@ cd ..
 **Development:**
 ```bash
 # Develop with hot-reload
+cd desktop/src-tauri
 cargo tauri dev
 
 # Build new executable
+cd desktop/src-tauri
 cargo tauri build
 cp desktop/src-tauri/target/release/app.exe Kalima.exe
 ```
@@ -47,17 +54,9 @@ The desktop app automatically:
 git clone https://github.com/wwwportal/Kalima.git
 cd Kalima
 
-# Build and copy executable to root
+# Build and run the API server (serves http://localhost:8080 by default)
 cd engine
-cargo build --release --bin kalima-api
-cp target/release/kalima-api.exe ../kalima.exe
-cd ..
-
-# Ingest data (first time only)
-./kalima.exe --help  # (or use: cargo run --bin kalima-ingest from engine/)
-
-# Start server from project root (serves http://localhost:8080)
-./kalima.exe
+cargo run -p api --release
 ```
 
 ## Architecture
@@ -66,7 +65,7 @@ cd ..
   - 2,900 lines across 4 crates
   - 50+ REST endpoints
   - <1s startup, ~50MB memory
-- **Frontend:** Vanilla JavaScript
+- **Frontend:** Vanilla JavaScript (runs in the Tauri WebView)
   - 17 modular files, no build system
   - Layered canvas architecture
 
@@ -131,8 +130,9 @@ sudo systemctl reload nginx
 
 ### Running Tests
 ```bash
-cd engine
-cargo test
+npm run test:unit
+cd desktop/src-tauri && cargo test
+npm run test:e2e
 ```
 
 ### Code Quality

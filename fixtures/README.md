@@ -6,4 +6,4 @@ Place deterministic test assets here.
 - API response fixtures (optional): JSON snapshots under `fixtures/api/` if you want to run API contract tests offline.
 
 Environment:
-- Contract tests default to `http://127.0.0.1:8080`; override with `KALIMA_BASE_URL`.
+- Desktop contract tests will start a local API server automatically (ephemeral port) unless `KALIMA_BASE_URL` is set.

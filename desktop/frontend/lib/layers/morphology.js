@@ -12,6 +12,16 @@ export function createMorphologyCache() {
 export function parseMorphologySegments(segmentViews) {
   const byToken = {};
 
+  // The API may return either:
+  // - SegmentViews: [{ token_index, segments: [...] }, ...]
+  // - Flat segments: [{ token_index, root, ... }, ...]
+  const normalizeIntoSegments = (view) => {
+    if (!view) return [];
+    if (Array.isArray(view.segments)) return view.segments;
+    // Treat the object itself as a single segment (flat format)
+    return [view];
+  };
+
   const rawTokenIndices = (segmentViews || [])
     .map((seg) => seg?.token_index)
     .filter((idx) => idx !== undefined && idx !== null)
@@ -40,7 +50,7 @@ export function parseMorphologySegments(segmentViews) {
       continue;
     }
 
-    const segments = Array.isArray(view?.segments) ? view.segments : [];
+    const segments = normalizeIntoSegments(view);
     if (!byToken[tokenIndex]) byToken[tokenIndex] = [];
     byToken[tokenIndex].push(...segments);
   }
@@ -67,4 +77,3 @@ export async function fetchMorphologyForVerse({ surah, ayah, cache, baseUrl } = 
   if (cache) cache.set(cacheKey, byToken);
   return byToken;
 }
-

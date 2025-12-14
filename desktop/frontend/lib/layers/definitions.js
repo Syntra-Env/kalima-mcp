@@ -25,7 +25,7 @@ export const LAYERS = [
   { id: 2, name: 'Lemma', field: 'lemma', colorMap: null },
   { id: 3, name: 'Part of Speech', field: 'pos', colorMap: POS_COLORS },
   { id: 4, name: 'Pattern', field: 'pattern', colorMap: null },
-  { id: 5, name: 'Case', field: 'case_', colorMap: CASE_COLORS },
+  { id: 5, name: 'Case', field: 'case', colorMap: CASE_COLORS },
   { id: 6, name: 'Gender', field: 'gender', colorMap: GENDER_COLORS },
   { id: 7, name: 'Number', field: 'number', colorMap: NUMBER_COLORS },
   { id: 8, name: 'Person', field: 'person', colorMap: PERSON_COLORS },
@@ -34,5 +34,12 @@ export const LAYERS = [
   { id: 11, name: 'Dependency', field: 'dependency_rel', colorMap: null },
   { id: 12, name: 'Role', field: 'role', colorMap: null },
   { id: 13, name: 'Annotations', field: null, colorMap: null },
-];
 
+  // Extended morphology layers (keep core indices stable, append only).
+  { id: 14, name: 'Segment Type', field: 'type', colorMap: null },
+  { id: 15, name: 'Segment Form', field: 'form', colorMap: null },
+  { id: 16, name: 'Mood', field: 'mood', colorMap: null },
+  { id: 17, name: 'Aspect', field: 'aspect', colorMap: null },
+  { id: 18, name: 'Derived Noun Type', field: 'derived_noun_type', colorMap: null },
+  { id: 19, name: 'State', field: 'state', colorMap: null },
+];

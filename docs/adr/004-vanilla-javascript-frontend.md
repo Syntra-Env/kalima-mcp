@@ -38,8 +38,8 @@ We chose to build the frontend using vanilla JavaScript, HTML5, and CSS3 without
 
 ### Dependencies
 - **Zero npm packages** for frontend runtime
-- **Only dev dependencies**: Playwright for E2E tests, http-server for local testing
-- **No lock files**: No package.json.lock to manage
+- **Dev dependencies**: WebdriverIO for Tauri E2E tests (see ADR 006), http-server for local testing
+- **Lock file committed**: `package-lock.json` is tracked for reproducible installs
 - **Supply chain safety**: Minimal attack surface
 
 ## Consequences
@@ -163,5 +163,5 @@ Or simply continue with vanilla JS - GitHub (1M+ LOC) uses jQuery, not React.
 
 - [desktop/frontend/app.js](../../desktop/frontend/app.js) - Main application
 - [desktop/frontend/styles.css](../../desktop/frontend/styles.css) - Terminal theme
-- [tests/e2e/gui/interaction.spec.ts](../../tests/e2e/gui/interaction.spec.ts) - E2E tests
+- [tests/e2e-tauri/specs/cli-smoke.e2e.js](../../tests/e2e-tauri/specs/cli-smoke.e2e.js) - Tauri E2E smoke tests
 - "You Might Not Need a Framework" - various blog posts on vanilla JS benefits

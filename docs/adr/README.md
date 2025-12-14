@@ -30,6 +30,8 @@ Each ADR follows this structure:
 | [002](002-sqlite-for-storage.md) | Use SQLite for Primary Storage | Accepted | 2025-11-01 |
 | [003](003-tantivy-for-search.md) | Use Tantivy for Full-Text Search | Accepted | 2025-11-01 |
 | [004](004-vanilla-javascript-frontend.md) | Vanilla JavaScript Frontend (No Framework) | Accepted | 2025-11-01 |
+| [005](005-layer-based-linguistic-exploration.md) | Layer-Based Linguistic Exploration (Remove `inspect`) | Accepted | 2025-12-14 |
+| [006](006-tauri-webdriver-e2e-tests.md) | Tauri E2E Testing via WebDriver (`tauri-driver` + WebdriverIO) | Accepted | 2025-12-14 |
 
 ## Decision Categories
 

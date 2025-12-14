@@ -435,7 +435,7 @@ impl SqliteStorage {
             SELECT t.id as token_id, t.token_index, t.text as token_text,
                    s.id, s.type, s.form, s.root, s.lemma, s.pattern, s.pos,
                    s.verb_form, s.voice, s.mood, s.aspect, s.person,
-                   s.number, s.gender, s.case_value, s.dependency_rel
+                   s.number, s.gender, s.case_value, s.dependency_rel, s.role, s.derived_noun_type, s.state
             FROM tokens t
             LEFT JOIN segments s ON s.token_id = t.id
             WHERE t.verse_surah = ?1 AND t.verse_ayah = ?2
@@ -484,6 +484,9 @@ impl SqliteStorage {
                         "gender": row.try_get::<Option<String>, _>("gender").unwrap_or(None),
                         "case": row.try_get::<Option<String>, _>("case_value").unwrap_or(None),
                         "dependency_rel": row.try_get::<Option<String>, _>("dependency_rel").unwrap_or(None),
+                        "role": row.try_get::<Option<String>, _>("role").unwrap_or(None),
+                        "derived_noun_type": row.try_get::<Option<String>, _>("derived_noun_type").unwrap_or(None),
+                        "state": row.try_get::<Option<String>, _>("state").unwrap_or(None),
                     });
 
                     if let Some(segments) = token.get_mut("segments").and_then(|s| s.as_array_mut()) {
@@ -589,9 +592,9 @@ impl SqliteStorage {
         let rows = sqlx::query(
             r#"
             SELECT s.id, s.type, s.form, s.root, s.lemma, s.pattern, s.pos,
-                   s.verb_form, s.voice, s.mood, s.aspect, s.person,
-                   s.number, s.gender, s.case_value, s.dependency_rel,
-                   t.token_index, t.text as token_text
+                    s.verb_form, s.voice, s.mood, s.aspect, s.person,
+                    s.number, s.gender, s.case_value, s.dependency_rel, s.role, s.derived_noun_type, s.state,
+                    t.token_index, t.text as token_text
             FROM segments s
             JOIN tokens t ON s.token_id = t.id
             WHERE t.verse_surah = ?1 AND t.verse_ayah = ?2
@@ -624,6 +627,9 @@ impl SqliteStorage {
                     "gender": r.try_get::<Option<String>, _>("gender").unwrap_or(None),
                     "case": r.try_get::<Option<String>, _>("case_value").unwrap_or(None),
                     "dependency_rel": r.try_get::<Option<String>, _>("dependency_rel").unwrap_or(None),
+                    "role": r.try_get::<Option<String>, _>("role").unwrap_or(None),
+                    "derived_noun_type": r.try_get::<Option<String>, _>("derived_noun_type").unwrap_or(None),
+                    "state": r.try_get::<Option<String>, _>("state").unwrap_or(None),
                     "token_index": r.try_get::<i64, _>("token_index").unwrap_or(0),
                     "word_index": r.try_get::<i64, _>("token_index").unwrap_or(0) + 1,
                     // Prefer the segment form for morphology display; keep token text separately for context.

@@ -16,6 +16,10 @@ kalima
 /test-results/
 /.playwright/
 
+# Local tooling (e.g., msedgedriver.exe)
+/tools/webdriver/*.exe
+/tools/webdriver/*.zip
+
 # Runtime data directories
 data/database/
 data/search-index/

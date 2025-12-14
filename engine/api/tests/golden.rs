@@ -32,6 +32,9 @@ async fn golden_search_annotation_connection() {
             gender: None,
             case_: Some("gen".into()),
             dependency_rel: Some("nmod".into()),
+            role: None,
+            derived_noun_type: None,
+            state: None,
         }],
         annotations: vec![],
     };

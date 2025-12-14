@@ -14,7 +14,15 @@ These capture the shapes the desktop CLI relies on. Treat them as contracts for 
       "text": "...",
       "form": "...",
       "segments": [
-        { "id": "...", "root": "...", "pos": "...", "type": "..." }
+        {
+          "id": "...",
+          "root": "...",
+          "pos": "...",
+          "type": "...",
+          "role": "...",
+          "derived_noun_type": "...",
+          "state": "..."
+        }
       ]
     }
   ]
@@ -33,7 +41,15 @@ These capture the shapes the desktop CLI relies on. Treat them as contracts for 
       "root": "...",
       "form": "...",
       "type": "...",
-      "dependency_rel": "..."
+      "dependency_rel": "...",
+      "role": "...",
+      "case": "...",
+      "gender": "...",
+      "number": "...",
+      "definiteness": "...",
+      "determiner": true,
+      "derived_noun_type": "...",
+      "state": "..."
     }
   ]
 }
@@ -57,7 +73,7 @@ These capture the shapes the desktop CLI relies on. Treat them as contracts for 
 ## Invariants
 - `surah >= 1`, `ayah >= 1`.
 - `tokens[*].segments` may be empty but must be present.
-- Morphology entries should preserve `text`, `pos`, `root`, `form` when known; missing fields are null/omitted.
+- Morphology entries should preserve `text`, `pos`, `root`, `form` when known; optional fields are null/omitted.
 - Dependency entries should include `rel_label` and `word`; `pos` optional.
 
 Use these shapes when creating fixtures and when validating responses in contract tests.

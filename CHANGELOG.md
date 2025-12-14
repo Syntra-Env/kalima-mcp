@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+- **UI exploration:** Removed the legacy `inspect` command in favor of layer-based exploration (`layer`, `layer next/prev`).
+- **E2E testing:** Replaced browser-based Playwright E2E with a Tauri-native WebDriver runner (WebdriverIO + `tauri-driver`).
+- **Contract tests:** Desktop contract tests start an embedded API server on an ephemeral port by default (override with `KALIMA_BASE_URL`).
+
+### Added
+- **Layer coverage:** Expanded morphology layers (case, role, derived noun type, state, mood, aspect, etc.).
+
 ## [1.0.1] - 2025-12-10
 
 ### Fixed
@@ -27,12 +37,11 @@ All notable changes to this project will be documented in this file.
 - **New Morphological Fields:**
   - `derived_noun_type`: Active participle (ACT_PCPL), Passive participle (PASS_PCPL), Verbal noun (VN)
   - `state`: Nominal state (INDEF for indefinite/tanween)
-- **Test Coverage:** Added comprehensive Playwright tests for inspect functionality
+- **Test Coverage:** Added E2E coverage for inspect functionality (later replaced by Tauri WebDriver E2E; see Unreleased)
   - Verifies full verse text display (all tokens)
   - Validates morphological structure (prefixes, stems, roots)
   - Confirms no tense field in output
   - Tests multiple verses for consistency
-  - Location: tests/e2e/gui/inspect-verse.spec.ts
 
 ### Data
 - Re-ingested complete Quranic corpus (6,236 verses) with corrected data
