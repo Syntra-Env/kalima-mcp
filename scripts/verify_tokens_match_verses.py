@@ -5,8 +5,15 @@ Compares normalized versions to account for compound words and variations.
 """
 
 import sqlite3
-import json
+import sys
 from pathlib import Path
+
+if __package__ in (None, ""):
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from scripts.lib.io import write_json
+from scripts.lib.paths import data_dir
+from scripts.lib.validate import require_file
 
 
 def normalize(text):
@@ -94,8 +101,7 @@ def verify_all_verses(db_path):
         print("=" * 60)
 
         # Save detailed mismatches to file
-        with open('temp_token_mismatches.json', 'w', encoding='utf-8') as f:
-            json.dump(mismatches, f, ensure_ascii=False, indent=2)
+        write_json(Path('temp_token_mismatches.json'), mismatches, indent=2)
 
         print(f"\nFirst 10 mismatches:")
         for mismatch in mismatches[:10]:
@@ -106,17 +112,18 @@ def verify_all_verses(db_path):
 
         print(f"\nFull details saved to: temp_token_mismatches.json")
     else:
-        print("\nAll tokens match verse texts! ✓")
+        print("\nAll tokens match verse texts!")
 
     return len(mismatches) == 0
 
 
 if __name__ == "__main__":
-    db_path = Path(__file__).parent.parent / "data" / "database" / "kalima.db"
-
-    if not db_path.exists():
-        print(f"Error: Database not found at {db_path}")
-        exit(1)
+    db_path = data_dir() / "database" / "kalima.db"
+    try:
+        require_file(db_path, label="Database")
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        raise SystemExit(1)
 
     success = verify_all_verses(db_path)
     exit(0 if success else 1)

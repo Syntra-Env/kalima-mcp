@@ -16,15 +16,17 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+if __package__ in (None, ""):
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from scripts.lib.io import read_lines
+from scripts.lib.paths import datasets_dir
+from scripts.lib.pipeline import start_step, step
+from scripts.lib.validate import require_file
+
 def load_verse_text(quran_file):
     """Load verse text indexed by sequential verse number."""
-    verses = []
-    with open(quran_file, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                verses.append(line)
-    return verses
+    return [line for line in read_lines(Path(quran_file), encoding="utf-8") if line.strip()]
 
 def null_if_underscore(value):
     """Convert underscore to None, otherwise return value."""
@@ -84,11 +86,11 @@ def parse_quranic_csv(quranic_csv):
 def build_combined_jsonl(quranic_csv, quran_text, output_file):
     """Build the complete combined.jsonl file."""
 
-    print("Loading verse text...")
-    verse_texts = load_verse_text(quran_text)
+    with step("Load verse text"):
+        verse_texts = load_verse_text(quran_text)
 
-    print("Parsing Quranic.csv...")
-    verses_data = parse_quranic_csv(quranic_csv)
+    with step("Parse Quranic.csv"):
+        verses_data = parse_quranic_csv(quranic_csv)
 
     print(f"Building combined.jsonl for {len(verses_data)} verses...")
 
@@ -100,6 +102,7 @@ def build_combined_jsonl(quranic_csv, quran_text, output_file):
 
     verse_counter = 0
     normalized_count = 0
+    end_write = start_step("Write combined.jsonl")
     with open(output_file, 'w', encoding='utf-8') as out:
         # Iterate through surahs and ayahs in order
         for surah in range(1, 115):  # 114 surahs
@@ -158,23 +161,23 @@ def build_combined_jsonl(quranic_csv, quran_text, output_file):
 
                 # Write JSONL
                 out.write(json.dumps(verse_entry, ensure_ascii=False) + '\n')
+    end_write()
 
     print(f"[OK] Written {verse_counter} verses to {output_file}")
     print(f"[OK] Normalized {normalized_count} verses (stripped Bismillah from text)")
 
 def main():
     # Paths
-    base_dir = Path(__file__).parent.parent
-    quranic_csv = base_dir / 'datasets' / 'Quranic' / 'Quranic.csv'
-    quran_text = base_dir / 'datasets' / 'quran-clean.txt'
-    output = base_dir / 'datasets' / 'combined.jsonl'
+    base_dir = datasets_dir()
+    quranic_csv = base_dir / 'Quranic' / 'Quranic.csv'
+    quran_text = base_dir / 'quran-clean.txt'
+    output = base_dir / 'combined.jsonl'
 
-    if not quranic_csv.exists():
-        print(f"Error: {quranic_csv} not found", file=sys.stderr)
-        sys.exit(1)
-
-    if not quran_text.exists():
-        print(f"Error: {quran_text} not found", file=sys.stderr)
+    try:
+        require_file(quranic_csv, label="Input")
+        require_file(quran_text, label="Input")
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
     print(f"Input: {quranic_csv}")
