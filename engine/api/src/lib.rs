@@ -132,11 +132,28 @@ pub async fn start_server_with_config(config: ServerConfig) {
         )
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind(&config.bind_address)
-        .await
-        .expect("bind listener");
+    let listener = match tokio::net::TcpListener::bind(&config.bind_address).await {
+        Ok(listener) => listener,
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::AddrInUse {
+                tracing::warn!(
+                    "Bind address {} already in use; assuming an external API server is running and skipping embedded server start",
+                    config.bind_address
+                );
+            } else {
+                tracing::error!(
+                    "Failed to bind listener on {}: {}",
+                    config.bind_address,
+                    e
+                );
+            }
+            return;
+        }
+    };
     tracing::info!("Server listening on {}", config.bind_address);
-    axum::serve(listener, app).await.expect("serve");
+    if let Err(e) = axum::serve(listener, app).await {
+        tracing::error!("Server error: {}", e);
+    }
 }
 
 /// Maps EngineError to HTTP responses
