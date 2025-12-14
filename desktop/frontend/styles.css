@@ -31,6 +31,7 @@ body {
     flex: 1;
     overflow-y: auto;
     margin-bottom: 0.625rem;
+    padding: 0 2rem; /* Add horizontal padding for comfortable visibility */
     font-size: 0.875rem;
     line-height: 1.6;
     scrollbar-width: none; /* Firefox */
@@ -288,4 +289,96 @@ body {
 
 .annotation-text {
     display: inline;
+}
+
+/* History command styling */
+.history-container {
+    margin: 1rem 0;
+}
+
+.history-header {
+    color: #4ec9b0;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.history-item {
+    padding: 0.4rem 0.8rem;
+    margin: 0.2rem 0;
+    background: rgba(78, 201, 176, 0.1);
+    border-left: 3px solid #4ec9b0;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-size: 0.875rem;
+    border-radius: 2px;
+}
+
+.history-item:hover {
+    background: rgba(78, 201, 176, 0.2);
+    border-left-color: #89d185;
+    transform: translateX(4px);
+}
+
+.history-item.selected {
+    background: rgba(78, 201, 176, 0.25);
+    border-left-color: #89d185;
+}
+
+.history-index {
+    color: #858585;
+    margin-right: 0.5rem;
+    font-size: 0.75rem;
+}
+
+.history-command {
+    color: #d4d4d4;
+}
+
+/* Layer value styling */
+.layer-value {
+    display: inline;
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    font-weight: 500;
+}
+
+/* Case layer colors */
+.case_-NOM { color: #FF8C42; }
+.case_-ACC { color: #FF5252; }
+.case_-GEN { color: #9C6ADE; }
+
+/* Gender layer colors */
+.gender-M { color: #4A90E2; }
+.gender-F { color: #E91E63; }
+
+/* Number layer colors */
+.number-SG { color: #66BB6A; }
+.number-DU { color: #FFA726; }
+.number-PL { color: #AB47BC; }
+
+/* Person layer colors */
+.person-P1 { color: #42A5F5; }
+.person-P2 { color: #66BB6A; }
+.person-P3 { color: #FFA726; }
+
+/* POS layer colors */
+.pos-N, .pos-NOUN { color: #4CAF50; }
+.pos-V, .pos-VERB { color: #2196F3; }
+.pos-PREP, .pos-P { color: #FF9800; }
+.pos-ADJ { color: #9C27B0; }
+.pos-PRON { color: #00BCD4; }
+.pos-DET { color: #FFC107; }
+.pos-default { color: #9E9E9E; }
+
+/* Voice layer colors */
+.voice-ACT { color: #66BB6A; }
+.voice-PASS { color: #EF5350; }
+
+/* Root layer color */
+.root-value { color: #4EC9B0; }
+
+/* Monochrome layers */
+.lemma-value, .pattern-value, .dependency_rel-value, .role-value, .verb_form-value {
+    color: #D4D4D4;
 }

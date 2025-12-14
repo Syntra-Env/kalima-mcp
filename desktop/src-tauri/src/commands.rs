@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet},
-    fs,
     sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -1506,12 +1505,16 @@ fn fetch_surah_list(state: &AppState) -> Result<Vec<SurahSummary>> {
 }
 
 fn fetch_verse(state: &AppState, surah: i64, ayah: i64) -> Result<Verse> {
-    let verse = state
+    let res = state
         .client
         .get(format!("{}/api/verse/{}/{}", state.base_url, surah, ayah))
-        .send()?
-        .error_for_status()?
-        .json::<Verse>()?;
+        .send()?;
+
+    if res.status() == reqwest::StatusCode::NOT_FOUND {
+        anyhow::bail!("Verse does not exist.");
+    }
+
+    let verse = res.error_for_status()?.json::<Verse>()?;
     validate_verse(&verse)?;
     Ok(verse)
 }
@@ -1570,254 +1573,6 @@ fn fetch_dependency(state: &AppState, surah: i64, ayah: i64) -> Result<Vec<Value
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default())
-}
-
-fn load_fallback_morphology(surah: i64, ayah: i64) -> Vec<Value> {
-    // Load and cache the corpus once.
-    {
-        let cache = FALLBACK_MORPH.lock().unwrap();
-        if let Some(map) = &*cache {
-            if let Some(vals) = map.get(&(surah, ayah)) {
-                return vals.clone();
-            }
-        }
-    }
-
-    let path = "datasets/quranic-corpus-morphology-0.4.txt";
-    let content = match fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(_) => return vec![],
-    };
-
-    let mut map: HashMap<(i64, i64), Vec<Value>> = HashMap::new();
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() < 3 {
-            continue;
-        }
-        // parts[0] like "(1:1:1:1)"
-        let ref_str = parts[0].trim_matches('(').trim_matches(')');
-        let ref_parts: Vec<&str> = ref_str.split(':').collect();
-        if ref_parts.len() < 2 {
-            continue;
-        }
-        let s: i64 = ref_parts.get(0).and_then(|v| v.parse().ok()).unwrap_or(0);
-        let a: i64 = ref_parts.get(1).and_then(|v| v.parse().ok()).unwrap_or(0);
-        let w_idx: usize = ref_parts.get(2).and_then(|v| v.parse().ok()).unwrap_or(0);
-        let surface = parts[1].trim();
-        let pos = parts[2].trim();
-        let tags = parts.get(3).map(|v| v.trim()).unwrap_or("");
-
-        let mut root: Option<String> = None;
-        let mut lemma: Option<String> = None;
-        let mut seg_type: Option<String> = None;
-        let mut case_: Option<String> = None;
-        let mut gender: Option<String> = None;
-        let mut number: Option<String> = None;
-        let mut person: Option<String> = None;
-        let mut tense: Option<String> = None;
-        let aspect: Option<String> = None;
-        let mut mood: Option<String> = None;
-        let mut voice: Option<String> = None;
-        let mut extra_feats: Vec<String> = Vec::new();
-        for t in tags.split('|') {
-            if t.starts_with("ROOT:") {
-                root = Some(t.trim_start_matches("ROOT:").to_string());
-                continue;
-            }
-            if t.starts_with("LEM:") {
-                lemma = Some(t.trim_start_matches("LEM:").to_string());
-                continue;
-            }
-            if seg_type.is_none()
-                && (t.eq_ignore_ascii_case("PREFIX") || t.eq_ignore_ascii_case("STEM"))
-            {
-                seg_type = Some(t.to_string());
-                continue;
-            }
-
-            let upper = t.to_uppercase();
-            match upper.as_str() {
-                "GEN" | "ACC" | "NOM" => case_ = Some(upper),
-                "DEF" | "INDEF" => extra_feats.push(upper),
-                "M" | "F" => gender = Some(upper),
-                "SG" | "PL" | "DU" => number = Some(upper),
-                "P1" | "P2" | "P3" => person = Some(upper),
-                "IMPF" | "PERF" | "IMPV" => tense = Some(upper),
-                "SUBJ" | "JUS" | "IND" => mood = Some(upper),
-                "ACT" | "PASS" => voice = Some(upper),
-                _ => {
-                    // Keep anything else we don't explicitly map.
-                    extra_feats.push(t.to_string());
-                }
-            }
-        }
-
-        let mut features_parts = Vec::new();
-        if let Some(c) = &case_ {
-            features_parts.push(format!("case:{}", c));
-        }
-        if let Some(g) = &gender {
-            features_parts.push(format!("gender:{}", g));
-        }
-        if let Some(n) = &number {
-            features_parts.push(format!("number:{}", n));
-        }
-        if let Some(p) = &person {
-            features_parts.push(format!("person:{}", p));
-        }
-        if let Some(t) = &tense {
-            features_parts.push(format!("tense:{}", t));
-        }
-        if let Some(a) = &aspect {
-            features_parts.push(format!("aspect:{}", a));
-        }
-        if let Some(m) = &mood {
-            features_parts.push(format!("mood:{}", m));
-        }
-        if let Some(v) = &voice {
-            features_parts.push(format!("voice:{}", v));
-        }
-        if !extra_feats.is_empty() {
-            features_parts.extend(extra_feats.clone());
-        }
-        let features_str = if features_parts.is_empty() {
-            None
-        } else {
-            Some(features_parts.join(" | "))
-        };
-
-        map.entry((s, a))
-            .or_default()
-            .push(serde_json::json!({
-                "text": surface,
-                "pos": pos,
-                "root": root,
-                "word_index": w_idx,
-                "case": case_,
-                "gender": gender,
-                "number": number,
-                "definiteness": if features_parts.iter().any(|f| f.eq_ignore_ascii_case("def") || f.eq_ignore_ascii_case("indef")) {
-                    Some(features_parts.iter().find(|f| f.eq_ignore_ascii_case("def") || f.eq_ignore_ascii_case("indef")).unwrap().to_string())
-                } else { None::<String> },
-                "determiner": None::<bool>,
-                "lemma": lemma,
-                "features": features_str,
-                "form": surface,
-                "type": seg_type.unwrap_or_else(|| "stem".into())
-            }));
-    }
-
-    let result = map.get(&(surah, ayah)).cloned().unwrap_or_default();
-    let mut cache = FALLBACK_MORPH.lock().unwrap();
-    *cache = Some(map);
-    result
-}
-
-fn load_masaq_morphology(surah: i64, ayah: i64) -> Vec<Value> {
-    {
-        let cache = FALLBACK_MASAQ.lock().unwrap();
-        if let Some(map) = &*cache {
-            if let Some(vals) = map.get(&(surah, ayah)) {
-                return vals.clone();
-            }
-        }
-    }
-
-    let path = "datasets/MASAQ.csv";
-    let file = match fs::File::open(path) {
-        Ok(f) => f,
-        Err(_) => return vec![],
-    };
-
-    let mut rdr = csv::ReaderBuilder::new()
-        .has_headers(true)
-        .flexible(true)
-        .from_reader(file);
-
-    let mut map: HashMap<(i64, i64), Vec<Value>> = HashMap::new();
-    for result in rdr.records() {
-        if let Ok(rec) = result {
-            let s: i64 = rec.get(1).and_then(|v| v.parse().ok()).unwrap_or(0);
-            let a: i64 = rec.get(2).and_then(|v| v.parse().ok()).unwrap_or(0);
-                    let word_idx = rec.get(3).and_then(|v| v.parse().ok()).unwrap_or(0usize);
-            let word = rec.get(5).unwrap_or("").trim();
-            let lemma = rec.get(6).unwrap_or("").trim();
-            let segmented = rec.get(7).unwrap_or("").trim();
-            let morph_tag = rec.get(8).unwrap_or("").trim();
-            let morph_type = rec.get(9).unwrap_or("").trim();
-            let punctuation = rec.get(10).unwrap_or("").trim();
-            let invariable = rec.get(11).unwrap_or("").trim();
-            let syntactic_role = rec.get(12).unwrap_or("").trim();
-            let possessive = rec.get(13).unwrap_or("").trim();
-            let case_mood = rec.get(14).unwrap_or("").trim();
-            let case_marker = rec.get(15).unwrap_or("").trim();
-            let phrase = rec.get(16).unwrap_or("").trim();
-            let phrase_fn = rec.get(17).unwrap_or("").trim();
-            let notes = rec.get(18).unwrap_or("").trim();
-
-            let mut features = Vec::new();
-            for (label, val) in [
-                ("type", morph_type),
-                ("punct", punctuation),
-                ("invar", invariable),
-                ("role", syntactic_role),
-                ("poss", possessive),
-                ("case", case_mood),
-                ("case_marker", case_marker),
-                ("phrase", phrase),
-                ("phrase_fn", phrase_fn),
-                ("notes", notes),
-            ] {
-                if !val.is_empty() {
-                    features.push(format!("{}:{}", label, val));
-                }
-            }
-
-            let determiner = morph_tag.eq_ignore_ascii_case("DET") || morph_type.eq_ignore_ascii_case("DET");
-            let case_field = if !case_mood.is_empty() { Some(case_mood.to_string()) } else { None };
-            let base_text = if !segmented.is_empty() { segmented } else { word };
-
-            // Normalize forms/text: use segmented text; strip definite article or leading alif for stems.
-            let (norm_text, norm_form) = if morph_type.eq_ignore_ascii_case("Prefix") {
-                let t = if !base_text.is_empty() { base_text } else { word };
-                (t.to_string(), Some(t.to_string()))
-            } else {
-                let mut t = if !base_text.is_empty() { base_text.to_string() } else { word.to_string() };
-                if determiner && t.starts_with("ال") {
-                    t = t.trim_start_matches("ال").to_string();
-                } else if t.starts_with('ا') {
-                    t = t.trim_start_matches('ا').to_string();
-                }
-                (t.clone(), Some(t))
-            };
-
-            map.entry((s, a)).or_default().push(serde_json::json!({
-                "text": norm_text,
-                "lemma": if lemma.is_empty() { None::<String> } else { Some(lemma.to_string()) },
-                "pos": if morph_tag.is_empty() { None::<String> } else { Some(morph_tag.to_string()) },
-                "form": norm_form,
-                "word_index": word_idx,
-                "features": if features.is_empty() { None::<String> } else { Some(features.join(" | ")) },
-                "type": if morph_type.is_empty() { None::<String> } else { Some(morph_type.to_string()) },
-                "role": if syntactic_role.is_empty() { None::<String> } else { Some(syntactic_role.to_string()) },
-                "case": case_field,
-                "gender": None::<String>,
-                "number": None::<String>,
-                "definiteness": None::<String>,
-                "determiner": Some(determiner),
-            }));
-        }
-    }
-
-    let result = map.get(&(surah, ayah)).cloned().unwrap_or_default();
-    let mut cache = FALLBACK_MASAQ.lock().unwrap();
-    *cache = Some(map);
-    result
 }
 
 fn parse_verse_ref(s: &str) -> Result<(i64, i64)> {
@@ -1982,7 +1737,8 @@ mod tests {
                     "root": "ب س م",
                     "form": "basm",
                     "type": "noun",
-                    "dependency_rel": "obj"
+                    "dependency_rel": "obj",
+                    "word_index": 1
                 }]
             }));
         });

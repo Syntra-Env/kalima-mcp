@@ -4,7 +4,7 @@ mod handlers;
 pub use config::ServerConfig;
 
 use axum::{http::StatusCode, routing::get, routing::post, Router};
-use common::{EngineError, SearchBackend};
+use common::EngineError;
 use search::TantivyIndex;
 use store::SqliteStorage;
 use std::sync::Arc;
@@ -137,40 +137,6 @@ pub async fn start_server_with_config(config: ServerConfig) {
         .expect("bind listener");
     tracing::info!("Server listening on {}", config.bind_address);
     axum::serve(listener, app).await.expect("serve");
-}
-
-async fn seed_demo(storage: &SqliteStorage, search: &TantivyIndex) -> Result<(), (StatusCode, String)> {
-    let doc = common::SegmentView {
-        id: "demo-1".into(),
-        verse_ref: "1:1".into(),
-        token_index: 0,
-        text: "بِسْمِ".into(),
-        segments: vec![common::Segment {
-            id: "seg-1".into(),
-            r#type: "prefix".into(),
-            form: "بِ".into(),
-            root: None,
-            lemma: None,
-            pattern: None,
-            pos: Some("P".into()),
-            verb_form: None,
-            voice: None,
-            mood: None,
-            aspect: None,
-            person: None,
-            number: None,
-            gender: None,
-            case_: Some("gen".into()),
-            dependency_rel: None,
-            role: None,
-            derived_noun_type: None,
-            state: None,
-        }],
-        annotations: vec![],
-    };
-    storage.upsert_segment(&doc).await.map_err(map_err)?;
-    let _ = search.index_document(&doc).await.map_err(map_err)?;
-    Ok(())
 }
 
 /// Maps EngineError to HTTP responses
