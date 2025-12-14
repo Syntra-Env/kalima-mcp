@@ -1,5 +1,9 @@
 import { normalizeCommand, recordCommandInHistory } from './lib/history.js';
 import { shouldClearForCommand } from './lib/commandBehavior.js';
+import { ANNOTATION_LAYER_INDEX, DEFAULT_LAYER_INDEX, LAYERS } from './lib/layers/definitions.js';
+import { createMorphologyCache, fetchMorphologyForVerse } from './lib/layers/morphology.js';
+import { LayerManager } from './lib/layers/manager.js';
+import { handleLayerCommand } from './lib/layers/layerCommand.js';
 
 const output = document.getElementById('output');
 const commandInput = document.getElementById('command-input');
@@ -12,43 +16,8 @@ let invoke;
 let baseFontSize = 16;
 let zoomFactor = 1;
 
-// Layer system configuration
-let currentLayerIndex = 0; // Start at Original Arabic
-let morphologyCache = new Map(); // Cache morphology data per verse
-
-// Color maps for layers
-const CASE_COLORS = { 'NOM': '#FF8C42', 'ACC': '#FF5252', 'GEN': '#9C6ADE' };
-const GENDER_COLORS = { 'M': '#4A90E2', 'F': '#E91E63' };
-const NUMBER_COLORS = { 'SG': '#66BB6A', 'DU': '#FFA726', 'PL': '#AB47BC' };
-const PERSON_COLORS = { 'P1': '#42A5F5', 'P2': '#66BB6A', 'P3': '#FFA726' };
-const POS_COLORS = {
-    'N': '#4CAF50', 'NOUN': '#4CAF50',
-    'V': '#2196F3', 'VERB': '#2196F3',
-    'PREP': '#FF9800', 'P': '#FF9800',
-    'ADJ': '#9C27B0',
-    'PRON': '#00BCD4',
-    'DET': '#FFC107',
-    'default': '#9E9E9E'
-};
-const VOICE_COLORS = { 'ACT': '#66BB6A', 'PASS': '#EF5350' };
-
-// Layer definitions
-const LAYERS = [
-    { id: 0, name: 'Original Arabic', field: null, colorMap: null },
-    { id: 1, name: 'Root', field: 'root', colorMap: null },
-    { id: 2, name: 'Lemma', field: 'lemma', colorMap: null },
-    { id: 3, name: 'Part of Speech', field: 'pos', colorMap: POS_COLORS },
-    { id: 4, name: 'Pattern', field: 'pattern', colorMap: null },
-    { id: 5, name: 'Case', field: 'case_', colorMap: CASE_COLORS },
-    { id: 6, name: 'Gender', field: 'gender', colorMap: GENDER_COLORS },
-    { id: 7, name: 'Number', field: 'number', colorMap: NUMBER_COLORS },
-    { id: 8, name: 'Person', field: 'person', colorMap: PERSON_COLORS },
-    { id: 9, name: 'Verb Form', field: 'verb_form', colorMap: null },
-    { id: 10, name: 'Voice', field: 'voice', colorMap: VOICE_COLORS },
-    { id: 11, name: 'Dependency', field: 'dependency_rel', colorMap: null },
-    { id: 12, name: 'Role', field: 'role', colorMap: null },
-    { id: 13, name: 'Annotations', field: 'user_annotation', colorMap: null }
-];
+const morphologyCache = createMorphologyCache();
+const layerManager = new LayerManager({ layers: LAYERS, defaultIndex: DEFAULT_LAYER_INDEX });
 
 const arabicSurahNames = [
     null,
@@ -202,7 +171,7 @@ document.addEventListener('click', (e) => {
     const token = e.target.closest('.token');
     if (token && !token.classList.contains('editing')) {
         // Only allow editing on annotation layer (Layer 13)
-        if (currentLayerIndex === 13) {
+        if (layerManager.getCurrentLayerIndex() === ANNOTATION_LAYER_INDEX) {
             startInlineEdit(token);
         }
     } else if (!e.target.closest('.inline-editor')) {
@@ -279,7 +248,7 @@ async function executeCommand(command) {
 
     // Handle 'layer' command locally (without clearing)
     if (cmd === 'layer') {
-        handleLayerCommand(trimmed);
+        handleLayerCommand(trimmed, { clearOutput, printLine, prompt: currentPrompt }, layerManager);
         return prefillApplied;
     }
 
@@ -545,101 +514,6 @@ function cancelInlineEdit(input, tokenElement) {
     }
 }
 
-// Morphology fetching and parsing functions
-async function fetchMorphologyForVerse(surah, ayah) {
-    // Check cache first
-    const cacheKey = `${surah}:${ayah}`;
-    if (morphologyCache.has(cacheKey)) {
-        console.log(`Using cached morphology for ${surah}:${ayah}`);
-        return morphologyCache.get(cacheKey);
-    }
-
-    try {
-        // Fetch from API
-        console.log(`Fetching morphology for ${surah}:${ayah}...`);
-        const response = await fetch(`http://localhost:8080/api/morphology/${surah}/${ayah}`);
-        if (!response.ok) {
-            console.error(`Failed to fetch morphology: ${response.status}`);
-            return {};
-        }
-
-        const data = await response.json();
-        // API returns {surah, ayah, morphology: [...]}
-        const segments = data.morphology || [];
-        console.log(`Received ${segments.length} morphology segments for ${surah}:${ayah}`);
-
-        // Parse and organize by token index
-        const morphByToken = parseMorphologySegments(segments);
-        console.log(`Parsed morphology by token:`, morphByToken);
-
-        // Cache it
-        morphologyCache.set(cacheKey, morphByToken);
-
-        return morphByToken;
-    } catch (err) {
-        console.error('Error fetching morphology:', err);
-        return {};
-    }
-}
-
-function parseMorphologySegments(segments) {
-    const byToken = {};
-
-    const rawTokenIndices = segments
-        .map((seg) => seg.token_index)
-        .filter((idx) => idx !== undefined && idx !== null)
-        .map((idx) => Number(idx))
-        .filter((idx) => Number.isFinite(idx));
-    const minTokenIndex = rawTokenIndices.length ? Math.min(...rawTokenIndices) : null;
-
-    const rawWordIndices = segments
-        .map((seg) => seg.word_index)
-        .filter((idx) => idx !== undefined && idx !== null)
-        .map((idx) => Number(idx))
-        .filter((idx) => Number.isFinite(idx));
-    const minWordIndex = rawWordIndices.length ? Math.min(...rawWordIndices) : null;
-
-    for (const seg of segments) {
-        // Try both token_index and word_index fields
-        let tokenIndex;
-        if (seg.token_index !== undefined && seg.token_index !== null) {
-            const raw = Number(seg.token_index);
-            if (!Number.isFinite(raw)) continue;
-            tokenIndex = minTokenIndex === 1 ? raw - 1 : raw;
-        } else if (seg.word_index !== undefined && seg.word_index !== null) {
-            const raw = Number(seg.word_index);
-            if (!Number.isFinite(raw)) continue;
-            tokenIndex = minWordIndex === 1 ? raw - 1 : raw;
-        } else {
-            continue;
-        }
-        if (!Number.isFinite(tokenIndex)) continue;
-
-        if (!byToken[tokenIndex]) {
-            byToken[tokenIndex] = [];
-        }
-        byToken[tokenIndex].push(seg);
-    }
-
-    return byToken;
-}
-
-function extractLayerValue(morphSegments, layerField) {
-    if (!morphSegments || morphSegments.length === 0) {
-        return null;
-    }
-
-    // Concatenate values from all segments
-    const values = morphSegments
-        .map(seg => seg[layerField])
-        .filter(v => v != null && v !== '');
-
-    if (values.length === 0) return null;
-
-    // For multiple segments, join with " + "
-    return values.join(' + ');
-}
-
 async function printVerse(verse) {
     const container = document.createElement('div');
     container.className = 'verse-container';
@@ -684,7 +558,7 @@ async function printVerse(verse) {
     output.appendChild(container);
 
     // Fetch morphology data for this verse
-    const morphData = await fetchMorphologyForVerse(verse.surah, verse.ayah);
+    const morphData = await fetchMorphologyForVerse({ surah: verse.surah, ayah: verse.ayah, cache: morphologyCache });
 
     // Store morphology in each token's dataset
     if (verse.tokens && verse.tokens.length > 0) {
@@ -703,7 +577,7 @@ async function printVerse(verse) {
     await loadAnnotations(verse.surah, verse.ayah, container);
 
     // Apply current layer to the newly added verse
-    applyLayerToAllTokens();
+    layerManager.applyToAllTokens();
 
     scrollToBottom();
 }
@@ -1038,204 +912,4 @@ function showHistory() {
     scrollToBottom();
 }
 
-// Layer command handler
-function handleLayerCommand(command) {
-    const parts = command.trim().split(/\s+/);
-
-    // Just 'layer' - show current layer info (clear screen for this)
-    if (parts.length === 1) {
-        clearOutput();
-        printLine(`${currentPrompt} ${command}`, 'command-echo');
-        const currentLayer = LAYERS[currentLayerIndex];
-        printLine(`Current layer: ${currentLayerIndex} - ${currentLayer.name}`, 'info');
-        printLine('', 'info');
-        printLine('Available layers:', 'info');
-        LAYERS.forEach((layer, index) => {
-            const marker = index === currentLayerIndex ? '→ ' : '  ';
-            printLine(`${marker}${index}: ${layer.name}`, 'info');
-        });
-        printLine('', 'info');
-        printLine('Usage:', 'info');
-        printLine('  layer <number>     - Switch to layer by number (0-13)', 'info');
-        printLine('  layer <name>       - Switch to layer by name', 'info');
-        printLine('  layer next         - Next layer', 'info');
-        printLine('  layer prev         - Previous layer', 'info');
-        return;
-    }
-
-    const arg = parts.slice(1).join(' ').toLowerCase();
-
-    // Handle next/prev
-    if (arg === 'next') {
-        const newIndex = currentLayerIndex + 1;
-        if (changeLayer(newIndex)) {
-            printLine(`Switched to layer ${newIndex}: ${LAYERS[newIndex].name}`, 'success');
-        } else {
-            printLine('Already at the last layer', 'warning');
-        }
-        return;
-    }
-
-    if (arg === 'prev' || arg === 'previous') {
-        const newIndex = currentLayerIndex - 1;
-        if (changeLayer(newIndex)) {
-            printLine(`Switched to layer ${newIndex}: ${LAYERS[newIndex].name}`, 'success');
-        } else {
-            printLine('Already at the first layer', 'warning');
-        }
-        return;
-    }
-
-    // Handle numeric argument
-    const numMatch = arg.match(/^(\d+)$/);
-    if (numMatch) {
-        const index = parseInt(numMatch[1]);
-        if (changeLayer(index)) {
-            printLine(`Switched to layer ${index}: ${LAYERS[index].name}`, 'success');
-        } else {
-            printLine(`Invalid layer number. Must be 0-${LAYERS.length - 1}`, 'error');
-        }
-        return;
-    }
-
-    // Handle name-based switching with aliases
-    const layerAliases = {
-        'original': 0,
-        'arabic': 0,
-        'root': 1,
-        'lemma': 2,
-        'pos': 3,
-        'part of speech': 3,
-        'pattern': 4,
-        'case': 5,
-        'gender': 6,
-        'number': 7,
-        'person': 8,
-        'verb form': 9,
-        'verb': 9,
-        'voice': 10,
-        'dependency': 11,
-        'dep': 11,
-        'role': 12,
-        'annotations': 13,
-        'annotation': 13,
-        'notes': 13
-    };
-
-    const layerIndex = layerAliases[arg];
-    if (layerIndex !== undefined) {
-        changeLayer(layerIndex);
-        printLine(`Switched to layer ${layerIndex}: ${LAYERS[layerIndex].name}`, 'success');
-    } else {
-        printLine(`Unknown layer: "${arg}"`, 'error');
-        printLine('Use "layer" to see available layers', 'info');
-    }
-}
-
-// Layer switching functions
-function changeLayer(newIndex) {
-    // Bounds checking
-    if (newIndex < 0 || newIndex >= LAYERS.length) {
-        return false;
-    }
-
-    currentLayerIndex = newIndex;
-    applyLayerToAllTokens();
-    return true;
-}
-
-// Apply layer to all visible tokens
-function applyLayerToAllTokens() {
-    const tokens = document.querySelectorAll('.token');
-    tokens.forEach(token => {
-        applyLayerToToken(token);
-    });
-}
-
-function applyLayerToToken(token) {
-    const layer = LAYERS[currentLayerIndex];
-    const originalText = token.dataset.originalText;
-
-    if (!originalText) {
-        console.warn('Token missing originalText', token);
-        return; // No original text stored
-    }
-
-    // Layer 0: Show original Arabic
-    if (layer.id === 0) {
-        token.textContent = originalText;
-        token.className = 'token';
-        return;
-    }
-
-    // Layer 13: Show user annotations
-    if (layer.id === 13) {
-        const annotation = token.dataset.annotation;
-        if (annotation) {
-            showAnnotation(token, annotation, token.dataset.annotationId);
-        } else {
-            token.textContent = originalText;
-            token.className = 'token';
-        }
-        return;
-    }
-
-    // Linguistic layers (1-12)
-    const morphDataRaw = token.dataset.morphology;
-    console.log(`Token "${originalText}": morphology data =`, morphDataRaw);
-
-    const morphData = JSON.parse(morphDataRaw || '[]');
-    console.log(`Token "${originalText}": parsed morphData =`, morphData);
-
-    const value = extractLayerValue(morphData, layer.field);
-    console.log(`Token "${originalText}": extracted ${layer.field} =`, value);
-
-    if (value) {
-        showLayerValue(token, value, layer);
-    } else {
-        // Missing data: show original Arabic
-        console.warn(`Token "${originalText}": No value for layer ${layer.name}, showing original`);
-        token.textContent = originalText;
-        token.className = 'token';
-    }
-}
-
-function showLayerValue(token, value, layer) {
-    const wrapper = document.createElement('span');
-    wrapper.className = 'layer-value';
-    wrapper.textContent = value;
-    wrapper.dir = 'ltr';
-
-    // Apply color coding
-    if (layer.colorMap) {
-        const colorKey = value.split(' + ')[0]; // Use first value for color
-        const colorClass = `${layer.field}-${colorKey}`;
-        wrapper.classList.add(colorClass);
-
-        // Fallback to default if specific color not found
-        if (!layer.colorMap[colorKey] && layer.colorMap['default']) {
-            wrapper.classList.add(`${layer.field}-default`);
-        }
-    } else {
-        wrapper.classList.add(`${layer.field}-value`);
-    }
-
-    token.textContent = '';
-    token.appendChild(wrapper);
-    token.className = 'token';
-}
-
-function showAnnotation(token, annotationText, annotationId) {
-    const wrapper = document.createElement('span');
-    wrapper.className = 'annotation-text';
-    wrapper.dir = 'ltr';
-    wrapper.textContent = annotationText;
-
-    token.textContent = '';
-    token.appendChild(wrapper);
-    token.classList.add('annotated');
-
-    if (annotationId) {
-        token.dataset.annotationId = annotationId;
-    }
-}
+// (layer system moved to desktop/frontend/lib/layers/*)
