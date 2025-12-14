@@ -2,8 +2,10 @@
   "name": "kalima-web",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "scripts": {
     "serve:web": "http-server desktop/web -p 4173 -c-1",
+    "test:unit": "node --test tests/unit/*.test.js",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui"

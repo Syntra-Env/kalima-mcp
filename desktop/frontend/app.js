@@ -1,3 +1,6 @@
+import { normalizeCommand, recordCommandInHistory } from './lib/history.js';
+import { shouldClearForCommand } from './lib/commandBehavior.js';
+
 const output = document.getElementById('output');
 const commandInput = document.getElementById('command-input');
 const promptSpan = document.getElementById('prompt');
@@ -247,17 +250,11 @@ commandInput.addEventListener('keydown', async (e) => {
 });
 
 async function runUserCommand(command) {
-    const trimmed = (command || '').trim();
+    const trimmed = normalizeCommand(command);
     if (!trimmed) return;
 
-    const isHistoryCommand = trimmed.toLowerCase() === 'history';
-    if (!isHistoryCommand) {
-        const lastCommand = commandHistory[commandHistory.length - 1];
-        if (lastCommand !== trimmed) {
-            commandHistory.push(trimmed);
-        }
-        historyIndex = commandHistory.length;
-    }
+    recordCommandInHistory(commandHistory, trimmed);
+    historyIndex = commandHistory.length;
 
     const prefillApplied = await executeCommand(trimmed);
     if (!prefillApplied) {
@@ -286,10 +283,8 @@ async function executeCommand(command) {
         return prefillApplied;
     }
 
-    const noClearCommands = new Set(['inspect']);
-
     // Clear screen before executing command (for most commands)
-    if (!noClearCommands.has(cmd)) {
+    if (shouldClearForCommand(trimmed)) {
         clearOutput();
     }
 
@@ -590,10 +585,35 @@ async function fetchMorphologyForVerse(surah, ayah) {
 function parseMorphologySegments(segments) {
     const byToken = {};
 
+    const rawTokenIndices = segments
+        .map((seg) => seg.token_index)
+        .filter((idx) => idx !== undefined && idx !== null)
+        .map((idx) => Number(idx))
+        .filter((idx) => Number.isFinite(idx));
+    const minTokenIndex = rawTokenIndices.length ? Math.min(...rawTokenIndices) : null;
+
+    const rawWordIndices = segments
+        .map((seg) => seg.word_index)
+        .filter((idx) => idx !== undefined && idx !== null)
+        .map((idx) => Number(idx))
+        .filter((idx) => Number.isFinite(idx));
+    const minWordIndex = rawWordIndices.length ? Math.min(...rawWordIndices) : null;
+
     for (const seg of segments) {
         // Try both token_index and word_index fields
-        const tokenIndex = seg.token_index !== undefined ? seg.token_index : seg.word_index;
-        if (tokenIndex === undefined) continue;
+        let tokenIndex;
+        if (seg.token_index !== undefined && seg.token_index !== null) {
+            const raw = Number(seg.token_index);
+            if (!Number.isFinite(raw)) continue;
+            tokenIndex = minTokenIndex === 1 ? raw - 1 : raw;
+        } else if (seg.word_index !== undefined && seg.word_index !== null) {
+            const raw = Number(seg.word_index);
+            if (!Number.isFinite(raw)) continue;
+            tokenIndex = minWordIndex === 1 ? raw - 1 : raw;
+        } else {
+            continue;
+        }
+        if (!Number.isFinite(tokenIndex)) continue;
 
         if (!byToken[tokenIndex]) {
             byToken[tokenIndex] = [];
