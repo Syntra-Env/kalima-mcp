@@ -269,8 +269,6 @@ fn handle_command(state: &mut AppState, line: &str) -> Result<CommandResponse> {
                 _ => Err(anyhow!("unknown read subcommand: {}", subtype)),
             }
         }
-        "write" => resp(handle_write(state, &rest)?),
-        "edit" => handle_edit(state, &rest),
         "clear" => resp(CommandOutput::Clear),
         "help" => resp(CommandOutput::Info {
             message: print_help(),
@@ -288,7 +286,7 @@ fn handle_command(state: &mut AppState, line: &str) -> Result<CommandResponse> {
             ),
         }),
         "legend" => resp(CommandOutput::Info {
-            message: "Colors: role subj=green, obj=red, comp=blue, other=gold. POS is blue text. Case is cyan text.".to_string(),
+            message: "Colors: role subj=green, obj=red, comp=blue, other=gold. POS is blue text. Case is cyan text. Concordance: anchors=blue outline, hits=yellow highlight.".to_string(),
         }),
         "exit" | "quit" => std::process::exit(0),
         _ => Err(anyhow!(
@@ -324,38 +322,32 @@ fn read_chapter(state: &mut AppState, number: i64) -> Result<CommandOutput> {
         state.current_verse = Some(verse);
     }
 
-    let mut content = String::new();
-    content.push_str(&format!(
-        "=== Surah {}: {} ===\n\n",
-        surah.surah.number, surah_name
-    ));
-    for verse in &surah.verses {
-        // Some datasets omit verse_texts for certain ayat (e.g., 1:1); fetch full verse as fallback.
-        let verse_full = if verse.text.trim().is_empty() {
-            fetch_verse(state, surah.surah.number, verse.ayah)?
-        } else {
-            Verse {
-                surah: SurahInfo {
-                    number: surah.surah.number,
-                    name: surah.surah.name.clone(),
-                },
-                ayah: verse.ayah,
-                text: verse.text.clone(),
-                tokens: vec![],
-            }
-        };
-        let interp = match state.mode {
-            Mode::Write => Some(fetch_interpretations_with_ids(
-                state,
-                surah.surah.number,
-                verse.ayah,
-            )?),
-            Mode::Read => None,
-        };
-        content.push_str(&render_verse_line(&verse_full, interp, state.mode));
+    let mut verse_outputs = Vec::new();
+
+    for verse_summary in &surah.verses {
+        // Fetch full verse data with tokens for each verse
+        let verse = fetch_verse(state, surah.surah.number, verse_summary.ayah)?;
+
+        let token_texts: Vec<String> = verse
+            .tokens
+            .iter()
+            .map(|t| t.text.clone().unwrap_or_default())
+            .collect();
+
+        verse_outputs.push(VerseOutput {
+            surah: verse.surah.number,
+            ayah: verse.ayah,
+            text: verse.text.clone(),
+            tokens: if token_texts.is_empty() { None } else { Some(token_texts) },
+            legend: None,
+        });
     }
 
-    Ok(CommandOutput::Pager { content })
+    Ok(CommandOutput::Chapter(ChapterOutput {
+        surah: surah.surah.number,
+        name: surah_name,
+        verses: verse_outputs,
+    }))
 }
 
 fn parse_write_target(state: &AppState, rest: &str) -> Result<((i64, i64), String)> {
@@ -1284,16 +1276,27 @@ fn print_help() -> String {
     help.push_str("  read word <N>             - View a specific word in the current verse\n");
     help.push_str("  read morpheme <letter>    - View morpheme details (best-effort)\n");
     help.push_str("  read letter <N>           - View a specific letter (placeholder)\n\n");
-    help.push_str("Interpret (write mode):\n");
-    help.push_str("  write                     - Enter write mode for the current ayah\n");
-    help.push_str("  write <ayah> [text]       - Use current surah context; save text if provided\n");
-    help.push_str("  write <S:A> [text]        - Target a specific ayah and optionally save text\n");
-    help.push_str("  write chapter <N>         - View a surah with interpretation slots\n\n");
-    help.push_str("  edit <N>                  - Prefill interpretation number N for editing (write mode)\n\n");
     help.push_str("Layers (UI):\n");
     help.push_str("  layer                     - Show current layer and list available layers\n");
     help.push_str("  layer <number|name>       - Switch layer (e.g. 'layer root', 'layer 3')\n");
     help.push_str("  layer next | prev         - Cycle layers\n\n");
+    help.push_str("Concordance (Query Mode):\n");
+    help.push_str("  Ctrl+Q                    - Enter Query Mode\n");
+    help.push_str("  q | query | concordance   - Enter Query Mode as a command\n");
+    help.push_str("  Alt+O/R/L/P/C/G           - Switch display layer (Original/Root/Lemma/POS/Case/Gender)\n");
+    help.push_str("  click token               - Add/update constraint for next anchor\n");
+    help.push_str("  Shift+click token         - Toggle that token's constraint on/off\n");
+    help.push_str("  Shift+hover token         - Show the current layer label\n");
+    help.push_str("  Ctrl+Z                    - Remove the last anchor\n");
+    help.push_str("  Enter                     - Run concordance search\n");
+    help.push_str("  Esc                       - Exit Query Mode\n\n");
+    help.push_str("Concordance syntax:\n");
+    help.push_str("  #N key:value key:value ...   - Anchors match a token pattern anywhere (use ~ for gaps)\n");
+    help.push_str("  Quote values with spaces:    r:\"...\" (and other fields)\n\n");
+    help.push_str("  OR values:                   g:M|F (also supports commas: g:M,F)\n");
+    help.push_str("  Wildcards:                   r:عجل* (* expands as wildcard)\n");
+    help.push_str("  Negation:                    !g:M\n");
+    help.push_str("  Gap (distance):              ~0 (adjacent), ~1-3 (allow 1..3 tokens between anchors)\n\n");
     help.push_str("General:\n");
     help.push_str("  clear                     - Clear the interface output\n");
     help.push_str("  history                   - Show command history (click to re-run)\n");
@@ -1497,6 +1500,77 @@ mod tests {
         assert!(tree.contains("Stem: له"), "stem for word2 missing");
         assert!(tree.contains("Stem: رحمن"), "stem for word3 missing");
         assert!(tree.contains("Stem: رحيم"), "stem for word4 missing");
+    }
+
+    #[test]
+    fn chapter_output_serializes_correctly() {
+        let chapter = ChapterOutput {
+            surah: 1,
+            name: "الفاتحة".to_string(),
+            verses: vec![
+                VerseOutput {
+                    surah: 1,
+                    ayah: 1,
+                    text: "بِسْمِ ٱللَّهِ ٱلرَحْمَٰنِ ٱلرَّحِيمِ".to_string(),
+                    tokens: Some(vec!["بِسْمِ".to_string(), "ٱللَّهِ".to_string()]),
+                    legend: None,
+                },
+            ],
+        };
+
+        let output = CommandOutput::Chapter(chapter);
+        let json = serde_json::to_value(&output).unwrap();
+
+        assert_eq!(json["output_type"], "chapter");
+        assert_eq!(json["surah"], 1);
+        assert_eq!(json["name"], "الفاتحة");
+        assert_eq!(json["verses"][0]["surah"], 1);
+        assert_eq!(json["verses"][0]["ayah"], 1);
+        assert!(json["verses"][0]["tokens"].is_array());
+    }
+
+    #[test]
+    fn chapter_output_includes_all_verses() {
+        let verses = vec![
+            VerseOutput {
+                surah: 1,
+                ayah: 1,
+                text: "verse 1".to_string(),
+                tokens: Some(vec!["token1".to_string()]),
+                legend: None,
+            },
+            VerseOutput {
+                surah: 1,
+                ayah: 2,
+                text: "verse 2".to_string(),
+                tokens: Some(vec!["token2".to_string()]),
+                legend: None,
+            },
+        ];
+
+        let chapter = ChapterOutput {
+            surah: 1,
+            name: "Test".to_string(),
+            verses,
+        };
+
+        assert_eq!(chapter.verses.len(), 2);
+        assert_eq!(chapter.verses[0].ayah, 1);
+        assert_eq!(chapter.verses[1].ayah, 2);
+    }
+
+    #[test]
+    fn verse_output_handles_empty_tokens() {
+        let verse = VerseOutput {
+            surah: 1,
+            ayah: 1,
+            text: "test".to_string(),
+            tokens: None,
+            legend: None,
+        };
+
+        let json = serde_json::to_value(&verse).unwrap();
+        assert!(json.get("tokens").is_none());
     }
 
 }

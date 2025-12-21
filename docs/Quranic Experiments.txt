@@ -2,3 +2,36 @@
 1. Open C:/Codex/Kalima/datasets/text/quran-clean.txt in notepad++
 2. Zoom out until the lengths of the lines of text begin to look like a vertically aligned sound wave
 3. convert it to actual sound waves and listen to it.
+
+
+# Refresh Page
+When the user refreshes the page, all command history is lost. This information should be saved in a session that stays active as long as the user does not close the app entirely.
+
+# Query Mode
+The current implementation of the Query mode is unintuitive. You can't easily exit the query mode.
+
+Additionally, I don't even think it should be a different mode. Well, maybe, but not in the way it's currently implemented.
+
+What do I mean? Well, for one, I don't think the query language should really be visible to the user. They won't understand what the query is saying, which might confuse them, and they don't even need to know what's happening in the backend anyway. Therefore, I'd like to replace the complex query displayed with a simple interface, showing the full name of every element of the query, nested in rectangles to distinguish between the elements of different words, and in each word, the actual layer can be shown in the color of the rectangle background highlight.
+
+# Right-click
+The right click triggers the default browser right click event, with the options to refresh the page, or some other actions that frankly are quite useless to the user's experience while using the Kalima app.
+The default right click event should be replace with a more relevant one, but I'm not sure which event.
+Well, I previously had the left and mouse clicks bound to the down and up navigation of linguistic layers, respectively, but now that we added more features, especially in the annotation layer, you can click on a word to enter a hypothesized interpretation of the word. Therefore, if we were to keep both layer navigation and annotation functionalities the same, then using the left click in the annotation layer would be ambiguous, and will therefore cause usability issues.
+
+On top of this, I wanted to add make the search feature be as seamless as clicking on an element, and the results matching the selection would show up on the bottom pane.
+
+Which is why I feel that modes are necessary.
+
+# annotation
+When i annotate a certain word or sentence in the Quran, I want Kalima to immediately show me all of the other instances in the Quran where the underlying word was used.
+
+But that's not specific enough. Should it show you the other words that share the same root? The words that shares the same morphemes? Which layer of the text holds a monopoly on the meaning of the word? What if no single layer held monopoly over the meaning? Then this represents a more complex and nuanced interdependency among the different layers. How can this be represented?
+
+# meta-orthographic signs
+What is the AL term for meta-orthographic signs in the Quran, the like the unspoken truth in Surah Yussuf?
+
+# unused actions
+- hover over a word for a second
+- scroll on a word
+- hold right click or left click

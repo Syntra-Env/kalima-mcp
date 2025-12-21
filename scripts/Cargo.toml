@@ -1,0 +1,21 @@
+[package]
+name = "kalima-scripts"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "explore_noor_db"
+path = "explore_noor_db.rs"
+
+[[bin]]
+name = "check_db"
+path = "check_db.rs"
+
+[dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+[[bin]]
+name = "try_noor_db"
+path = "try_noor_db.rs"
+[[bin]]
+name = "check_file"
+path = "check_file.rs"

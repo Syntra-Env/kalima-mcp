@@ -74,6 +74,7 @@ cargo run -p api --release
 - Browse 114 surahs, 6,236 verses
 - Full-text search with Arabic diacritics
 - Root-based morphological search
+- Concordance search (Query Mode: `Q`, click tokens to build `#N key:value` patterns)
 - POS pattern search
 - Verb form analysis (Forms I-X)
 - Dependency tree visualization
@@ -93,6 +94,7 @@ cargo run -p api --release
 - `GET /api/search/roots?root=...` - Root search
 - `GET /api/search/morphology?q=...` - Morphology search
 - `GET /api/search/verb_forms?form=IV` - Verb form search
+- `POST /concordance` - Concordance search (sequential anchored patterns)
 
 ### Linguistic Data
 - `GET /api/morphology/:surah/:ayah` - Morphological segments

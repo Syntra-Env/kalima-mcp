@@ -18,49 +18,16 @@ function resolveTauriDriverBinary() {
   return path.resolve(os.homedir(), '.cargo', 'bin', binaryName);
 }
 
-function resolveNativeWebDriverBinary() {
-  if (process.platform !== 'win32') return null;
-
-  const fromEnv = (process.env.MSEDGEDRIVER_PATH || '').trim();
-  if (fromEnv) return fromEnv;
-
-  const toolsPath = path.resolve(repoRoot(), 'tools', 'webdriver', 'msedgedriver.exe');
-  if (fs.existsSync(toolsPath)) return toolsPath;
-
-  try {
-    const result = spawnSync('where.exe', ['msedgedriver.exe'], { encoding: 'utf8' });
-    if (result.status === 0 && typeof result.stdout === 'string') {
-      const candidate = result.stdout
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(Boolean)[0];
-      if (candidate && fs.existsSync(candidate)) return candidate;
-    }
-  } catch {
-    // ignore
-  }
-
-  try {
-    const base = path.resolve(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Packages');
-    if (fs.existsSync(base)) {
-      const entries = fs.readdirSync(base, { withFileTypes: true });
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        if (!entry.name.toLowerCase().startsWith('microsoft.edgedriver_')) continue;
-        const candidate = path.join(base, entry.name, 'msedgedriver.exe');
-        if (fs.existsSync(candidate)) return candidate;
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  return null;
-}
-
 function resolveAppBinary() {
   const candidates = [
-    path.resolve(repoRoot(), 'desktop', 'src-tauri', 'target', 'debug', process.platform === 'win32' ? 'app.exe' : 'app'),
+    path.resolve(
+      repoRoot(),
+      'desktop',
+      'src-tauri',
+      'target',
+      'debug',
+      process.platform === 'win32' ? 'app.exe' : 'app'
+    ),
   ];
 
   for (const candidate of candidates) {
@@ -73,6 +40,7 @@ function resolveAppBinary() {
 function closeTauriDriver() {
   exit = true;
   tauriDriverProcess?.kill();
+  tauriDriverProcess = undefined;
 }
 
 function onShutdown(fn) {
@@ -93,14 +61,87 @@ function onShutdown(fn) {
 
 onShutdown(() => closeTauriDriver());
 
+function getWebView2RuntimeVersion() {
+  if (process.platform !== 'win32') return null;
+  const key =
+    'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
+  const result = spawnSync('reg.exe', ['query', key, '/v', 'pv'], { encoding: 'utf8' });
+  if (result.status !== 0) return null;
+  const out = String(result.stdout || '');
+  const match = out.match(/\bpv\s+REG_\w+\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/i);
+  return match?.[1] || null;
+}
+
+function parseDriverVersion(output) {
+  // "Microsoft Edge WebDriver 142.0.3595.94 (...)" -> "142.0.3595.94"
+  const match = String(output || '').match(/WebDriver\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/i);
+  return match?.[1] || null;
+}
+
+function resolveNativeWebDriverBinary() {
+  if (process.platform !== 'win32') return null;
+
+  const fromEnv = (process.env.MSEDGEDRIVER_PATH || '').trim();
+  if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
+
+  try {
+    const result = spawnSync('where.exe', ['msedgedriver.exe'], { encoding: 'utf8' });
+    if (result.status === 0 && typeof result.stdout === 'string') {
+      const candidate = result.stdout
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean)[0];
+      if (candidate && fs.existsSync(candidate)) return candidate;
+    }
+  } catch {
+    // ignore
+  }
+
+  return null;
+}
+
+function getNativeDriverVersion(driverPath) {
+  try {
+    const result = spawnSync(driverPath, ['--version'], { encoding: 'utf8' });
+    if (result.status !== 0) return null;
+    return parseDriverVersion(result.stdout) || parseDriverVersion(result.stderr);
+  } catch {
+    return null;
+  }
+}
+
+function ensureDriverMajorMatchesWebView2() {
+  if (process.platform !== 'win32') return;
+
+  const webview2 = getWebView2RuntimeVersion();
+  const driverPath = resolveNativeWebDriverBinary();
+  const driverVersion = driverPath ? getNativeDriverVersion(driverPath) : null;
+
+  if (!webview2 || !driverVersion) return;
+  const webMajor = webview2.split('.')[0];
+  const driverMajor = driverVersion.split('.')[0];
+  if (webMajor === driverMajor) return;
+
+  throw new Error(
+    [
+      `WebView2 runtime is ${webview2}, but msedgedriver is ${driverVersion}.`,
+      `Install the matching Edge WebDriver (major ${webMajor}) and re-run E2E.`,
+      `Suggested shows available versions: winget list --id Microsoft.EdgeDriver`,
+      `Upgrade command: winget upgrade --id Microsoft.EdgeDriver --accept-source-agreements --accept-package-agreements`,
+      `Or set MSEDGEDRIVER_PATH to a matching msedgedriver.exe.`,
+    ].join('\n')
+  );
+}
+
 export const config = {
   host: '127.0.0.1',
   port: 4444,
-  specs: ['./specs/**/*.e2e.js'],
+  // Single spec aggregator = single worker/session (avoids parallel WebView2 flakiness).
+  specs: ['./specs/all.e2e.js'],
   maxInstances: 1,
   capabilities: [
     {
-      maxInstances: 1,
+      'wdio:maxInstances': 1,
       'tauri:options': {
         application: resolveAppBinary(),
       },
@@ -117,14 +158,13 @@ export const config = {
     spawnSync(
       'cargo',
       ['build', '--manifest-path', path.resolve(repoRoot(), 'desktop', 'src-tauri', 'Cargo.toml')],
-      {
-        cwd: repoRoot(),
-        stdio: 'inherit',
-      }
+      { cwd: repoRoot(), stdio: 'inherit' }
     );
   },
 
   beforeSession: () => {
+    ensureDriverMajorMatchesWebView2();
+
     const tauriDriver = resolveTauriDriverBinary();
     if (!fs.existsSync(tauriDriver)) {
       // eslint-disable-next-line no-console
@@ -136,9 +176,7 @@ export const config = {
 
     const args = [];
     const nativeDriver = resolveNativeWebDriverBinary();
-    if (nativeDriver) {
-      args.push('--native-driver', nativeDriver);
-    }
+    if (nativeDriver) args.push('--native-driver', nativeDriver);
 
     tauriDriverProcess = spawn(tauriDriver, args, {
       stdio: [null, process.stdout, process.stderr],
@@ -163,3 +201,4 @@ export const config = {
     closeTauriDriver();
   },
 };
+

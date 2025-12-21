@@ -42,6 +42,19 @@ body {
     display: none; /* WebKit */
 }
 
+#results {
+    flex: 0.7;
+    overflow-y: auto;
+    padding: 0 2rem 1rem 2rem;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#results:empty {
+    display: none;
+}
+
 #input-line {
     display: flex;
     align-items: center;
@@ -98,6 +111,13 @@ body {
     direction: rtl;
     text-align: right;
     line-height: 2;
+}
+
+/* Mixed Arabic + LTR output (e.g. help lines with Arabic examples) */
+.contains-arabic {
+    font-family: 'Scheherazade New', 'Consolas', 'Monaco', 'Courier New', monospace;
+    direction: ltr;
+    text-align: left;
 }
 
 /* Verse reference (LTR numbers + RTL Arabic) */
@@ -381,4 +401,62 @@ body {
 /* Monochrome layers */
 .lemma-value, .pattern-value, .dependency_rel-value, .role-value, .verb_form-value {
     color: #D4D4D4;
+}
+
+/* Concordance query mode */
+#terminal.query-mode-active {
+    background-color: rgba(255, 251, 204, 0.06);
+    border-left: 4px solid #ffeb3b;
+}
+
+/* Transient layer label (Shift+hover in query mode) */
+.transient-layer-label {
+    position: absolute;
+    top: -20px;
+    left: 0;
+    font-size: 10px;
+    background: #333;
+    color: #fff;
+    padding: 2px 5px;
+    border-radius: 3px;
+    pointer-events: none;
+    z-index: 1000;
+}
+
+/* Query anchors (token-level) */
+.token[data-anchor-num] {
+    background-color: rgba(33, 150, 243, 0.12);
+    border: 1px solid rgba(33, 150, 243, 0.55);
+}
+
+.token[data-anchor-num]::before {
+    content: attr(data-anchor-num);
+    position: absolute;
+    top: -12px;
+    left: 0;
+    font-size: 9px;
+    background: #2196f3;
+    color: #fff;
+    padding: 1px 4px;
+    border-radius: 2px;
+}
+
+/* Concordance results */
+.concordance-summary {
+    font-weight: bold;
+    margin: 0.5rem 0 1rem 0;
+    color: #569cd6;
+}
+
+.concordance-match {
+    margin: 0.5rem 0 1.25rem 0;
+}
+
+.concordance-line {
+    font-size: 1.25rem;
+}
+
+.token[data-concordance-hit="1"] {
+    background-color: rgba(255, 235, 59, 0.55);
+    font-weight: 700;
 }

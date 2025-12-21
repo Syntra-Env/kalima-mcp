@@ -4,8 +4,14 @@ import { ANNOTATION_LAYER_INDEX, DEFAULT_LAYER_INDEX, LAYERS } from './lib/layer
 import { createMorphologyCache, fetchMorphologyForVerse } from './lib/layers/morphology.js';
 import { LayerManager } from './lib/layers/manager.js';
 import { handleLayerCommand } from './lib/layers/layerCommand.js';
+import { QueryBuilder } from './lib/concordance/queryBuilder.js';
+import { executeConcordanceSearch } from './lib/concordance/search.js';
+import { displayConcordanceResults } from './lib/concordance/display.js';
+import * as chat from './lib/chat.js';
 
+const terminal = document.getElementById('terminal');
 const output = document.getElementById('output');
+const resultsPane = document.getElementById('results');
 const commandInput = document.getElementById('command-input');
 const promptSpan = document.getElementById('prompt');
 
@@ -18,6 +24,12 @@ let zoomFactor = 1;
 
 const morphologyCache = createMorphologyCache();
 const layerManager = new LayerManager({ layers: LAYERS, defaultIndex: DEFAULT_LAYER_INDEX });
+
+let queryMode = false;
+let savedInputValue = '';
+const queryBuilder = new QueryBuilder();
+const anchorTokenMap = new Map();
+let queryModeHintShown = false;
 
 const arabicSurahNames = [
     null,
@@ -170,6 +182,12 @@ window.addEventListener('DOMContentLoaded', async () => {
 document.addEventListener('click', (e) => {
     const token = e.target.closest('.token');
     if (token && !token.classList.contains('editing')) {
+        if (queryMode) {
+            e.preventDefault();
+            handleTokenQueryClick(token, { toggle: e.shiftKey });
+            commandInput.focus();
+            return;
+        }
         // Only allow editing on annotation layer (Layer 13)
         if (layerManager.getCurrentLayerIndex() === ANNOTATION_LAYER_INDEX) {
             startInlineEdit(token);
@@ -177,6 +195,19 @@ document.addEventListener('click', (e) => {
     } else if (!e.target.closest('.inline-editor')) {
         commandInput.focus();
     }
+});
+
+output.addEventListener('mouseover', (e) => {
+    if (!queryMode || !e.shiftKey) return;
+    const token = e.target.closest('.token');
+    if (!token) return;
+    showTransientLabel(token);
+});
+
+output.addEventListener('mouseout', (e) => {
+    const token = e.target.closest('.token');
+    if (!token) return;
+    removeTransientLabel(token);
 });
 
 // Note: Right-click is now used for layer slider navigation
@@ -197,6 +228,33 @@ window.addEventListener('wheel', (event) => {
 
 // Handle command input
 commandInput.addEventListener('keydown', async (e) => {
+    // Ctrl/Cmd+Q enters Query Mode without stealing normal typing (e.g. starting a command with 'q').
+    if (!queryMode && (e.ctrlKey || e.metaKey) && (e.key === 'q' || e.key === 'Q')) {
+        e.preventDefault();
+        enterQueryMode();
+        return;
+    }
+
+    if (queryMode) {
+        e.stopImmediatePropagation();
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const text = (commandInput.value || '').trim();
+            if (text && !text.startsWith('#')) {
+                await runCommandWhileQueryMode(text);
+            } else {
+                await executeConcordance();
+            }
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            exitQueryMode();
+        } else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+            e.preventDefault();
+            removeLastQueryAnchor();
+        }
+        return;
+    }
+
     if (e.key === 'Enter') {
         const command = commandInput.value.trim();
         await runUserCommand(command);
@@ -218,6 +276,54 @@ commandInput.addEventListener('keydown', async (e) => {
     }
 });
 
+document.addEventListener('keydown', (e) => {
+    if (!queryMode) return;
+
+    const layerMap = {
+        o: 0, O: 0,  // Original
+        r: 1, R: 1,  // Root
+        l: 2, L: 2,  // Lemma
+        p: 3, P: 3,  // POS
+        c: 5, C: 5,  // Case
+        g: 6, G: 6   // Gender
+    };
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        exitQueryMode();
+        return;
+    }
+
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        executeConcordance();
+        return;
+    }
+
+    if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+        const current = commandInput?.value?.trim() || '';
+        if (!current) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            showQueryModeHint();
+            return;
+        }
+    }
+
+    const isLayerKey = layerMap[e.key] !== undefined;
+    if (isLayerKey) {
+        // Avoid stealing normal typing in Query Mode: layer shortcuts always require Alt.
+        if (!e.altKey) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        layerManager.changeLayer(layerMap[e.key]);
+        commandInput?.focus();
+        return;
+    }
+}, true);
+
 async function runUserCommand(command) {
     const trimmed = normalizeCommand(command);
     if (!trimmed) return;
@@ -237,7 +343,7 @@ async function executeCommand(command) {
 
     // Handle 'history' command locally
     if (command.trim().toLowerCase() === 'history') {
-        clearOutput();
+        clearAllPanes();
         printLine(`${currentPrompt} ${command}`, 'command-echo');
         showHistory();
         return prefillApplied;
@@ -245,6 +351,12 @@ async function executeCommand(command) {
 
     const trimmed = command.trim();
     const cmd = (trimmed.split(/\s+/)[0] || '').toLowerCase();
+
+    // Enter concordance Query Mode locally (no server roundtrip)
+    if (cmd === 'q' || cmd === 'query' || cmd === 'concordance') {
+        enterQueryMode();
+        return true; // prevent input clear
+    }
 
     // Handle 'layer' command locally (without clearing)
     if (cmd === 'layer') {
@@ -254,7 +366,7 @@ async function executeCommand(command) {
 
     // Clear screen before executing command (for most commands)
     if (shouldClearForCommand(trimmed)) {
-        clearOutput();
+        clearAllPanes();
     }
 
     // Echo command after clearing
@@ -281,6 +393,8 @@ async function executeCommand(command) {
                 printLine(result.output.message, 'warning');
             } else if (outputType === 'verse') {
                 printVerse(result.output);
+            } else if (outputType === 'chapter') {
+                printChapter(result.output);
             } else if (outputType === 'analysis') {
                 printAnalysis(result.output);
             } else if (outputType === 'pager' && result.output.content) {
@@ -328,6 +442,205 @@ function printOutput(content, type) {
     } else {
         printLine(content);
     }
+}
+
+function enterQueryMode() {
+    queryMode = true;
+    queryBuilder.isActive = true;
+    savedInputValue = commandInput.value;
+    commandInput.readOnly = false;
+    commandInput.value = queryBuilder.buildQueryString();
+    terminal?.classList.add('query-mode-active');
+    promptSpan.textContent = decoratePromptForQueryMode(currentPrompt);
+    maybeShowQueryModeHint();
+    commandInput.focus();
+}
+
+function exitQueryMode() {
+    queryMode = false;
+    queryBuilder.isActive = false;
+    queryBuilder.clear();
+    anchorTokenMap.clear();
+    commandInput.readOnly = false;
+    commandInput.value = savedInputValue;
+    terminal?.classList.remove('query-mode-active');
+    promptSpan.textContent = currentPrompt;
+    clearQueryMarkers();
+    commandInput.focus();
+}
+
+function decoratePromptForQueryMode(prompt) {
+    const base = String(prompt || 'kalima >');
+    if (base.includes('[Q]')) return base;
+    const trimmed = base.replace(/\s+$/, '');
+    if (trimmed.endsWith('>')) {
+        return `${trimmed.slice(0, -1).trimEnd()} [Q] >`;
+    }
+    return `${trimmed} [Q]`;
+}
+
+function clearQueryMarkers(root = document) {
+    root.querySelectorAll('.token[data-anchor-num]').forEach((token) => {
+        delete token.dataset.anchorNum;
+    });
+    root.querySelectorAll('.transient-layer-label').forEach((label) => label.remove());
+    anchorTokenMap.clear();
+}
+
+function showTransientLabel(token) {
+    if (!token) return;
+    const existing = token.querySelector(':scope > .transient-layer-label');
+    if (existing) return;
+
+    const currentLayer = layerManager.getCurrentLayer();
+    const label = document.createElement('span');
+    label.className = 'transient-layer-label';
+    label.textContent = currentLayer?.name || '';
+    token.appendChild(label);
+}
+
+function removeTransientLabel(token) {
+    if (!token) return;
+    const existing = token.querySelector(':scope > .transient-layer-label');
+    existing?.remove();
+}
+
+function getTokenMorphology(token) {
+    try {
+        const raw = token.dataset.morphology;
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function getConstraintForCurrentLayer(token) {
+    const layer = layerManager.getCurrentLayer();
+    if (layer?.id === 0) {
+        const value = token.dataset.originalText || token.textContent || '';
+        return value ? { field: 'text', value } : null;
+    }
+
+    if (!layer?.field) return null;
+    const segments = getTokenMorphology(token);
+    for (const seg of segments) {
+        const value = seg?.[layer.field];
+        if (value != null && value !== '') {
+            return { field: layer.field, value: String(value) };
+        }
+    }
+    return null;
+}
+
+function ensureTokenAnchor(token) {
+    const existing = Number(token.dataset.anchorNum);
+    if (Number.isFinite(existing) && existing > 0) return existing;
+    const anchorNum = queryBuilder.createAnchor();
+    token.dataset.anchorNum = String(anchorNum);
+    anchorTokenMap.set(anchorNum, token);
+    return anchorNum;
+}
+
+function handleTokenQueryClick(token, { toggle = false } = {}) {
+    const anchorNum = ensureTokenAnchor(token);
+    const constraint = getConstraintForCurrentLayer(token);
+    if (!constraint) return;
+
+    if (toggle) {
+        queryBuilder.toggleConstraint(anchorNum, constraint.field, constraint.value);
+        if (!queryBuilder.getAnchor(anchorNum)) {
+            delete token.dataset.anchorNum;
+            anchorTokenMap.delete(anchorNum);
+        }
+    } else {
+        queryBuilder.addConstraint(anchorNum, constraint.field, constraint.value);
+    }
+
+    commandInput.value = queryBuilder.buildQueryString();
+}
+
+function removeLastQueryAnchor() {
+    const anchors = (queryBuilder.anchors || []).slice().sort((a, b) => a.anchorNum - b.anchorNum);
+    if (anchors.length === 0) return false;
+    const last = anchors[anchors.length - 1];
+    queryBuilder.removeAnchor(last.anchorNum);
+
+    const token = anchorTokenMap.get(last.anchorNum);
+    if (token) {
+        delete token.dataset.anchorNum;
+    }
+    anchorTokenMap.delete(last.anchorNum);
+
+    commandInput.value = queryBuilder.buildQueryString();
+    return true;
+}
+
+function showQueryModeHint() {
+    printLine(
+        "Query Mode: anchors (#1/#2/...) are pattern positions (matches anywhere). Alt+O/R/L/P/C/G switches layer; click tokens adds constraints; Shift+click toggles; Ctrl+Z removes last anchor; Enter searches (results pane); Esc exits.",
+        "info"
+    );
+}
+
+function maybeShowQueryModeHint() {
+    if (queryModeHintShown) return;
+    queryModeHintShown = true;
+    showQueryModeHint();
+}
+
+async function runCommandWhileQueryMode(commandText) {
+    const queryString = queryBuilder.buildQueryString();
+
+    // Temporarily suspend query mode UI so command entry behaves normally.
+    queryMode = false;
+    queryBuilder.isActive = false;
+    terminal?.classList.remove('query-mode-active');
+    promptSpan.textContent = currentPrompt;
+
+    await runUserCommand(commandText);
+
+    // Restore query mode UI (keep current query builder state).
+    queryMode = true;
+    queryBuilder.isActive = true;
+    terminal?.classList.add('query-mode-active');
+    promptSpan.textContent = decoratePromptForQueryMode(currentPrompt);
+    commandInput.value = queryString;
+    commandInput.focus();
+}
+
+async function executeConcordance() {
+    const queryString = (commandInput.value || queryBuilder.buildQueryString()).trim();
+    if (!queryString) {
+        printLine('Query is empty.', 'warning');
+        return;
+    }
+
+    clearResults();
+    clearConcordanceHighlights();
+    printResultLine(`${decoratePromptForQueryMode(currentPrompt)} ${queryString}`, 'command-echo');
+    try {
+        const searchResults = await executeConcordanceSearch({ query: queryString });
+        await displayConcordanceResults(searchResults, {
+            outputEl: resultsPane,
+            layerManager,
+            morphologyCache,
+            fetchMorphologyForVerse,
+            append: true,
+        });
+        scrollResultsToTop();
+    } catch (err) {
+        printResultLine(`Concordance error: ${err?.message || err}`, 'error');
+    } finally {
+        exitQueryMode();
+    }
+}
+
+function clearConcordanceHighlights(root = document) {
+    root.querySelectorAll('.token[data-concordance-hit]').forEach((token) => {
+        delete token.dataset.concordanceHit;
+    });
 }
 
 // Toggle between annotation and original Arabic text
@@ -567,7 +880,8 @@ async function printVerse(verse) {
                 `.token[data-surah="${verse.surah}"][data-ayah="${verse.ayah}"][data-index="${index}"]`
             );
 
-            if (tokenSpan && morphData[index]) {
+            // Only set morphology if not already present (respects pre-set data in tests)
+            if (tokenSpan && morphData[index] && !tokenSpan.dataset.morphology) {
                 tokenSpan.dataset.morphology = JSON.stringify(morphData[index]);
             }
         });
@@ -614,6 +928,88 @@ async function loadAnnotations(surah, ayah, container) {
     } catch (err) {
         console.error('Failed to load annotations:', err);
     }
+}
+
+async function printChapter(chapter) {
+    const container = document.createElement('div');
+    container.className = 'chapter-container';
+
+    // Chapter header
+    const header = document.createElement('div');
+    header.className = 'chapter-header';
+    header.textContent = `Surah ${chapter.surah}: ${chapter.name}`;
+    container.appendChild(header);
+    output.appendChild(container);
+
+    // Render each verse with tokens
+    for (const verse of chapter.verses) {
+        const verseContainer = document.createElement('div');
+        verseContainer.className = 'verse-container';
+
+        const ref = document.createElement('div');
+        ref.className = 'verse-ref-header';
+        ref.textContent = `${verse.surah}:${verse.ayah}`;
+
+        const verseContent = document.createElement('div');
+        verseContent.className = 'verse-content';
+        verseContent.dir = 'rtl';
+
+        // If tokens are available, render them individually as clickable elements
+        if (verse.tokens && verse.tokens.length > 0) {
+            verse.tokens.forEach((tokenText, index) => {
+                const tokenSpan = document.createElement('span');
+                tokenSpan.className = 'token';
+                tokenSpan.dataset.surah = verse.surah;
+                tokenSpan.dataset.ayah = verse.ayah;
+                tokenSpan.dataset.index = index;
+                tokenSpan.dataset.originalText = tokenText;
+                tokenSpan.dataset.displayLayer = 'original';
+                tokenSpan.textContent = tokenText;
+
+                verseContent.appendChild(tokenSpan);
+
+                // Add space after each token (except last)
+                if (index < verse.tokens.length - 1) {
+                    verseContent.appendChild(document.createTextNode(' '));
+                }
+            });
+        } else {
+            // Fallback: render full text if no tokens
+            const arabic = document.createElement('span');
+            arabic.className = 'arabic';
+            arabic.textContent = verse.text;
+            verseContent.appendChild(arabic);
+        }
+
+        verseContainer.appendChild(ref);
+        verseContainer.appendChild(verseContent);
+        container.appendChild(verseContainer);
+
+        // Fetch morphology data for this verse
+        const morphData = await fetchMorphologyForVerse({ surah: verse.surah, ayah: verse.ayah, cache: morphologyCache });
+
+        // Store morphology in each token's dataset
+        if (verse.tokens && verse.tokens.length > 0) {
+            verse.tokens.forEach((_, index) => {
+                const tokenSpan = verseContainer.querySelector(
+                    `.token[data-surah="${verse.surah}"][data-ayah="${verse.ayah}"][data-index="${index}"]`
+                );
+
+                if (tokenSpan && morphData[index]) {
+                    tokenSpan.dataset.morphology = JSON.stringify(morphData[index]);
+                }
+            });
+        }
+
+        // Load existing annotations for this verse
+        await loadAnnotations(verse.surah, verse.ayah, verseContainer);
+    }
+
+    // Apply current layer to all tokens in the chapter
+    layerManager.applyToAllTokens();
+
+    // For chapters, show the beginning (surah start) by default.
+    output.scrollTop = 0;
 }
 
 function printAnalysis(analysis) {
@@ -761,9 +1157,13 @@ function printPager(content) {
     lines.forEach(line => {
         const lineDiv = document.createElement('div');
 
-        // Check if line contains Arabic characters
-        if (/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(line)) {
-            lineDiv.className = 'arabic';
+        const arabicStats = analyzeArabic(line);
+        if (arabicStats.hasArabic) {
+            if (arabicStats.ratio >= 0.6) {
+                lineDiv.classList.add('arabic');
+            } else {
+                lineDiv.classList.add('contains-arabic');
+            }
         }
 
         lineDiv.textContent = line;
@@ -785,8 +1185,13 @@ function printLine(text, className = '') {
     div.className = `output-line ${className}`;
 
     // Check if text contains Arabic and apply appropriate styling
-    if (/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(text)) {
-        div.classList.add('arabic');
+    const arabicStats = analyzeArabic(text);
+    if (arabicStats.hasArabic) {
+        if (arabicStats.ratio >= 0.6) {
+            div.classList.add('arabic');
+        } else {
+            div.classList.add('contains-arabic');
+        }
     }
 
     div.textContent = text;
@@ -794,12 +1199,55 @@ function printLine(text, className = '') {
     scrollToBottom();
 }
 
+function analyzeArabic(text) {
+    let arabic = 0;
+    let total = 0;
+    for (const ch of String(text || '')) {
+        if (/\s/.test(ch)) continue;
+        total += 1;
+        if (/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(ch)) {
+            arabic += 1;
+        }
+    }
+    return { hasArabic: arabic > 0, ratio: total ? arabic / total : 0 };
+}
+
 function scrollToBottom() {
     output.scrollTop = output.scrollHeight;
 }
 
+function scrollResultsToTop() {
+    if (!resultsPane) return;
+    resultsPane.scrollTop = 0;
+}
+
 function clearOutput() {
     output.innerHTML = '';
+}
+
+function clearResults() {
+    if (!resultsPane) return;
+    resultsPane.innerHTML = '';
+}
+
+function clearAllPanes() {
+    clearOutput();
+    clearResults();
+}
+
+function printResultLine(text, className = '') {
+    if (!resultsPane) {
+        printLine(text, className);
+        return;
+    }
+
+    const div = document.createElement('div');
+    div.className = `output-line ${className}`;
+    if (/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(text)) {
+        div.classList.add('arabic');
+    }
+    div.textContent = text;
+    resultsPane.appendChild(div);
 }
 
 function showHistory() {

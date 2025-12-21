@@ -63,6 +63,7 @@ pub async fn start_server_with_config(config: ServerConfig) {
 
         // Search endpoints
         .route("/search", post(handlers::search::search_handler))
+        .route("/concordance", post(handlers::concordance::concordance_search))
         .route("/search/root/:root", get(handlers::search::search_root))
         .route("/search/pos/:pos", get(handlers::search::search_pos))
         .route("/search/pattern/:pattern", get(handlers::search::search_pattern))

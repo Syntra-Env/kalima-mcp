@@ -1,5 +1,28 @@
 import { LAYERS } from './definitions.js';
 
+// Helper to print layer switch message, removing previous ones
+function printLayerSwitchMessage(message, type, printLineFn) {
+  // Remove all previous layer switch messages
+  const output = document.getElementById('output');
+  if (output) {
+    const previousMessages = output.querySelectorAll('.layer-switch-message');
+    previousMessages.forEach(msg => msg.remove());
+  }
+
+  // Print new message with special class
+  if (printLineFn) {
+    const div = document.createElement('div');
+    div.className = `output-line ${type} layer-switch-message`;
+    div.textContent = message;
+    output?.appendChild(div);
+
+    // Scroll to bottom
+    if (output) {
+      output.scrollTop = output.scrollHeight;
+    }
+  }
+}
+
 const LAYER_ALIASES = {
   original: 0,
   arabic: 0,
@@ -61,7 +84,7 @@ export function handleLayerCommand(commandLine, { clearOutput, printLine, prompt
   if (arg === 'next') {
     if (layerManager.nextLayer()) {
       const idx = layerManager.getCurrentLayerIndex();
-      printLine?.(`Switched to layer ${idx}: ${LAYERS[idx].name}`, 'success');
+      printLayerSwitchMessage(`Switched to layer ${idx}: ${LAYERS[idx].name}`, 'success', printLine);
     } else {
       printLine?.('Already at the last layer', 'warning');
     }
@@ -71,7 +94,7 @@ export function handleLayerCommand(commandLine, { clearOutput, printLine, prompt
   if (arg === 'prev' || arg === 'previous') {
     if (layerManager.prevLayer()) {
       const idx = layerManager.getCurrentLayerIndex();
-      printLine?.(`Switched to layer ${idx}: ${LAYERS[idx].name}`, 'success');
+      printLayerSwitchMessage(`Switched to layer ${idx}: ${LAYERS[idx].name}`, 'success', printLine);
     } else {
       printLine?.('Already at the first layer', 'warning');
     }
@@ -82,7 +105,7 @@ export function handleLayerCommand(commandLine, { clearOutput, printLine, prompt
   if (numMatch) {
     const index = parseInt(numMatch[1], 10);
     if (layerManager.changeLayer(index)) {
-      printLine?.(`Switched to layer ${index}: ${LAYERS[index].name}`, 'success');
+      printLayerSwitchMessage(`Switched to layer ${index}: ${LAYERS[index].name}`, 'success', printLine);
     } else {
       printLine?.(`Invalid layer number. Must be 0-${LAYERS.length - 1}`, 'error');
     }
@@ -92,7 +115,7 @@ export function handleLayerCommand(commandLine, { clearOutput, printLine, prompt
   const idx = LAYER_ALIASES[arg];
   if (idx !== undefined) {
     layerManager.changeLayer(idx);
-    printLine?.(`Switched to layer ${idx}: ${LAYERS[idx].name}`, 'success');
+    printLayerSwitchMessage(`Switched to layer ${idx}: ${LAYERS[idx].name}`, 'success', printLine);
   } else {
     printLine?.(`Unknown layer: "${arg}"`, 'error');
     printLine?.('Use "layer" to see available layers', 'info');

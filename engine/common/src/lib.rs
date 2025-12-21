@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use std::str::FromStr;
 
+pub mod concordance;
+
 // --- Models -----------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -109,10 +109,18 @@ pub struct AnalysisOutput {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ChapterOutput {
+    pub(crate) surah: i64,
+    pub(crate) name: String,
+    pub(crate) verses: Vec<VerseOutput>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "output_type", rename_all = "lowercase")]
 pub enum CommandOutput {
     Verse(VerseOutput),
     Analysis(AnalysisOutput),
+    Chapter(ChapterOutput),
     Clear,
     Pager { content: String },
     Error { message: String },

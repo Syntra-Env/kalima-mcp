@@ -16,7 +16,14 @@
       "Bash(python3:*)",
       "Bash(python -m json.tool:*)",
       "Bash(cargo run:*)",
-      "Bash(cargo tauri dev:*)"
+      "Bash(cargo tauri dev:*)",
+      "Bash(cat:*)",
+      "Bash(git log:*)",
+      "Bash(npm install:*)",
+      "Bash(cargo test:*)",
+      "Bash(node --test:*)",
+      "Bash(npm run test:e2e:*)",
+      "Bash(npm run test:unit:*)"
     ],
     "deny": [],
     "ask": []
