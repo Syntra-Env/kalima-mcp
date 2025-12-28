@@ -640,6 +640,58 @@ impl SqliteStorage {
             .collect())
     }
 
+    /// Get all segments for an entire surah in one query (avoids N+1 problem)
+    pub async fn get_surah_segments(&self, surah: i64) -> EngineResult<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT s.id, s.type, s.form, s.root, s.lemma, s.pattern, s.pos,
+                    s.verb_form, s.voice, s.mood, s.aspect, s.person,
+                    s.number, s.gender, s.case_value, s.dependency_rel, s.role, s.derived_noun_type, s.state,
+                    t.token_index, t.text as token_text, t.verse_ayah
+            FROM segments s
+            JOIN tokens t ON s.token_id = t.id
+            WHERE t.verse_surah = ?1
+            ORDER BY t.verse_ayah, t.token_index
+            "#
+        )
+        .bind(surah)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "id": r.try_get::<String, _>("id").unwrap_or_default(),
+                    "type": r.try_get::<String, _>("type").unwrap_or_default(),
+                    "form": r.try_get::<String, _>("form").unwrap_or_default(),
+                    "root": r.try_get::<Option<String>, _>("root").unwrap_or(None),
+                    "lemma": r.try_get::<Option<String>, _>("lemma").unwrap_or(None),
+                    "pattern": r.try_get::<Option<String>, _>("pattern").unwrap_or(None),
+                    "pos": r.try_get::<Option<String>, _>("pos").unwrap_or(None),
+                    "verb_form": r.try_get::<Option<String>, _>("verb_form").unwrap_or(None),
+                    "voice": r.try_get::<Option<String>, _>("voice").unwrap_or(None),
+                    "mood": r.try_get::<Option<String>, _>("mood").unwrap_or(None),
+                    "aspect": r.try_get::<Option<String>, _>("aspect").unwrap_or(None),
+                    "person": r.try_get::<Option<String>, _>("person").unwrap_or(None),
+                    "number": r.try_get::<Option<String>, _>("number").unwrap_or(None),
+                    "gender": r.try_get::<Option<String>, _>("gender").unwrap_or(None),
+                    "case": r.try_get::<Option<String>, _>("case_value").unwrap_or(None),
+                    "dependency_rel": r.try_get::<Option<String>, _>("dependency_rel").unwrap_or(None),
+                    "role": r.try_get::<Option<String>, _>("role").unwrap_or(None),
+                    "derived_noun_type": r.try_get::<Option<String>, _>("derived_noun_type").unwrap_or(None),
+                    "state": r.try_get::<Option<String>, _>("state").unwrap_or(None),
+                    "token_index": r.try_get::<i64, _>("token_index").unwrap_or(0),
+                    "word_index": r.try_get::<i64, _>("token_index").unwrap_or(0) + 1,
+                    "ayah": r.try_get::<i64, _>("verse_ayah").unwrap_or(0),
+                    "text": r.try_get::<String, _>("form").unwrap_or_default(),
+                    "token_text": r.try_get::<String, _>("token_text").unwrap_or_default()
+                })
+            })
+            .collect())
+    }
+
     // Research data methods
     pub async fn get_verse_metadata(&self, verse_ref: &str, field: &str) -> EngineResult<Vec<serde_json::Value>> {
         let row = sqlx::query(&format!(

@@ -88,32 +88,45 @@ pub async fn get_surah(
             .to_string(),
     };
 
-    // Populate tokens from segments for each verse
+    // Fetch ALL segments for the surah in ONE query (avoids N+1 problem)
+    let all_segments = state.storage.get_surah_segments(number).await.map_err(map_err)?;
+
+    // Group segments by (ayah, token_index)
+    let mut segments_by_ayah: HashMap<i64, HashMap<usize, Vec<serde_json::Value>>> = HashMap::new();
+    for seg in all_segments {
+        let ayah = seg.get("ayah").and_then(|a| a.as_i64()).unwrap_or(0);
+        let token_idx = seg.get("token_index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+        segments_by_ayah
+            .entry(ayah)
+            .or_insert_with(HashMap::new)
+            .entry(token_idx)
+            .or_insert_with(Vec::new)
+            .push(seg);
+    }
+
+    // Build verse responses
     let mut verse_responses: Vec<VerseResponse> = Vec::new();
     for v in verses {
         let ayah = v.get("ayah").and_then(|a| a.as_i64()).unwrap_or(0);
         let text = v.get("text").and_then(|t| t.as_str()).unwrap_or("").to_string();
 
-        // Fetch tokens/segments for this verse
-        let segments = state.storage.get_verse_segments(number, ayah).await.map_err(map_err)?;
-
-        // Group segments by token_index
-        let mut tokens_map: HashMap<usize, Vec<serde_json::Value>> = HashMap::new();
-        for seg in segments {
-            let token_idx = seg.get("token_index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-            tokens_map.entry(token_idx).or_insert_with(Vec::new).push(seg);
-        }
+        // Get segments for this verse from pre-fetched data
+        let tokens_map = segments_by_ayah.get(&ayah);
 
         // Convert to sorted token array
-        let mut token_indices: Vec<_> = tokens_map.keys().copied().collect();
-        token_indices.sort();
-        let tokens: Vec<serde_json::Value> = token_indices
-            .into_iter()
-            .map(|idx| serde_json::json!({
-                "index": idx,
-                "segments": tokens_map.get(&idx).cloned().unwrap_or_default()
-            }))
-            .collect();
+        let tokens: Vec<serde_json::Value> = if let Some(tmap) = tokens_map {
+            let mut token_indices: Vec<_> = tmap.keys().copied().collect();
+            token_indices.sort();
+            token_indices
+                .into_iter()
+                .map(|idx| serde_json::json!({
+                    "index": idx,
+                    "segments": tmap.get(&idx).cloned().unwrap_or_default()
+                }))
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         verse_responses.push(VerseResponse {
             ayah,
