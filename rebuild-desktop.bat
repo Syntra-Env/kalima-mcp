@@ -5,7 +5,7 @@ echo.
 pause
 echo Rebuilding...
 cd desktop\src-tauri
-cargo build --release
+cargo tauri build
 echo.
 echo Done! Run 'run-desktop.bat' to start the app.
 pause
