@@ -7,9 +7,14 @@
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "allowJs": true,
-    "skipLibCheck": true
+    "checkJs": false,
+    "skipLibCheck": true,
+    "noEmit": true
   },
   "include": [
     "tests/**/*"
+  ],
+  "exclude": [
+    "desktop/frontend/**/*"
   ]
 }
