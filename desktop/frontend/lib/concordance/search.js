@@ -5,12 +5,13 @@ function getDefaultApiBaseUrl() {
   return 'http://localhost:8080';
 }
 
-export async function executeConcordanceSearch(body, { baseUrl } = {}) {
+export async function executeConcordanceSearch(body, { baseUrl, signal } = {}) {
   const apiBaseUrl = baseUrl || getDefaultApiBaseUrl();
   const response = await fetch(`${apiBaseUrl}/concordance`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   });
 
   if (!response.ok) {

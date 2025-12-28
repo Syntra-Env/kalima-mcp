@@ -23,10 +23,13 @@ pub(crate) struct SurahData {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub(crate) struct VerseSummary {
     pub(crate) ayah: i64,
     #[serde(default)]
     pub(crate) text: String,
+    #[serde(default)]
+    pub(crate) tokens: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -62,7 +65,7 @@ pub struct VerseOutput {
     pub(crate) ayah: i64,
     pub(crate) text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) tokens: Option<Vec<String>>,
+    pub(crate) tokens: Option<Vec<serde_json::Value>>,  // Full token data with morphology
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) legend: Option<String>,
 }

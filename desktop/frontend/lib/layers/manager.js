@@ -16,6 +16,21 @@ export class LayerManager {
   constructor({ layers = LAYERS, defaultIndex = DEFAULT_LAYER_INDEX } = {}) {
     this.layers = layers;
     this.currentLayerIndex = defaultIndex;
+    this._changeListeners = [];
+  }
+
+  onChange(callback) {
+    if (typeof callback === 'function') {
+      this._changeListeners.push(callback);
+    }
+    return () => {
+      this._changeListeners = this._changeListeners.filter(cb => cb !== callback);
+    };
+  }
+
+  _notifyChange() {
+    const layer = this.getCurrentLayer();
+    this._changeListeners.forEach(cb => cb(layer));
   }
 
   getCurrentLayerIndex() {
@@ -32,6 +47,7 @@ export class LayerManager {
     }
     this.currentLayerIndex = newIndex;
     this.applyToAllTokens();
+    this._notifyChange();
     return true;
   }
 

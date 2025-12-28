@@ -20,11 +20,20 @@ body {
 }
 
 #terminal {
+    position: relative;
     height: 100vh;
     display: flex;
     flex-direction: column;
     padding: 1.25rem;
     font-size: 1rem;
+}
+
+#main-content {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    overflow: hidden;
+    gap: 0;
 }
 
 #output {
@@ -43,12 +52,14 @@ body {
 }
 
 #results {
-    flex: 0.7;
+    width: 400px;
+    flex-shrink: 0;
     overflow-y: auto;
-    padding: 0 2rem 1rem 2rem;
+    padding: 0 1.5rem 1rem 1.5rem;
     font-size: 0.875rem;
     line-height: 1.6;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.1);
 }
 
 #results:empty {
@@ -268,6 +279,59 @@ body {
     text-align: right;
 }
 
+/* Mushaf-style continuous text layout */
+.mushaf-layout .chapter-header {
+    text-align: center;
+    margin-bottom: 1rem;
+    padding: 0.5rem 1rem;
+    background: linear-gradient(180deg, rgba(78, 201, 176, 0.1) 0%, transparent 100%);
+    border-radius: 8px;
+}
+
+.surah-name-arabic {
+    font-family: 'Scheherazade New', 'Traditional Arabic', 'Arial', sans-serif;
+    font-size: 1.8rem;
+    color: #4ec9b0;
+    font-weight: normal;
+}
+
+.bismillah {
+    text-align: center;
+    font-family: 'Scheherazade New', 'Traditional Arabic', 'Arial', sans-serif;
+    font-size: 1.4rem;
+    color: #9cdcfe;
+    margin: 1rem 0 1.5rem;
+    padding: 0.5rem;
+}
+
+.mushaf-text-flow {
+    font-family: 'Scheherazade New', 'Traditional Arabic', 'Arial', sans-serif;
+    font-size: 1.5rem;
+    line-height: 2.4;
+    direction: rtl;
+    text-align: justify;
+    text-justify: inter-word;
+    /* Enable text selection across verses */
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.verse-marker {
+    display: inline;
+    font-family: 'Scheherazade New', 'Traditional Arabic', 'Arial', sans-serif;
+    color: #4ec9b0;
+    font-size: 1.1rem;
+    padding: 0 0.2rem;
+    cursor: default;
+    /* Prevent selection of verse markers */
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.verse-marker:hover {
+    color: #6ee7c7;
+}
+
 .token {
     display: inline;
     cursor: pointer;
@@ -446,17 +510,419 @@ body {
     font-weight: bold;
     margin: 0.5rem 0 1rem 0;
     color: #569cd6;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(86, 156, 214, 0.3);
+}
+
+.concordance-matches {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
 }
 
 .concordance-match {
-    margin: 0.5rem 0 1.25rem 0;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 6px;
+    border-left: 3px solid rgba(78, 201, 176, 0.5);
+}
+
+.concordance-match:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-left-color: #4ec9b0;
+}
+
+.concordance-ref {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.8rem;
+    color: #4ec9b0;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
 }
 
 .concordance-line {
+    font-family: 'Scheherazade New', 'Traditional Arabic', 'Arial', sans-serif;
     font-size: 1.25rem;
+    line-height: 2;
+    text-align: right;
+}
+
+.concordance-line .token {
+    cursor: default;
+}
+
+.concordance-line .token:hover {
+    background-color: rgba(78, 201, 176, 0.1);
 }
 
 .token[data-concordance-hit="1"] {
-    background-color: rgba(255, 235, 59, 0.55);
-    font-weight: 700;
+    background-color: rgba(255, 235, 59, 0.35);
+    color: #fff;
+    font-weight: 600;
+    border-radius: 3px;
+    padding: 0.1rem 0.25rem;
+}
+
+.concordance-line .token[data-concordance-hit="1"] {
+    background-color: rgba(255, 235, 59, 0.45);
+}
+
+/* ============================================================================
+   CHAT MODE - Quran AI Agent
+   ============================================================================ */
+
+#terminal.chat-mode-active {
+    background-color: #1a1a2e;
+}
+
+#terminal.chat-mode-active #output {
+    background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+    border-radius: 8px;
+    padding: 1rem 2rem;
+}
+
+.chat-message {
+    margin: 1rem 0;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    max-width: 85%;
+}
+
+.chat-user {
+    background-color: rgba(255, 255, 255, 0.1);
+    margin-left: auto;
+    margin-right: 0;
+    border-bottom-right-radius: 0;
+}
+
+.chat-assistant {
+    background-color: rgba(78, 205, 196, 0.15);
+    margin-left: 0;
+    margin-right: auto;
+    border-bottom-left-radius: 0;
+    border-left: 3px solid #4ecdc4;
+}
+
+.chat-role {
+    font-size: 0.75rem;
+    color: #888;
+    margin-bottom: 0.25rem;
+    font-weight: 600;
+}
+
+.chat-content {
+    font-family: 'Scheherazade New', 'Traditional Arabic', 'Amiri', serif;
+    font-size: 1.25rem;
+    line-height: 2;
+    color: #f0f0f0;
+}
+
+.chat-metrics {
+    font-size: 0.65rem;
+    color: #666;
+    margin-top: 0.5rem;
+    font-family: 'Consolas', monospace;
+    padding-top: 0.25rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.chat-typing {
+    color: #4ecdc4;
+    font-style: italic;
+    padding: 0.5rem;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+
+/* Chat mode prompt styling */
+#terminal.chat-mode-active .prompt {
+    color: #4ecdc4;
+}
+
+/* ============================================
+   HOTBAR / ACTION BAR
+   ============================================ */
+
+.hotbar {
+    position: fixed;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: linear-gradient(180deg, rgba(40, 40, 40, 0.95) 0%, rgba(30, 30, 30, 0.98) 100%);
+    border: 1px solid rgba(78, 201, 176, 0.3);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    z-index: 1000;
+    backdrop-filter: blur(10px);
+}
+
+.hotbar.hidden {
+    display: none;
+}
+
+.hotbar-button {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(180deg, rgba(60, 60, 60, 0.8) 0%, rgba(40, 40, 40, 0.9) 100%);
+    border: 2px solid rgba(100, 100, 100, 0.5);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    color: #a0a0a0;
+}
+
+.hotbar-button:hover {
+    background: linear-gradient(180deg, rgba(80, 80, 80, 0.9) 0%, rgba(60, 60, 60, 0.95) 100%);
+    border-color: rgba(78, 201, 176, 0.5);
+    color: #d4d4d4;
+    transform: translateY(-2px);
+}
+
+.hotbar-button.active {
+    background: linear-gradient(180deg, rgba(78, 201, 176, 0.3) 0%, rgba(78, 201, 176, 0.15) 100%);
+    border-color: #4ec9b0;
+    color: #4ec9b0;
+    box-shadow: 0 0 12px rgba(78, 201, 176, 0.3), inset 0 0 8px rgba(78, 201, 176, 0.1);
+}
+
+.hotbar-icon {
+    font-size: 1.4rem;
+    line-height: 1;
+}
+
+.hotbar-slot {
+    position: absolute;
+    bottom: 2px;
+    right: 4px;
+    font-size: 0.6rem;
+    font-family: 'Consolas', monospace;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.hotbar-button.active .hotbar-slot {
+    color: rgba(78, 201, 176, 0.7);
+}
+
+.hotbar-separator {
+    width: 1px;
+    height: 32px;
+    background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    margin: 0 8px;
+}
+
+.hotbar-layer-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px 12px;
+    font-size: 0.7rem;
+    color: #808080;
+}
+
+.hotbar-layer-indicator .layer-label {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #606060;
+}
+
+.hotbar-layer-indicator .layer-name {
+    color: #9cdcfe;
+    font-weight: 500;
+}
+
+.hotbar-hint {
+    font-size: 0.6rem;
+    color: #505050;
+    padding-left: 12px;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    margin-left: 8px;
+}
+
+/* ============================================
+   MODE-SPECIFIC CURSORS
+   ============================================ */
+
+/* Search mode cursor */
+body.mode-search {
+    cursor: crosshair;
+}
+
+body.mode-search #output .token {
+    cursor: crosshair;
+}
+
+body.mode-search #output .token:hover {
+    background-color: rgba(156, 220, 254, 0.2);
+    color: #9cdcfe;
+    outline: 1px dashed rgba(156, 220, 254, 0.5);
+}
+
+/* Annotate mode cursor */
+body.mode-annotate {
+    cursor: text;
+}
+
+body.mode-annotate #output .token {
+    cursor: pointer;
+}
+
+body.mode-annotate #output .token:hover {
+    background-color: rgba(255, 198, 109, 0.2);
+    color: #ffc66d;
+    outline: 1px solid rgba(255, 198, 109, 0.5);
+}
+
+/* Mode indicator in terminal */
+#terminal::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: transparent;
+    transition: background 0.2s ease;
+    z-index: 100;
+}
+
+body.mode-search #terminal::before {
+    background: linear-gradient(90deg, transparent, #9cdcfe, transparent);
+}
+
+body.mode-annotate #terminal::before {
+    background: linear-gradient(90deg, transparent, #ffc66d, transparent);
+}
+
+/* Query mode active styling (search mode) */
+body.mode-search .mushaf-text-flow .token[data-anchor-num] {
+    background-color: rgba(156, 220, 254, 0.25);
+    border-bottom: 2px solid #9cdcfe;
+}
+
+/* Annotation mode active token styling */
+body.mode-annotate .token.annotated {
+    background-color: rgba(255, 198, 109, 0.15);
+    border-bottom: 2px dotted #ffc66d;
+}
+
+/* ============================================
+   VISUAL QUERY BUILDER
+   ============================================ */
+
+.visual-query-builder {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background: linear-gradient(180deg, rgba(33, 150, 243, 0.08) 0%, rgba(33, 150, 243, 0.03) 100%);
+    border: 1px solid rgba(33, 150, 243, 0.25);
+    border-radius: 8px;
+}
+
+.query-anchor-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(33, 150, 243, 0.4);
+    border-radius: 6px;
+    position: relative;
+    min-width: 80px;
+}
+
+.query-anchor-box:hover {
+    border-color: rgba(33, 150, 243, 0.7);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.query-word {
+    font-family: 'Scheherazade New', 'Traditional Arabic', 'Arial', sans-serif;
+    font-size: 1.4rem;
+    color: #fff;
+    line-height: 1.5;
+}
+
+.query-constraints {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    justify-content: center;
+}
+
+.query-constraint {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.7rem;
+    border-radius: 3px;
+    background: rgba(78, 201, 176, 0.2);
+    color: #4ec9b0;
+    border: 1px solid rgba(78, 201, 176, 0.4);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.query-constraint:hover {
+    background: rgba(239, 83, 80, 0.2);
+    border-color: rgba(239, 83, 80, 0.5);
+    color: #ef5350;
+}
+
+.query-constraint-text { background: rgba(156, 220, 254, 0.15); color: #9cdcfe; border-color: rgba(156, 220, 254, 0.3); }
+.query-constraint-root { background: rgba(78, 201, 176, 0.15); color: #4ec9b0; border-color: rgba(78, 201, 176, 0.3); }
+.query-constraint-lemma { background: rgba(137, 209, 133, 0.15); color: #89d185; border-color: rgba(137, 209, 133, 0.3); }
+.query-constraint-pos { background: rgba(86, 156, 214, 0.15); color: #569cd6; border-color: rgba(86, 156, 214, 0.3); }
+.query-constraint-case { background: rgba(156, 106, 222, 0.15); color: #9c6ade; border-color: rgba(156, 106, 222, 0.3); }
+.query-constraint-gender { background: rgba(74, 144, 226, 0.15); color: #4a90e2; border-color: rgba(74, 144, 226, 0.3); }
+.query-constraint-number { background: rgba(102, 187, 106, 0.15); color: #66bb6a; border-color: rgba(102, 187, 106, 0.3); }
+
+.query-anchor-remove {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #ef5350;
+    color: white;
+    border: none;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.query-anchor-box:hover .query-anchor-remove {
+    opacity: 1;
+}
+
+.query-anchor-remove:hover {
+    background: #d32f2f;
+}
+
+.query-connector {
+    font-size: 1.2rem;
+    color: #569cd6;
+    font-weight: bold;
 }
