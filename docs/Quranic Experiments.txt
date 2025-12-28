@@ -1,9 +1,3 @@
-# The Quran's Voice
-1. Open C:/Codex/Kalima/datasets/text/quran-clean.txt in notepad++
-2. Zoom out until the lengths of the lines of text begin to look like a vertically aligned sound wave
-3. convert it to actual sound waves and listen to it.
-
-
 # Refresh Page
 When the user refreshes the page, all command history is lost. This information should be saved in a session that stays active as long as the user does not close the app entirely.
 
@@ -17,6 +11,7 @@ What do I mean? Well, for one, I don't think the query language should really be
 # Right-click
 The right click triggers the default browser right click event, with the options to refresh the page, or some other actions that frankly are quite useless to the user's experience while using the Kalima app.
 The default right click event should be replace with a more relevant one, but I'm not sure which event.
+
 Well, I previously had the left and mouse clicks bound to the down and up navigation of linguistic layers, respectively, but now that we added more features, especially in the annotation layer, you can click on a word to enter a hypothesized interpretation of the word. Therefore, if we were to keep both layer navigation and annotation functionalities the same, then using the left click in the annotation layer would be ambiguous, and will therefore cause usability issues.
 
 On top of this, I wanted to add make the search feature be as seamless as clicking on an element, and the results matching the selection would show up on the bottom pane.
@@ -35,3 +30,8 @@ What is the AL term for meta-orthographic signs in the Quran, the like the unspo
 - hover over a word for a second
 - scroll on a word
 - hold right click or left click
+
+- Where's the main page of the app when it just launches? I want the experience of opening the app to be like continuing a journey and not starting from scratch, so it needs to have a simple dashboard with maybe ayat that you worked on before, and maybe even an ai suggestions based on your past session's work.
+
+- I'd like to change the commands for searching the ayat in the Quran. by default, a single number indicates the surah number, and <number>:<number> should automatically lead to the ayah. Remove the other commands related to reading morphemes or letters.
+
