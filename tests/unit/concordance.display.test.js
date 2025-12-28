@@ -11,23 +11,31 @@ const { renderConcordanceSummary } = await import(
   '../../desktop/frontend/lib/concordance/display.js'
 );
 
-test('renderConcordanceSummary shows verse counts without total when verse_counts provided', () => {
+test('renderConcordanceSummary shows match count and verse count', () => {
   const el = renderConcordanceSummary({
-    verse_counts: [
-      { verse_ref: '2:255', count: 3 },
-      { verse_ref: '3:42', count: 2 },
+    matches: [
+      { surah: 2, ayah: 255, tokens: [] },
+      { surah: 3, ayah: 42, tokens: [] },
     ],
     total: 5,
   });
-  // When verse_counts exists, don't show total (it's redundant)
-  assert.equal(el.textContent, 'Found in 2:255 (3), 3:42 (2)');
+  assert.equal(el.textContent, 'Found 5 matches in 2 verses');
 });
 
-test('renderConcordanceSummary shows total matches when no verse_counts', () => {
+test('renderConcordanceSummary handles single match', () => {
   const el = renderConcordanceSummary({
-    verses: ['2:255', '3:42'],
-    total: 5,
+    matches: [
+      { surah: 2, ayah: 255, tokens: [] },
+    ],
+    total: 1,
   });
-  // When only verses array (no counts), show total
-  assert.equal(el.textContent, 'Found in 2:255, 3:42 (5 matches)');
+  assert.equal(el.textContent, 'Found 1 match in 1 verse');
+});
+
+test('renderConcordanceSummary shows no matches when empty', () => {
+  const el = renderConcordanceSummary({
+    matches: [],
+    total: 0,
+  });
+  assert.equal(el.textContent, 'No matches');
 });

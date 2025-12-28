@@ -62,4 +62,44 @@ describe('Kalima (Tauri)', () => {
       timeoutMsg: 'timed out waiting for output to clear previous verse content',
     });
   });
+
+  it('bare number shortcut: "1" loads surah 1', async () => {
+    const input = await waitForSelector('#command-input');
+    await input.setValue('clear');
+    await browser.keys('Enter');
+
+    await input.setValue('1');
+    await browser.keys('Enter');
+
+    // Should show surah header for Al-Fatiha
+    await waitForOutputContains('الفاتحة');
+  });
+
+  it('colon format shortcut: "1:1" loads verse 1:1', async () => {
+    const input = await waitForSelector('#command-input');
+    await input.setValue('clear');
+    await browser.keys('Enter');
+
+    await input.setValue('1:1');
+    await browser.keys('Enter');
+
+    // Should show verse reference
+    await waitForOutputContains('1:1');
+    // Should show Bismillah
+    await waitForOutputContains('بِسْمِ');
+  });
+
+  it('colon format shortcut: "2:255" loads Ayat al-Kursi', async () => {
+    const input = await waitForSelector('#command-input');
+    await input.setValue('clear');
+    await browser.keys('Enter');
+
+    await input.setValue('2:255');
+    await browser.keys('Enter');
+
+    // Should show verse reference
+    await waitForOutputContains('2:255');
+    // Should contain Allah (key word in Ayat al-Kursi)
+    await waitForOutputContains('ٱللَّهُ');
+  });
 });
