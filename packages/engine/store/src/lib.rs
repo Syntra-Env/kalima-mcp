@@ -1,0 +1,1909 @@
+//! StorageBackend implementation using SQLite.
+//! Normalized schema for surahs/verses/tokens/segments/annotations/connections,
+//! plus JSON payloads for SegmentView as a denormalized view.
+
+use async_trait::async_trait;
+use common::{parse_verse_ref, EngineError, EngineResult, SearchHit, Segment, SegmentView, StorageBackend};
+use common::reflection::WeightedTerm;
+use sqlx::{sqlite::SqlitePoolOptions, Pool, Row, Sqlite, QueryBuilder};
+
+pub struct SqliteStorage {
+    pool: Pool<Sqlite>,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct SurahSummary {
+    pub number: i64,
+    pub name: String,
+    pub ayah_count: i64,
+}
+
+impl SqliteStorage {
+    pub fn pool(&self) -> &Pool<Sqlite> {
+        &self.pool
+    }
+    pub async fn connect(path: &str) -> EngineResult<Self> {
+        let uri = if path.starts_with("sqlite:") {
+            path.to_string()
+        } else {
+            let p = std::path::Path::new(path);
+            let abs = if p.is_absolute() {
+                p.to_path_buf()
+            } else {
+                std::env::current_dir()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                    .join(p)
+            };
+            let mut s = abs
+                .to_string_lossy()
+                .replace('\\', "/");
+            // Strip Windows UNC prefix if present
+            if s.starts_with("//?/") {
+                s = s[4..].to_string();
+            }
+            // Ensure no leading slash before drive letter on Windows
+            if s.len() > 1 && s.chars().nth(1) == Some(':') && s.starts_with('/') {
+                s = s[1..].to_string();
+            }
+            format!("sqlite:///{}?mode=rwc", s)
+        };
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(5)
+            .connect(&uri)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        // Run embedded migration (idempotent)
+        sqlx::query(MIGRATION_INIT)
+            .execute(&pool)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(Self { pool })
+    }
+
+    pub async fn upsert_segment(&self, doc: &SegmentView) -> EngineResult<()> {
+        // Upsert surah and verse metadata
+        let (surah_num, ayah_num) = parse_verse_ref(&doc.verse_ref)?;
+        sqlx::query(
+            r#"INSERT OR IGNORE INTO surahs (number, name) VALUES (?1, ?2)"#,
+        )
+        .bind(surah_num as i64)
+        .bind("") // name unknown in current payload
+        .execute(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO verses (surah_number, ayah_number)
+            VALUES (?1, ?2)
+            ON CONFLICT(surah_number, ayah_number) DO NOTHING;
+            "#,
+        )
+        .bind(surah_num as i64)
+        .bind(ayah_num as i64)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        // Note: verse text is managed by the caller (ingest.rs) to avoid overwriting
+        // with token text. The ingest process stores complete verse text separately.
+
+        // Upsert token row
+        let token_uid = format!("{}:{}:{}", surah_num, ayah_num, doc.token_index);
+        sqlx::query(
+            r#"
+            INSERT INTO tokens (id, verse_surah, verse_ayah, token_index, text)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            ON CONFLICT(id) DO UPDATE SET text=excluded.text;
+            "#,
+        )
+        .bind(&token_uid)
+        .bind(surah_num as i64)
+        .bind(ayah_num as i64)
+        .bind(doc.token_index as i64)
+        .bind(&doc.text)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        // Upsert segments normalized
+        for seg in &doc.segments {
+            sqlx::query(
+                r#"
+                INSERT INTO segments (
+                    id, token_id, type, form, root, lemma, pattern, pos, verb_form,
+                    voice, mood, aspect, person, number, gender, case_value, dependency_rel, role, derived_noun_type, state
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
+                ON CONFLICT(id) DO UPDATE SET
+                    token_id=excluded.token_id,
+                    type=excluded.type,
+                    form=excluded.form,
+                    root=excluded.root,
+                    lemma=excluded.lemma,
+                    pattern=excluded.pattern,
+                    pos=excluded.pos,
+                    verb_form=excluded.verb_form,
+                    voice=excluded.voice,
+                    mood=excluded.mood,
+                    aspect=excluded.aspect,
+                    person=excluded.person,
+                    number=excluded.number,
+                    gender=excluded.gender,
+                    case_value=excluded.case_value,
+                    dependency_rel=excluded.dependency_rel,
+                    role=excluded.role,
+                    derived_noun_type=excluded.derived_noun_type,
+                    state=excluded.state;
+                "#,
+            )
+            .bind(&seg.id)
+            .bind(&token_uid)
+            .bind(&seg.r#type)
+            .bind(&seg.form)
+            .bind(seg.root.as_ref())
+            .bind(seg.lemma.as_ref())
+            .bind(seg.pattern.as_ref())
+            .bind(seg.pos.as_ref())
+            .bind(seg.verb_form.as_ref())
+            .bind(seg.voice.as_ref())
+            .bind(seg.mood.as_ref())
+            .bind(seg.aspect.as_ref())
+            .bind(seg.person.as_ref())
+            .bind(seg.number.as_ref())
+            .bind(seg.gender.as_ref())
+            .bind(seg.case_.as_ref())
+            .bind(seg.dependency_rel.as_ref())
+            .bind(seg.role.as_ref())
+            .bind(seg.derived_noun_type.as_ref())
+            .bind(seg.state.as_ref())
+            .execute(&self.pool)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn upsert_annotation(
+        &self,
+        annotation: &common::Annotation,
+    ) -> EngineResult<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO annotations (id, target_id, layer, payload)
+            VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(id) DO UPDATE SET
+              target_id=excluded.target_id,
+              layer=excluded.layer,
+              payload=excluded.payload;
+            "#,
+        )
+        .bind(&annotation.id)
+        .bind(&annotation.target_id)
+        .bind(&annotation.layer)
+        .bind(&annotation.payload)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn list_annotations(
+        &self,
+        target_filter: Option<&str>,
+    ) -> EngineResult<Vec<common::Annotation>> {
+        let rows = if let Some(target) = target_filter {
+            sqlx::query(
+                r#"SELECT id, target_id, layer, payload as "payload: serde_json::Value"
+                   FROM annotations WHERE target_id = ?1
+                   ORDER BY created_at DESC"#,
+            )
+            .bind(target)
+            .fetch_all(&self.pool)
+            .await
+        } else {
+            sqlx::query(
+                r#"SELECT id, target_id, layer, payload as "payload: serde_json::Value"
+                   FROM annotations
+                   ORDER BY created_at DESC"#,
+            )
+            .fetch_all(&self.pool)
+            .await
+        }
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            out.push(common::Annotation {
+                id: row.try_get::<String, _>(0).map_err(|e| EngineError::Storage(e.to_string()))?,
+                target_id: row.try_get::<String, _>(1).map_err(|e| EngineError::Storage(e.to_string()))?,
+                layer: row.try_get::<String, _>(2).map_err(|e| EngineError::Storage(e.to_string()))?,
+                payload: row.try_get::<serde_json::Value, _>(3).map_err(|e| EngineError::Storage(e.to_string()))?,
+            });
+        }
+        Ok(out)
+    }
+
+    pub async fn delete_annotation(&self, id: &str) -> EngineResult<()> {
+        sqlx::query(r#"DELETE FROM annotations WHERE id = ?1"#)
+            .bind(id)
+            .execute(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn upsert_connection(
+        self: &SqliteStorage,
+        conn: &ConnectionRecord,
+    ) -> EngineResult<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO connections (id, from_token, to_token, layer, meta)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            ON CONFLICT(id) DO UPDATE SET
+              from_token=excluded.from_token,
+              to_token=excluded.to_token,
+              layer=excluded.layer,
+              meta=excluded.meta;
+            "#,
+        )
+        .bind(&conn.id)
+        .bind(&conn.from_token)
+        .bind(&conn.to_token)
+        .bind(&conn.layer)
+        .bind(&conn.meta)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn list_connections_for_verse(
+        &self,
+        surah: i64,
+        ayah: i64,
+    ) -> EngineResult<Vec<ConnectionRecord>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT c.id, c.from_token, c.to_token, c.layer, c.meta as "meta: serde_json::Value"
+            FROM connections c
+            JOIN tokens tf ON c.from_token = tf.id
+            WHERE tf.verse_surah = ?1 AND tf.verse_ayah = ?2
+            "#,
+        )
+        .bind(surah)
+        .bind(ayah)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| ConnectionRecord {
+                id: r.try_get("id").unwrap_or_default(),
+                from_token: r.try_get("from_token").unwrap_or_default(),
+                to_token: r.try_get("to_token").unwrap_or_default(),
+                layer: r.try_get("layer").unwrap_or_default(),
+                meta: r.try_get("meta").unwrap_or(serde_json::json!({})),
+            })
+            .collect())
+    }
+
+    pub async fn delete_connection(&self, id: &str) -> EngineResult<()> {
+        sqlx::query(r#"DELETE FROM connections WHERE id = ?1"#)
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn list_unique_roots(&self) -> EngineResult<Vec<String>> {
+        let rows = sqlx::query(
+            r#"SELECT DISTINCT root FROM segments WHERE root IS NOT NULL ORDER BY root"#
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| r.try_get::<String, _>(0).ok())
+            .collect())
+    }
+
+    pub async fn list_unique_patterns(&self) -> EngineResult<Vec<String>> {
+        let rows = sqlx::query(
+            r#"SELECT DISTINCT pattern FROM segments WHERE pattern IS NOT NULL ORDER BY pattern"#
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| r.try_get::<String, _>(0).ok())
+            .collect())
+    }
+
+    pub async fn list_unique_pos(&self) -> EngineResult<Vec<String>> {
+        let rows = sqlx::query(
+            r#"SELECT DISTINCT pos FROM segments WHERE pos IS NOT NULL ORDER BY pos"#
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| r.try_get::<String, _>(0).ok())
+            .collect())
+    }
+
+    pub async fn list_surahs(&self) -> EngineResult<Vec<SurahSummary>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT s.number, s.name, COUNT(DISTINCT v.ayah_number) as ayah_count
+            FROM surahs s
+            LEFT JOIN verses v ON s.number = v.surah_number
+            GROUP BY s.number, s.name
+            ORDER BY s.number
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| SurahSummary {
+                number: r.try_get("number").unwrap_or(0),
+                name: r.try_get("name").unwrap_or_default(),
+                ayah_count: r.try_get("ayah_count").unwrap_or(0),
+            })
+            .collect())
+    }
+
+    pub async fn get_surah_verses(&self, surah_number: i64) -> EngineResult<Vec<serde_json::Value>> {
+        // Get surah name
+        let surah_name: String = sqlx::query_scalar(
+            r#"SELECT name FROM surahs WHERE number = ?1"#
+        )
+        .bind(surah_number)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?
+        .unwrap_or_else(|| "Unknown".to_string());
+
+        // Get all verses for this surah with their text
+        let rows = sqlx::query(
+            r#"
+            SELECT v.ayah_number, vt.text
+            FROM verses v
+            LEFT JOIN verse_texts vt ON v.surah_number = vt.surah_number AND v.ayah_number = vt.ayah_number
+            WHERE v.surah_number = ?1
+            ORDER BY v.ayah_number
+            "#
+        )
+        .bind(surah_number)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "surah_name": surah_name,
+                    "ayah": r.try_get::<i64, _>("ayah_number").unwrap_or(0),
+                    "text": r.try_get::<Option<String>, _>("text").unwrap_or(None).unwrap_or_default()
+                })
+            })
+            .collect())
+    }
+
+    pub async fn get_verse(&self, surah: i64, ayah: i64) -> EngineResult<Option<serde_json::Value>> {
+        let text: Option<String> = sqlx::query_scalar(
+            r#"SELECT text FROM verse_texts WHERE surah_number = ?1 AND ayah_number = ?2"#
+        )
+        .bind(surah)
+        .bind(ayah)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        if text.is_none() {
+            return Ok(None);
+        }
+
+        let surah_name: String = sqlx::query_scalar(
+            r#"SELECT name FROM surahs WHERE number = ?1"#
+        )
+        .bind(surah)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?
+        .unwrap_or_else(|| "Unknown".to_string());
+
+        // Get tokens with their morphological segments
+        let rows = sqlx::query(
+            r#"
+            SELECT t.id as token_id, t.token_index, t.text as token_text,
+                   s.id, s.type, s.form, s.root, s.lemma, s.pattern, s.pos,
+                   s.verb_form, s.voice, s.mood, s.aspect, s.person,
+                   s.number, s.gender, s.case_value, s.dependency_rel, s.role, s.derived_noun_type, s.state
+            FROM tokens t
+            LEFT JOIN segments s ON s.token_id = t.id
+            WHERE t.verse_surah = ?1 AND t.verse_ayah = ?2
+            ORDER BY t.token_index, s.id
+            "#
+        )
+        .bind(surah)
+        .bind(ayah)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        // Group segments by token
+        use std::collections::HashMap;
+        let mut tokens_map: HashMap<i64, serde_json::Value> = HashMap::new();
+
+        for row in rows {
+            let token_index: i64 = row.try_get("token_index").unwrap_or(0);
+            let token_text: String = row.try_get("token_text").unwrap_or_default();
+
+            let token = tokens_map.entry(token_index).or_insert_with(|| {
+                serde_json::json!({
+                    "index": token_index,
+                    "text": token_text,
+                    "segments": []
+                })
+            });
+
+            // Add segment if it exists
+            if let Ok(seg_id) = row.try_get::<String, _>("id") {
+                if !seg_id.is_empty() {
+                    let segment = serde_json::json!({
+                        "id": seg_id,
+                        "type": row.try_get::<String, _>("type").unwrap_or_default(),
+                        "form": row.try_get::<String, _>("form").unwrap_or_default(),
+                        "root": row.try_get::<Option<String>, _>("root").unwrap_or(None),
+                        "lemma": row.try_get::<Option<String>, _>("lemma").unwrap_or(None),
+                        "pattern": row.try_get::<Option<String>, _>("pattern").unwrap_or(None),
+                        "pos": row.try_get::<Option<String>, _>("pos").unwrap_or(None),
+                        "verb_form": row.try_get::<Option<String>, _>("verb_form").unwrap_or(None),
+                        "voice": row.try_get::<Option<String>, _>("voice").unwrap_or(None),
+                        "mood": row.try_get::<Option<String>, _>("mood").unwrap_or(None),
+                        "aspect": row.try_get::<Option<String>, _>("aspect").unwrap_or(None),
+                        "person": row.try_get::<Option<String>, _>("person").unwrap_or(None),
+                        "number": row.try_get::<Option<String>, _>("number").unwrap_or(None),
+                        "gender": row.try_get::<Option<String>, _>("gender").unwrap_or(None),
+                        "case": row.try_get::<Option<String>, _>("case_value").unwrap_or(None),
+                        "dependency_rel": row.try_get::<Option<String>, _>("dependency_rel").unwrap_or(None),
+                        "role": row.try_get::<Option<String>, _>("role").unwrap_or(None),
+                        "derived_noun_type": row.try_get::<Option<String>, _>("derived_noun_type").unwrap_or(None),
+                        "state": row.try_get::<Option<String>, _>("state").unwrap_or(None),
+                    });
+
+                    if let Some(segments) = token.get_mut("segments").and_then(|s| s.as_array_mut()) {
+                        segments.push(segment);
+                    }
+                }
+            }
+        }
+
+        // Convert to sorted array
+        let mut tokens: Vec<_> = tokens_map.into_iter().collect();
+        tokens.sort_by_key(|(idx, _)| *idx);
+        let tokens_array: Vec<_> = tokens.into_iter().map(|(_, token)| token).collect();
+
+        // Prefer the stored verse text when present; otherwise fall back to the longest token text.
+        let verse_text = text
+            .clone()
+            .filter(|t| !t.is_empty())
+            .or_else(|| {
+                tokens_array
+                    .iter()
+                    .filter_map(|t| t.get("text").and_then(|v| v.as_str()))
+                    .max_by_key(|s| s.len())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_default();
+
+        Ok(Some(serde_json::json!({
+            "surah": {
+                "number": surah,
+                "name": surah_name
+            },
+            "ayah": ayah,
+            "text": verse_text,
+            "tokens": tokens_array
+        })))
+    }
+
+    pub async fn get_verse_by_index(&self, index: i64) -> EngineResult<Option<serde_json::Value>> {
+        // Get verse by absolute index (row number)
+        let row: Option<(i64, i64)> = sqlx::query_as(
+            r#"
+            SELECT surah_number, ayah_number 
+            FROM verses 
+            ORDER BY surah_number, ayah_number 
+            LIMIT 1 OFFSET ?1
+            "#
+        )
+        .bind(index)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        if let Some((surah, ayah)) = row {
+            self.get_verse(surah, ayah).await
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn list_verses(&self, start: i64, limit: i64) -> EngineResult<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT v.surah_number, v.ayah_number, vt.text, s.name as surah_name
+            FROM verses v
+            LEFT JOIN verse_texts vt ON v.surah_number = vt.surah_number AND v.ayah_number = vt.ayah_number
+            LEFT JOIN surahs s ON v.surah_number = s.number
+            ORDER BY v.surah_number, v.ayah_number
+            LIMIT ?1 OFFSET ?2
+            "#
+        )
+        .bind(limit)
+        .bind(start)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "surah": {
+                        "number": r.try_get::<i64, _>("surah_number").unwrap_or(0),
+                        "name": r.try_get::<String, _>("surah_name").unwrap_or_default()
+                    },
+                    "ayah": r.try_get::<i64, _>("ayah_number").unwrap_or(0),
+                    "text": r.try_get::<Option<String>, _>("text").unwrap_or(None).unwrap_or_default(),
+                    "tokens": []
+                })
+            })
+            .collect())
+    }
+
+    pub async fn count_verses(&self) -> EngineResult<i64> {
+        let count: i64 = sqlx::query_scalar(r#"SELECT COUNT(*) FROM verses"#)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(count)
+    }
+
+    pub async fn get_verse_segments(&self, surah: i64, ayah: i64) -> EngineResult<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT s.id, s.type, s.form, s.root, s.lemma, s.pattern, s.pos,
+                    s.verb_form, s.voice, s.mood, s.aspect, s.person,
+                    s.number, s.gender, s.case_value, s.dependency_rel, s.role, s.derived_noun_type, s.state,
+                    t.token_index, t.text as token_text
+            FROM segments s
+            JOIN tokens t ON s.token_id = t.id
+            WHERE t.verse_surah = ?1 AND t.verse_ayah = ?2
+            ORDER BY t.token_index
+            "#
+        )
+        .bind(surah)
+        .bind(ayah)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "id": r.try_get::<String, _>("id").unwrap_or_default(),
+                    "type": r.try_get::<String, _>("type").unwrap_or_default(),
+                    "form": r.try_get::<String, _>("form").unwrap_or_default(),
+                    "root": r.try_get::<Option<String>, _>("root").unwrap_or(None),
+                    "lemma": r.try_get::<Option<String>, _>("lemma").unwrap_or(None),
+                    "pattern": r.try_get::<Option<String>, _>("pattern").unwrap_or(None),
+                    "pos": r.try_get::<Option<String>, _>("pos").unwrap_or(None),
+                    "verb_form": r.try_get::<Option<String>, _>("verb_form").unwrap_or(None),
+                    "voice": r.try_get::<Option<String>, _>("voice").unwrap_or(None),
+                    "mood": r.try_get::<Option<String>, _>("mood").unwrap_or(None),
+                    "aspect": r.try_get::<Option<String>, _>("aspect").unwrap_or(None),
+                    "person": r.try_get::<Option<String>, _>("person").unwrap_or(None),
+                    "number": r.try_get::<Option<String>, _>("number").unwrap_or(None),
+                    "gender": r.try_get::<Option<String>, _>("gender").unwrap_or(None),
+                    "case": r.try_get::<Option<String>, _>("case_value").unwrap_or(None),
+                    "dependency_rel": r.try_get::<Option<String>, _>("dependency_rel").unwrap_or(None),
+                    "role": r.try_get::<Option<String>, _>("role").unwrap_or(None),
+                    "derived_noun_type": r.try_get::<Option<String>, _>("derived_noun_type").unwrap_or(None),
+                    "state": r.try_get::<Option<String>, _>("state").unwrap_or(None),
+                    "token_index": r.try_get::<i64, _>("token_index").unwrap_or(0),
+                    "word_index": r.try_get::<i64, _>("token_index").unwrap_or(0) + 1,
+                    // Prefer the segment form for morphology display; keep token text separately for context.
+                    "text": r.try_get::<String, _>("form").unwrap_or_default(),
+                    "token_text": r.try_get::<String, _>("token_text").unwrap_or_default()
+                })
+            })
+            .collect())
+    }
+
+    /// Get all segments for an entire surah in one query (avoids N+1 problem)
+    pub async fn get_surah_segments(&self, surah: i64) -> EngineResult<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT s.id, s.type, s.form, s.root, s.lemma, s.pattern, s.pos,
+                    s.verb_form, s.voice, s.mood, s.aspect, s.person,
+                    s.number, s.gender, s.case_value, s.dependency_rel, s.role, s.derived_noun_type, s.state,
+                    t.token_index, t.text as token_text, t.verse_ayah
+            FROM segments s
+            JOIN tokens t ON s.token_id = t.id
+            WHERE t.verse_surah = ?1
+            ORDER BY t.verse_ayah, t.token_index
+            "#
+        )
+        .bind(surah)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "id": r.try_get::<String, _>("id").unwrap_or_default(),
+                    "type": r.try_get::<String, _>("type").unwrap_or_default(),
+                    "form": r.try_get::<String, _>("form").unwrap_or_default(),
+                    "root": r.try_get::<Option<String>, _>("root").unwrap_or(None),
+                    "lemma": r.try_get::<Option<String>, _>("lemma").unwrap_or(None),
+                    "pattern": r.try_get::<Option<String>, _>("pattern").unwrap_or(None),
+                    "pos": r.try_get::<Option<String>, _>("pos").unwrap_or(None),
+                    "verb_form": r.try_get::<Option<String>, _>("verb_form").unwrap_or(None),
+                    "voice": r.try_get::<Option<String>, _>("voice").unwrap_or(None),
+                    "mood": r.try_get::<Option<String>, _>("mood").unwrap_or(None),
+                    "aspect": r.try_get::<Option<String>, _>("aspect").unwrap_or(None),
+                    "person": r.try_get::<Option<String>, _>("person").unwrap_or(None),
+                    "number": r.try_get::<Option<String>, _>("number").unwrap_or(None),
+                    "gender": r.try_get::<Option<String>, _>("gender").unwrap_or(None),
+                    "case": r.try_get::<Option<String>, _>("case_value").unwrap_or(None),
+                    "dependency_rel": r.try_get::<Option<String>, _>("dependency_rel").unwrap_or(None),
+                    "role": r.try_get::<Option<String>, _>("role").unwrap_or(None),
+                    "derived_noun_type": r.try_get::<Option<String>, _>("derived_noun_type").unwrap_or(None),
+                    "state": r.try_get::<Option<String>, _>("state").unwrap_or(None),
+                    "token_index": r.try_get::<i64, _>("token_index").unwrap_or(0),
+                    "word_index": r.try_get::<i64, _>("token_index").unwrap_or(0) + 1,
+                    "ayah": r.try_get::<i64, _>("verse_ayah").unwrap_or(0),
+                    "text": r.try_get::<String, _>("form").unwrap_or_default(),
+                    "token_text": r.try_get::<String, _>("token_text").unwrap_or_default()
+                })
+            })
+            .collect())
+    }
+
+    // Research data methods
+    pub async fn get_verse_metadata(&self, verse_ref: &str, field: &str) -> EngineResult<Vec<serde_json::Value>> {
+        let row = sqlx::query(&format!(
+            r#"SELECT {} as "data: serde_json::Value" FROM verse_metadata WHERE verse_ref = ?1"#,
+            field
+        ))
+        .bind(verse_ref)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        if let Some(row) = row {
+            if let Ok(data) = row.try_get::<Option<serde_json::Value>, _>("data") {
+                if let Some(arr) = data.and_then(|v| v.as_array().cloned()) {
+                    return Ok(arr);
+                }
+            }
+        }
+        Ok(vec![])
+    }
+
+    pub async fn set_verse_metadata(&self, verse_ref: &str, field: &str, data: &serde_json::Value) -> EngineResult<()> {
+        let sql = match field {
+            "pronouns" => r#"INSERT INTO verse_metadata (verse_ref, pronouns) VALUES (?1, ?2)
+                ON CONFLICT(verse_ref) DO UPDATE SET pronouns=excluded.pronouns"#,
+            "hypotheses" => r#"INSERT INTO verse_metadata (verse_ref, hypotheses) VALUES (?1, ?2)
+                ON CONFLICT(verse_ref) DO UPDATE SET hypotheses=excluded.hypotheses"#,
+            "translations" => r#"INSERT INTO verse_metadata (verse_ref, translations) VALUES (?1, ?2)
+                ON CONFLICT(verse_ref) DO UPDATE SET translations=excluded.translations"#,
+            _ => return Err(EngineError::Invalid(format!("Unknown metadata field: {}", field))),
+        };
+
+        sqlx::query(sql)
+            .bind(verse_ref)
+            .bind(data)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn get_research_data(&self, key: &str) -> EngineResult<Option<serde_json::Value>> {
+        let row = sqlx::query(
+            r#"SELECT value as "value: serde_json::Value" FROM research_data WHERE key = ?1"#
+        )
+        .bind(key)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(row.and_then(|r| r.try_get("value").ok()))
+    }
+
+    pub async fn set_research_data(&self, key: &str, value: &serde_json::Value) -> EngineResult<()> {
+        sqlx::query(
+            r#"INSERT INTO research_data (key, value, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)
+               ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP"#
+        )
+        .bind(key)
+        .bind(value)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn count_annotations(&self) -> EngineResult<i64> {
+        let count: i64 = sqlx::query_scalar(r#"SELECT COUNT(*) FROM annotations"#)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(count)
+    }
+
+    pub async fn count_verses_with_tokens(&self) -> EngineResult<i64> {
+        let count: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(DISTINCT verse_surah || ':' || verse_ayah) FROM tokens"#
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(count)
+    }
+
+    pub async fn get_all_verse_texts(&self, limit: usize) -> EngineResult<Vec<(String, String)>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT surah_number, ayah_number, text
+            FROM verse_texts
+            WHERE text IS NOT NULL AND text != ''
+            ORDER BY surah_number, ayah_number
+            LIMIT ?1
+            "#
+        )
+        .bind(limit as i64)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| {
+                let surah: i64 = r.try_get("surah_number").ok()?;
+                let ayah: i64 = r.try_get("ayah_number").ok()?;
+                let text: String = r.try_get("text").ok()?;
+                Some((format!("{}:{}", surah, ayah), text))
+            })
+            .collect())
+    }
+
+    // ============ Interpretation Methods ============
+
+    pub async fn upsert_interpretation(
+        &self,
+        id: &str,
+        layer: &str,
+        layer_value: &str,
+        interpretation: &str,
+        phase: &str,
+    ) -> EngineResult<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO interpretations (id, layer, layer_value, interpretation, phase)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            ON CONFLICT(layer, layer_value) DO UPDATE SET
+              interpretation=excluded.interpretation,
+              phase=excluded.phase,
+              updated_at=CURRENT_TIMESTAMP
+            "#,
+        )
+        .bind(id)
+        .bind(layer)
+        .bind(layer_value)
+        .bind(interpretation)
+        .bind(phase)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn get_interpretation_by_layer_value(
+        &self,
+        layer: &str,
+        layer_value: &str,
+    ) -> EngineResult<Option<serde_json::Value>> {
+        let row = sqlx::query(
+            r#"SELECT id, layer, layer_value, interpretation, phase, created_at, updated_at
+               FROM interpretations WHERE layer = ?1 AND layer_value = ?2"#,
+        )
+        .bind(layer)
+        .bind(layer_value)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(row.map(|r| {
+            serde_json::json!({
+                "id": r.try_get::<String, _>("id").unwrap_or_default(),
+                "layer": r.try_get::<String, _>("layer").unwrap_or_default(),
+                "layer_value": r.try_get::<String, _>("layer_value").unwrap_or_default(),
+                "interpretation": r.try_get::<String, _>("interpretation").unwrap_or_default(),
+                "phase": r.try_get::<String, _>("phase").unwrap_or_default(),
+                "created_at": r.try_get::<String, _>("created_at").unwrap_or_default(),
+                "updated_at": r.try_get::<String, _>("updated_at").unwrap_or_default(),
+            })
+        }))
+    }
+
+    pub async fn list_interpretations(&self, layer: Option<&str>) -> EngineResult<Vec<serde_json::Value>> {
+        let rows = if let Some(l) = layer {
+            sqlx::query(
+                r#"SELECT id, layer, layer_value, interpretation, phase, created_at, updated_at
+                   FROM interpretations WHERE layer = ?1 ORDER BY updated_at DESC"#,
+            )
+            .bind(l)
+            .fetch_all(&self.pool)
+            .await
+        } else {
+            sqlx::query(
+                r#"SELECT id, layer, layer_value, interpretation, phase, created_at, updated_at
+                   FROM interpretations ORDER BY updated_at DESC"#,
+            )
+            .fetch_all(&self.pool)
+            .await
+        }
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "id": r.try_get::<String, _>("id").unwrap_or_default(),
+                    "layer": r.try_get::<String, _>("layer").unwrap_or_default(),
+                    "layer_value": r.try_get::<String, _>("layer_value").unwrap_or_default(),
+                    "interpretation": r.try_get::<String, _>("interpretation").unwrap_or_default(),
+                    "phase": r.try_get::<String, _>("phase").unwrap_or_default(),
+                    "created_at": r.try_get::<String, _>("created_at").unwrap_or_default(),
+                    "updated_at": r.try_get::<String, _>("updated_at").unwrap_or_default(),
+                })
+            })
+            .collect())
+    }
+
+    pub async fn delete_interpretation(&self, id: &str) -> EngineResult<()> {
+        // Delete verifications first (foreign key constraint)
+        sqlx::query(r#"DELETE FROM verifications WHERE interpretation_id = ?1"#)
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        sqlx::query(r#"DELETE FROM interpretations WHERE id = ?1"#)
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn update_interpretation_phase(&self, id: &str, phase: &str) -> EngineResult<()> {
+        sqlx::query(
+            r#"UPDATE interpretations SET phase = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?1"#,
+        )
+        .bind(id)
+        .bind(phase)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    // ============ Instance Query Methods ============
+
+    pub async fn find_layer_instances(
+        &self,
+        layer: &str,
+        layer_value: &str,
+        offset: i64,
+        limit: i64,
+    ) -> EngineResult<Vec<serde_json::Value>> {
+        // Map layer name to segment column
+        let column = match layer {
+            "root" => "root",
+            "lemma" => "lemma",
+            "pos" => "pos",
+            "pattern" => "pattern",
+            "case" => "case_value",
+            "gender" => "gender",
+            "number" => "number",
+            "person" => "person",
+            "voice" => "voice",
+            "mood" => "mood",
+            "verb_form" => "verb_form",
+            "aspect" => "aspect",
+            "role" => "role",
+            "state" => "state",
+            "type" => "type",
+            _ => return Err(EngineError::Storage(format!("Unknown layer: {}", layer))),
+        };
+
+        let query = format!(
+            r#"
+            SELECT DISTINCT t.verse_surah as surah, t.verse_ayah as ayah, t.token_index,
+                   t.text as token_text, vt.text as verse_text
+            FROM tokens t
+            JOIN segments s ON s.token_id = t.id
+            LEFT JOIN verse_texts vt ON vt.surah_number = t.verse_surah AND vt.ayah_number = t.verse_ayah
+            WHERE s.{} = ?1
+            ORDER BY t.verse_surah, t.verse_ayah, t.token_index
+            LIMIT ?2 OFFSET ?3
+            "#,
+            column
+        );
+
+        let rows = sqlx::query(&query)
+            .bind(layer_value)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "surah": r.try_get::<i64, _>("surah").unwrap_or(0),
+                    "ayah": r.try_get::<i64, _>("ayah").unwrap_or(0),
+                    "token_index": r.try_get::<i64, _>("token_index").unwrap_or(0),
+                    "token_text": r.try_get::<String, _>("token_text").unwrap_or_default(),
+                    "verse_text": r.try_get::<String, _>("verse_text").unwrap_or_default(),
+                })
+            })
+            .collect())
+    }
+
+    pub async fn count_layer_instances(&self, layer: &str, layer_value: &str) -> EngineResult<i64> {
+        let column = match layer {
+            "root" => "root",
+            "lemma" => "lemma",
+            "pos" => "pos",
+            "pattern" => "pattern",
+            "case" => "case_value",
+            "gender" => "gender",
+            "number" => "number",
+            "person" => "person",
+            "voice" => "voice",
+            "mood" => "mood",
+            "verb_form" => "verb_form",
+            "aspect" => "aspect",
+            "role" => "role",
+            "state" => "state",
+            "type" => "type",
+            _ => return Err(EngineError::Storage(format!("Unknown layer: {}", layer))),
+        };
+
+        let query = format!(
+            r#"SELECT COUNT(DISTINCT t.id) FROM tokens t
+               JOIN segments s ON s.token_id = t.id WHERE s.{} = ?1"#,
+            column
+        );
+
+        let count: i64 = sqlx::query_scalar(&query)
+            .bind(layer_value)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(count)
+    }
+
+    // ============ Verification Methods ============
+
+    pub async fn upsert_verification(
+        &self,
+        id: &str,
+        interpretation_id: &str,
+        surah: i64,
+        ayah: i64,
+        token_index: i64,
+        status: &str,
+        notes: Option<&str>,
+    ) -> EngineResult<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO verifications (id, interpretation_id, surah, ayah, token_index, status, notes, verified_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, CURRENT_TIMESTAMP)
+            ON CONFLICT(interpretation_id, surah, ayah, token_index) DO UPDATE SET
+              status=excluded.status,
+              notes=excluded.notes,
+              verified_at=CURRENT_TIMESTAMP
+            "#,
+        )
+        .bind(id)
+        .bind(interpretation_id)
+        .bind(surah)
+        .bind(ayah)
+        .bind(token_index)
+        .bind(status)
+        .bind(notes)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn get_verification_progress(
+        &self,
+        interpretation_id: &str,
+    ) -> EngineResult<serde_json::Value> {
+        let total: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM verifications WHERE interpretation_id = ?1"#,
+        )
+        .bind(interpretation_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        let approved: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM verifications WHERE interpretation_id = ?1 AND status = 'approved'"#,
+        )
+        .bind(interpretation_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        let denied: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM verifications WHERE interpretation_id = ?1 AND status = 'denied'"#,
+        )
+        .bind(interpretation_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(serde_json::json!({
+            "total": total,
+            "approved": approved,
+            "denied": denied,
+            "pending": total - approved - denied,
+        }))
+    }
+
+    pub async fn list_verifications(
+        &self,
+        interpretation_id: &str,
+        status: Option<&str>,
+        offset: i64,
+        limit: i64,
+    ) -> EngineResult<Vec<serde_json::Value>> {
+        let rows = if let Some(s) = status {
+            sqlx::query(
+                r#"SELECT id, interpretation_id, surah, ayah, token_index, status, notes, verified_at
+                   FROM verifications WHERE interpretation_id = ?1 AND status = ?2
+                   ORDER BY surah, ayah, token_index LIMIT ?3 OFFSET ?4"#,
+            )
+            .bind(interpretation_id)
+            .bind(s)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+        } else {
+            sqlx::query(
+                r#"SELECT id, interpretation_id, surah, ayah, token_index, status, notes, verified_at
+                   FROM verifications WHERE interpretation_id = ?1
+                   ORDER BY surah, ayah, token_index LIMIT ?2 OFFSET ?3"#,
+            )
+            .bind(interpretation_id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+        }
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "id": r.try_get::<String, _>("id").unwrap_or_default(),
+                    "interpretation_id": r.try_get::<String, _>("interpretation_id").unwrap_or_default(),
+                    "surah": r.try_get::<i64, _>("surah").unwrap_or(0),
+                    "ayah": r.try_get::<i64, _>("ayah").unwrap_or(0),
+                    "token_index": r.try_get::<i64, _>("token_index").unwrap_or(0),
+                    "status": r.try_get::<String, _>("status").unwrap_or_default(),
+                    "notes": r.try_get::<Option<String>, _>("notes").unwrap_or(None),
+                    "verified_at": r.try_get::<Option<String>, _>("verified_at").unwrap_or(None),
+                })
+            })
+            .collect())
+    }
+
+    // ============ Counter-Example Methods (Passive Verification) ============
+
+    pub async fn add_counter_example(
+        &self,
+        id: &str,
+        interpretation_id: &str,
+        surah: i64,
+        ayah: i64,
+        token_index: Option<i64>,
+        search_query: Option<&str>,
+    ) -> EngineResult<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO counter_examples (id, interpretation_id, surah, ayah, token_index, search_query)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            ON CONFLICT(interpretation_id, surah, ayah, token_index) DO NOTHING
+            "#,
+        )
+        .bind(id)
+        .bind(interpretation_id)
+        .bind(surah)
+        .bind(ayah)
+        .bind(token_index)
+        .bind(search_query)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn update_counter_example(
+        &self,
+        id: &str,
+        status: &str,
+        notes: Option<&str>,
+    ) -> EngineResult<()> {
+        sqlx::query(
+            r#"UPDATE counter_examples SET status = ?2, notes = ?3, investigated_at = CURRENT_TIMESTAMP WHERE id = ?1"#,
+        )
+        .bind(id)
+        .bind(status)
+        .bind(notes)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn list_counter_examples(
+        &self,
+        interpretation_id: &str,
+        status: Option<&str>,
+        offset: i64,
+        limit: i64,
+    ) -> EngineResult<Vec<serde_json::Value>> {
+        let rows = if let Some(s) = status {
+            sqlx::query(
+                r#"SELECT ce.id, ce.interpretation_id, ce.surah, ce.ayah, ce.token_index,
+                          ce.status, ce.search_query, ce.notes, ce.created_at, ce.investigated_at,
+                          vt.text as verse_text
+                   FROM counter_examples ce
+                   LEFT JOIN verse_texts vt ON vt.surah_number = ce.surah AND vt.ayah_number = ce.ayah
+                   WHERE ce.interpretation_id = ?1 AND ce.status = ?2
+                   ORDER BY ce.created_at DESC LIMIT ?3 OFFSET ?4"#,
+            )
+            .bind(interpretation_id)
+            .bind(s)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+        } else {
+            sqlx::query(
+                r#"SELECT ce.id, ce.interpretation_id, ce.surah, ce.ayah, ce.token_index,
+                          ce.status, ce.search_query, ce.notes, ce.created_at, ce.investigated_at,
+                          vt.text as verse_text
+                   FROM counter_examples ce
+                   LEFT JOIN verse_texts vt ON vt.surah_number = ce.surah AND vt.ayah_number = ce.ayah
+                   WHERE ce.interpretation_id = ?1
+                   ORDER BY ce.created_at DESC LIMIT ?2 OFFSET ?3"#,
+            )
+            .bind(interpretation_id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+        }
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "id": r.try_get::<String, _>("id").unwrap_or_default(),
+                    "interpretation_id": r.try_get::<String, _>("interpretation_id").unwrap_or_default(),
+                    "surah": r.try_get::<i64, _>("surah").unwrap_or(0),
+                    "ayah": r.try_get::<i64, _>("ayah").unwrap_or(0),
+                    "token_index": r.try_get::<Option<i64>, _>("token_index").unwrap_or(None),
+                    "status": r.try_get::<String, _>("status").unwrap_or_default(),
+                    "search_query": r.try_get::<Option<String>, _>("search_query").unwrap_or(None),
+                    "notes": r.try_get::<Option<String>, _>("notes").unwrap_or(None),
+                    "verse_text": r.try_get::<Option<String>, _>("verse_text").unwrap_or(None),
+                    "created_at": r.try_get::<Option<String>, _>("created_at").unwrap_or(None),
+                    "investigated_at": r.try_get::<Option<String>, _>("investigated_at").unwrap_or(None),
+                })
+            })
+            .collect())
+    }
+
+    pub async fn count_counter_examples(&self, interpretation_id: &str) -> EngineResult<serde_json::Value> {
+        let total: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM counter_examples WHERE interpretation_id = ?1"#,
+        )
+        .bind(interpretation_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        let pending: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM counter_examples WHERE interpretation_id = ?1 AND status = 'pending'"#,
+        )
+        .bind(interpretation_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        let confirmed: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM counter_examples WHERE interpretation_id = ?1 AND status = 'confirmed_exception'"#,
+        )
+        .bind(interpretation_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        let dismissed: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM counter_examples WHERE interpretation_id = ?1 AND status = 'dismissed'"#,
+        )
+        .bind(interpretation_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        Ok(serde_json::json!({
+            "total": total,
+            "pending": pending,
+            "confirmed_exception": confirmed,
+            "dismissed": dismissed,
+            "investigated": total - pending,
+        }))
+    }
+
+    // ============ Moment & Insight Methods ============
+
+    pub async fn upsert_moment(
+        &self,
+        id: &str,
+        raw_text: &str,
+        summary: &str,
+        verse_ref: Option<&str>,
+        structured: &serde_json::Value,
+        terms: &[WeightedTerm],
+    ) -> EngineResult<()> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO moments (id, raw_text, summary, verse_ref, structured)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            ON CONFLICT(id) DO UPDATE SET
+              raw_text=excluded.raw_text,
+              summary=excluded.summary,
+              verse_ref=excluded.verse_ref,
+              structured=excluded.structured;
+            "#,
+        )
+        .bind(id)
+        .bind(raw_text)
+        .bind(summary)
+        .bind(verse_ref)
+        .bind(structured)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        sqlx::query(r#"DELETE FROM moment_terms WHERE moment_id = ?1"#)
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        for term in terms {
+            sqlx::query(
+                r#"
+                INSERT INTO moment_terms (moment_id, term, kind, weight)
+                VALUES (?1, ?2, ?3, ?4)
+                ON CONFLICT(moment_id, term, kind) DO UPDATE SET weight=excluded.weight
+                "#,
+            )
+            .bind(id)
+            .bind(&term.term)
+            .bind(&term.kind)
+            .bind(term.weight as f64)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+        }
+
+        tx.commit()
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn upsert_insight(
+        &self,
+        id: &str,
+        verse_ref: Option<&str>,
+        surah: Option<i64>,
+        ayah: Option<i64>,
+        title: &str,
+        body: &str,
+        structured: &serde_json::Value,
+        terms: &[WeightedTerm],
+    ) -> EngineResult<()> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO insights (id, verse_ref, surah, ayah, title, body, structured)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            ON CONFLICT(id) DO UPDATE SET
+              verse_ref=excluded.verse_ref,
+              surah=excluded.surah,
+              ayah=excluded.ayah,
+              title=excluded.title,
+              body=excluded.body,
+              structured=excluded.structured;
+            "#,
+        )
+        .bind(id)
+        .bind(verse_ref)
+        .bind(surah)
+        .bind(ayah)
+        .bind(title)
+        .bind(body)
+        .bind(structured)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        sqlx::query(r#"DELETE FROM insight_terms WHERE insight_id = ?1"#)
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        for term in terms {
+            sqlx::query(
+                r#"
+                INSERT INTO insight_terms (insight_id, term, kind, weight)
+                VALUES (?1, ?2, ?3, ?4)
+                ON CONFLICT(insight_id, term, kind) DO UPDATE SET weight=excluded.weight
+                "#,
+            )
+            .bind(id)
+            .bind(&term.term)
+            .bind(&term.kind)
+            .bind(term.weight as f64)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+        }
+
+        tx.commit()
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn find_similar_moments(
+        &self,
+        terms: &[String],
+        exclude_id: Option<&str>,
+        limit: i64,
+    ) -> EngineResult<Vec<MomentMatch>> {
+        if terms.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
+            r#"
+            SELECT m.id, m.summary, m.raw_text, m.verse_ref,
+                   m.structured as "structured: serde_json::Value",
+                   m.created_at, SUM(t.weight) as score
+            FROM moment_terms t
+            JOIN moments m ON m.id = t.moment_id
+            WHERE t.term IN (
+            "#,
+        );
+
+        {
+            let mut separated = qb.separated(", ");
+            for term in terms {
+                separated.push_bind(term);
+            }
+        }
+
+        qb.push(")");
+        if let Some(exclude) = exclude_id {
+            qb.push(" AND m.id != ").push_bind(exclude);
+        }
+        qb.push(" GROUP BY m.id ORDER BY score DESC LIMIT ").push_bind(limit);
+
+        let rows = qb
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            let score: f64 = row.try_get("score").unwrap_or(0.0);
+            out.push(MomentMatch {
+                id: row.try_get("id").unwrap_or_default(),
+                summary: row.try_get("summary").unwrap_or_default(),
+                raw_text: row.try_get("raw_text").unwrap_or_default(),
+                verse_ref: row.try_get("verse_ref").unwrap_or(None),
+                structured: row.try_get("structured").unwrap_or(serde_json::json!({})),
+                created_at: row.try_get("created_at").unwrap_or(None),
+                score: score as f32,
+            });
+        }
+        Ok(out)
+    }
+
+    pub async fn find_similar_insights(
+        &self,
+        terms: &[String],
+        limit: i64,
+    ) -> EngineResult<Vec<InsightMatch>> {
+        if terms.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
+            r#"
+            SELECT i.id, i.title, i.body, i.verse_ref, i.surah, i.ayah,
+                   i.structured as "structured: serde_json::Value",
+                   i.created_at, vt.text as verse_text, SUM(t.weight) as score
+            FROM insight_terms t
+            JOIN insights i ON i.id = t.insight_id
+            LEFT JOIN verse_texts vt ON vt.surah_number = i.surah AND vt.ayah_number = i.ayah
+            WHERE t.term IN (
+            "#,
+        );
+
+        {
+            let mut separated = qb.separated(", ");
+            for term in terms {
+                separated.push_bind(term);
+            }
+        }
+
+        qb.push(") GROUP BY i.id ORDER BY score DESC LIMIT ").push_bind(limit);
+
+        let rows = qb
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            let score: f64 = row.try_get("score").unwrap_or(0.0);
+            out.push(InsightMatch {
+                id: row.try_get("id").unwrap_or_default(),
+                title: row.try_get("title").unwrap_or_default(),
+                body: row.try_get("body").unwrap_or_default(),
+                verse_ref: row.try_get("verse_ref").unwrap_or(None),
+                surah: row.try_get("surah").unwrap_or(None),
+                ayah: row.try_get("ayah").unwrap_or(None),
+                verse_text: row.try_get("verse_text").unwrap_or(None),
+                structured: row.try_get("structured").unwrap_or(serde_json::json!({})),
+                created_at: row.try_get("created_at").unwrap_or(None),
+                score: score as f32,
+            });
+        }
+        Ok(out)
+    }
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct MomentMatch {
+    pub id: String,
+    pub summary: String,
+    pub raw_text: String,
+    pub verse_ref: Option<String>,
+    pub structured: serde_json::Value,
+    pub created_at: Option<String>,
+    pub score: f32,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct InsightMatch {
+    pub id: String,
+    pub title: String,
+    pub body: String,
+    pub verse_ref: Option<String>,
+    pub surah: Option<i64>,
+    pub ayah: Option<i64>,
+    pub verse_text: Option<String>,
+    pub structured: serde_json::Value,
+    pub created_at: Option<String>,
+    pub score: f32,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct ConnectionRecord {
+    pub id: String,
+    pub from_token: String,
+    pub to_token: String,
+    pub layer: String,
+    pub meta: serde_json::Value,
+}
+
+#[async_trait]
+impl StorageBackend for SqliteStorage {
+    async fn get_segment(&self, id: &str) -> EngineResult<Option<SegmentView>> {
+        // Hydrate from normalized tables
+        let token_row = sqlx::query(
+            r#"SELECT verse_surah, verse_ayah, token_index, text FROM tokens WHERE id = ?1"#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        let Some(token) = token_row else { return Ok(None); };
+        let surah: i64 = token.try_get("verse_surah").map_err(|e| EngineError::Storage(e.to_string()))?;
+        let ayah: i64 = token.try_get("verse_ayah").map_err(|e| EngineError::Storage(e.to_string()))?;
+        let token_index: i64 = token.try_get("token_index").map_err(|e| EngineError::Storage(e.to_string()))?;
+        let text: String = token.try_get("text").map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        let seg_rows = sqlx::query(
+            r#"SELECT id, type, form, root, lemma, pattern, pos, verb_form, voice, mood, aspect, person, number, gender, case_value, dependency_rel, role, derived_noun_type, state
+                FROM segments WHERE token_id = ?1"#,
+        )
+        .bind(id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| EngineError::Storage(e.to_string()))?;
+
+        let mut segments = Vec::with_capacity(seg_rows.len());
+        for r in seg_rows {
+            segments.push(Segment {
+                id: r.try_get("id").map_err(|e| EngineError::Storage(e.to_string()))?,
+                r#type: r.try_get::<String, _>("type").unwrap_or_default(),
+                form: r.try_get::<String, _>("form").unwrap_or_default(),
+                root: r.try_get::<Option<String>, _>("root").unwrap_or(None),
+                lemma: r.try_get::<Option<String>, _>("lemma").unwrap_or(None),
+                pattern: r.try_get::<Option<String>, _>("pattern").unwrap_or(None),
+                pos: r.try_get::<Option<String>, _>("pos").unwrap_or(None),
+                verb_form: r.try_get::<Option<String>, _>("verb_form").unwrap_or(None),
+                voice: r.try_get::<Option<String>, _>("voice").unwrap_or(None),
+                mood: r.try_get::<Option<String>, _>("mood").unwrap_or(None),
+                aspect: r.try_get::<Option<String>, _>("aspect").unwrap_or(None),
+                person: r.try_get::<Option<String>, _>("person").unwrap_or(None),
+                number: r.try_get::<Option<String>, _>("number").unwrap_or(None),
+                gender: r.try_get::<Option<String>, _>("gender").unwrap_or(None),
+                case_: r.try_get::<Option<String>, _>("case_value").unwrap_or(None),
+                dependency_rel: r.try_get::<Option<String>, _>("dependency_rel").unwrap_or(None),
+                role: r.try_get::<Option<String>, _>("role").unwrap_or(None),
+                derived_noun_type: r.try_get::<Option<String>, _>("derived_noun_type").unwrap_or(None),
+                state: r.try_get::<Option<String>, _>("state").unwrap_or(None),
+            });
+        }
+
+        let verse_ref = format!("{}:{}", surah, ayah);
+        Ok(Some(SegmentView {
+            id: id.to_string(),
+            verse_ref,
+            token_index: token_index as usize,
+            text,
+            segments,
+            annotations: vec![],
+        }))
+    }
+
+    async fn hydrate_segments(&self, ids: &[SearchHit]) -> EngineResult<Vec<SegmentView>> {
+        // Fetch by id list; sqlite doesn't support array binds easily without temp table,
+        // so fetch individually for now.
+        let mut out = Vec::new();
+        for hit in ids {
+            if let Some(doc) = self.get_segment(&hit.id).await? {
+                out.push(doc);
+            }
+        }
+        Ok(out)
+    }
+}
+
+// Single-file migration to bootstrap SQLite schema.
+const MIGRATION_INIT: &str = r#"
+CREATE TABLE IF NOT EXISTS surahs (
+    number INTEGER PRIMARY KEY,
+    name TEXT
+);
+
+CREATE TABLE IF NOT EXISTS verses (
+    surah_number INTEGER NOT NULL,
+    ayah_number INTEGER NOT NULL,
+    PRIMARY KEY (surah_number, ayah_number)
+);
+
+CREATE TABLE IF NOT EXISTS verse_texts (
+    surah_number INTEGER NOT NULL,
+    ayah_number INTEGER NOT NULL,
+    text TEXT,
+    PRIMARY KEY (surah_number, ayah_number)
+);
+
+CREATE TABLE IF NOT EXISTS tokens (
+    id TEXT PRIMARY KEY,
+    verse_surah INTEGER NOT NULL,
+    verse_ayah INTEGER NOT NULL,
+    token_index INTEGER NOT NULL,
+    text TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS segments (
+    id TEXT PRIMARY KEY,
+    token_id TEXT NOT NULL,
+    type TEXT,
+    form TEXT,
+    root TEXT,
+    lemma TEXT,
+    pattern TEXT,
+    pos TEXT,
+    verb_form TEXT,
+    voice TEXT,
+    mood TEXT,
+    aspect TEXT,
+    person TEXT,
+    number TEXT,
+    gender TEXT,
+    case_value TEXT,
+    dependency_rel TEXT,
+    role TEXT,
+    derived_noun_type TEXT,
+    state TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_segments_token ON segments(token_id);
+CREATE INDEX IF NOT EXISTS idx_segments_root ON segments(root);
+CREATE INDEX IF NOT EXISTS idx_segments_lemma ON segments(lemma);
+CREATE INDEX IF NOT EXISTS idx_segments_pos ON segments(pos);
+CREATE INDEX IF NOT EXISTS idx_segments_pattern ON segments(pattern);
+
+CREATE TABLE IF NOT EXISTS segment_payload (
+    id TEXT PRIMARY KEY,
+    verse_ref TEXT NOT NULL,
+    token_index INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    payload JSON NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_segment_payload_verse ON segment_payload(verse_ref);
+CREATE INDEX IF NOT EXISTS idx_segment_payload_token ON segment_payload(token_index);
+
+CREATE TABLE IF NOT EXISTS annotations (
+    id TEXT PRIMARY KEY,
+    target_id TEXT NOT NULL,
+    layer TEXT,
+    payload JSON NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_annotations_target ON annotations(target_id);
+
+CREATE TABLE IF NOT EXISTS connections (
+    id TEXT PRIMARY KEY,
+    from_token TEXT NOT NULL,
+    to_token TEXT NOT NULL,
+    layer TEXT,
+    meta JSON
+);
+
+CREATE INDEX IF NOT EXISTS idx_connections_from ON connections(from_token);
+CREATE INDEX IF NOT EXISTS idx_connections_to ON connections(to_token);
+
+CREATE TABLE IF NOT EXISTS verse_metadata (
+    verse_ref TEXT PRIMARY KEY,
+    pronouns JSON,
+    hypotheses JSON,
+    translations JSON
+);
+
+CREATE TABLE IF NOT EXISTS research_data (
+    key TEXT PRIMARY KEY,
+    value JSON NOT NULL,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Interpretations: corpus-wide semantic meanings for layer values
+CREATE TABLE IF NOT EXISTS interpretations (
+    id TEXT PRIMARY KEY,
+    layer TEXT NOT NULL,           -- 'root', 'lemma', 'pos', etc.
+    layer_value TEXT NOT NULL,     -- The morphological value (e.g., 'س م و')
+    interpretation TEXT NOT NULL,  -- User's interpretation (e.g., 'elevation/height')
+    phase TEXT DEFAULT 'validation', -- 'validation', 'active_verification', 'complete'
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(layer, layer_value)
+);
+
+CREATE INDEX IF NOT EXISTS idx_interpretations_layer ON interpretations(layer);
+CREATE INDEX IF NOT EXISTS idx_interpretations_layer_value ON interpretations(layer, layer_value);
+
+-- Verification records: track approval/denial for each instance
+CREATE TABLE IF NOT EXISTS verifications (
+    id TEXT PRIMARY KEY,
+    interpretation_id TEXT NOT NULL,
+    surah INTEGER NOT NULL,
+    ayah INTEGER NOT NULL,
+    token_index INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'approved', 'denied'
+    notes TEXT,
+    verified_at TEXT,
+    UNIQUE(interpretation_id, surah, ayah, token_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_verifications_interpretation ON verifications(interpretation_id);
+CREATE INDEX IF NOT EXISTS idx_verifications_status ON verifications(status);
+
+-- Counter-examples: potential passages that may disprove an interpretation (passive verification)
+CREATE TABLE IF NOT EXISTS counter_examples (
+    id TEXT PRIMARY KEY,
+    interpretation_id TEXT NOT NULL,
+    surah INTEGER NOT NULL,
+    ayah INTEGER NOT NULL,
+    token_index INTEGER,
+    status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'investigated', 'confirmed_exception', 'dismissed'
+    search_query TEXT,                      -- The query/criteria that found this
+    notes TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    investigated_at TEXT,
+    UNIQUE(interpretation_id, surah, ayah, token_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_counter_examples_interpretation ON counter_examples(interpretation_id);
+CREATE INDEX IF NOT EXISTS idx_counter_examples_status ON counter_examples(status);
+
+-- Moments: structured personal experiences
+CREATE TABLE IF NOT EXISTS moments (
+    id TEXT PRIMARY KEY,
+    raw_text TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    verse_ref TEXT,
+    structured JSON NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_moments_created_at ON moments(created_at);
+CREATE INDEX IF NOT EXISTS idx_moments_verse_ref ON moments(verse_ref);
+
+CREATE TABLE IF NOT EXISTS moment_terms (
+    moment_id TEXT NOT NULL,
+    term TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    weight REAL NOT NULL,
+    PRIMARY KEY (moment_id, term, kind)
+);
+
+CREATE INDEX IF NOT EXISTS idx_moment_terms_term ON moment_terms(term);
+CREATE INDEX IF NOT EXISTS idx_moment_terms_moment ON moment_terms(moment_id);
+
+-- Insights: Quranic reflections linked to verses
+CREATE TABLE IF NOT EXISTS insights (
+    id TEXT PRIMARY KEY,
+    verse_ref TEXT,
+    surah INTEGER,
+    ayah INTEGER,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    structured JSON NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_insights_created_at ON insights(created_at);
+CREATE INDEX IF NOT EXISTS idx_insights_verse_ref ON insights(verse_ref);
+CREATE INDEX IF NOT EXISTS idx_insights_surah_ayah ON insights(surah, ayah);
+
+CREATE TABLE IF NOT EXISTS insight_terms (
+    insight_id TEXT NOT NULL,
+    term TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    weight REAL NOT NULL,
+    PRIMARY KEY (insight_id, term, kind)
+);
+
+CREATE INDEX IF NOT EXISTS idx_insight_terms_term ON insight_terms(term);
+CREATE INDEX IF NOT EXISTS idx_insight_terms_insight ON insight_terms(insight_id);
+
+-- Patterns: morphological/syntactic rules not tied to specific verses
+CREATE TABLE IF NOT EXISTS patterns (
+    id TEXT PRIMARY KEY,
+    description TEXT NOT NULL,
+    pattern_type TEXT NOT NULL,  -- 'morphological', 'syntactic', 'semantic'
+    scope TEXT,                   -- 'present_tense_verbs', 'root:سمو', etc.
+    phase TEXT DEFAULT 'question', -- 'question', 'hypothesis', 'validation', 'active_verification', 'passive_verification'
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_patterns_type ON patterns(pattern_type);
+CREATE INDEX IF NOT EXISTS idx_patterns_phase ON patterns(phase);
+
+-- Claims: broader research findings that can reference patterns, verses, or neither
+CREATE TABLE IF NOT EXISTS claims (
+    id TEXT PRIMARY KEY,
+    content TEXT NOT NULL,
+    phase TEXT DEFAULT 'question',
+    pattern_id TEXT,              -- NULL or links to pattern
+    note_file TEXT,               -- which markdown note mentions this
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(pattern_id) REFERENCES patterns(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_claims_phase ON claims(phase);
+CREATE INDEX IF NOT EXISTS idx_claims_pattern ON claims(pattern_id);
+
+-- Evidence: claims ↔ verses (many-to-many)
+CREATE TABLE IF NOT EXISTS claim_evidence (
+    id TEXT PRIMARY KEY,
+    claim_id TEXT NOT NULL,
+    surah INTEGER,
+    ayah INTEGER,
+    notes TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(claim_id) REFERENCES claims(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_claim_evidence_claim ON claim_evidence(claim_id);
+CREATE INDEX IF NOT EXISTS idx_claim_evidence_verse ON claim_evidence(surah, ayah);
+
+-- Dependencies: claims build on each other (directed graph)
+CREATE TABLE IF NOT EXISTS claim_dependencies (
+    claim_id TEXT NOT NULL,
+    depends_on_claim_id TEXT NOT NULL,
+    dependency_type TEXT DEFAULT 'requires', -- 'requires', 'contradicts', 'supports'
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (claim_id, depends_on_claim_id),
+    FOREIGN KEY(claim_id) REFERENCES claims(id),
+    FOREIGN KEY(depends_on_claim_id) REFERENCES claims(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_claim_deps_from ON claim_dependencies(claim_id);
+CREATE INDEX IF NOT EXISTS idx_claim_deps_to ON claim_dependencies(depends_on_claim_id);
+"#;

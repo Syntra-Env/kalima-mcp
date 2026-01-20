@@ -56,3 +56,7 @@ temp_*.json
 __pycache__/
 *.pyc
 *.pyo
+
+# ML model artifacts
+packages/ml/checkpoints/
+packages/ml/src/checkpoints/
