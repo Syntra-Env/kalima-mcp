@@ -59,10 +59,8 @@ Add to your OpenCode config (`~/.config/opencode/opencode.json`):
   "mcp": {
     "kalima": {
       "type": "local",
-      "command": [
-        "node",
-        "C:/Codex/Kalima/dist/index.js"
-      ],
+      "command": "node",
+      "args": ["C:/Codex/Kalima/dist/index.js"],
       "env": {
         "KALIMA_DB_PATH": "C:/Codex/Kalima/data/database/kalima.db"
       }
