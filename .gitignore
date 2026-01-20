@@ -60,3 +60,6 @@ __pycache__/
 # ML model artifacts
 packages/ml/checkpoints/
 packages/ml/src/checkpoints/
+
+# Apps directory (remnants from old branch structure)
+/apps/
