@@ -1,6 +1,10 @@
 // Quick test script to verify MCP server functions work
-import { getVerse, getSurah, listSurahs } from './dist/tools/quran.js';
-import { searchClaims } from './dist/tools/research.js';
+// Set default DB path if not provided
+if (!process.env.KALIMA_DB_PATH) {
+  process.env.KALIMA_DB_PATH = 'data/database/kalima.db';
+}
+import { getVerse, getSurah, listSurahs } from '../dist/tools/quran.js';
+import { searchClaims } from '../dist/tools/research.js';
 
 async function test() {
   console.log('Testing Kalima MCP Server...\n');

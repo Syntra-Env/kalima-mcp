@@ -4,7 +4,7 @@ import {
   createPatternInterpretation,
   createSurahTheme,
   addVerseEvidence
-} from './dist/tools/linguistic.js';
+} from '../dist/tools/linguistic.js';
 
 async function main() {
   console.log('╔════════════════════════════════════════════════════════════════╗');

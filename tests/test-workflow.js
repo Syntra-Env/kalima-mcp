@@ -2,7 +2,7 @@
 import {
   createPatternInterpretation,
   createSurahTheme
-} from './dist/tools/linguistic.js';
+} from '../dist/tools/linguistic.js';
 import {
   startWorkflowSession,
   getNextVerseInWorkflow,
@@ -10,7 +10,7 @@ import {
   getWorkflowStats,
   listWorkflowSessions,
   checkAndTransitionPhase
-} from './dist/tools/workflow.js';
+} from '../dist/tools/workflow.js';
 
 async function main() {
   console.log('╔════════════════════════════════════════════════════════════════╗');
