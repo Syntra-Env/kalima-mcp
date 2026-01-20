@@ -1,0 +1,91 @@
+- Theories of truth
+- Synchronicity
+- Ontopoetics
+- Symbolism (potentially make into a series)
+- Why does suffering exist?
+- [[Music, Waves, Frequencies, Physics]]
+- Metaphysics
+- Cybernetics
+- Scripture
+- Language
+- Evolution of Language
+- Mathematics
+- Fallacies, Biases, Predilections
+- Computation as a metaphor for the mind
+- Agricultural Metaphors
+- Architectural Metaphors
+- [[Geometry]]
+- Ancient Symbolism
+- The Water Cycle
+- Cosmologies
+- Uncertainty, Probability, Statistics, Approximations and Numerical Methods
+- Information
+- Communication Systems
+- Social Systems, Groups, Crowds, Homogeneity 
+- Artificial Intelligence and Machine Learning
+- Numbers
+- The Universe of The Individual, Nafs-Centric Universe
+- Epistemology
+- Etymology
+- Ontology
+- Logic
+- Sculpting
+- Color Theory, Optics, Light
+- Music Theory
+- Anatomy (followed by videos for each body part or organ)
+- Emotions
+- Cognition
+- Phenomenology
+- Semiotics
+- Letters
+- Words
+- Sentences
+- Virtues
+- Morals
+- Ethics
+- Cellular Automata
+- Emergence
+- Rules of the Universe
+- Molecular Engines
+- Runes
+- Shapes/Forms, Building Blocks, Elements
+- Space
+- Time, Sequences, Series, Flows, Paths, Goals
+- Coherence
+- Harmony
+- Resonance
+- Dynamics
+- Sounds
+- Music Graphs
+- Golden Ratio
+- Number Series
+- Harmonics Music
+- Energy Generators
+- Batteries
+- Oscillators
+- Game Engines
+- Game Theory
+- Life Engine
+- Ecosystems
+- Virtual Environments
+- Weather
+- Geology (rocks)
+- Space weather
+- Storage/Memory
+- Retrieval/Rememberance
+- Formal Languages, Finite Automata, 2D and 3D cellular automata
+- Spirits, Machine Elves, Mental Entities, Malaikah
+- Extra Sensory Perception
+- Light and Darkness
+- The Feminine and Masculine
+- Linguistic Composition and Compositional Units: how the core linguistic concepts are usually fundamental to theories of the world.
+- Morphology
+- Dreams and The Subconscious
+- Personification/Anthropomorphization of abstract concepts as an enabling mental model for ontopoetics.
+- Biology
+- Symmetry
+- Duality
+- Text Embeddings
+
+End of every video:
+- Ask the viewer how they relate to the presented concept.

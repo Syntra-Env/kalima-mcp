@@ -1,169 +1,137 @@
-# Kalima - Quran Research Platform
+# Kalima MCP Server
 
-Tauri desktop application for Quranic text analysis, morphological research, and linguistic exploration.
-
-## Quick Start
-
-### Prerequisites
-- Rust 1.77+ ([Install Rust](https://rustup.rs/))
-- Tauri CLI: `cargo install tauri-cli --locked`
-- Node.js (for E2E tests): see `docs/TESTING.md`
-- Python 3 (optional; used for dataset scripts)
-
-### Desktop App (no browser required)
-
-**First-time setup** (after cloning repository):
-```bash
-cd Kalima
-
-# Build the combined JSONL corpus (only needed once)
-python scripts/build_combined_jsonl.py
-
-# Ingest data into SQLite + Tantivy (only needed once)
-cd engine
-cargo run -p api --release --bin ingest -- --db ../data/database/kalima.db --index ../data/search-index --input ../datasets/combined.jsonl
-cd ..
-```
-
-**Running the app:**
-```bash
-# Run desktop app directly from root
-./Kalima.exe
-```
-
-**Development:**
-```bash
-# Develop with hot-reload
-cd desktop/src-tauri
-cargo tauri dev
-
-# Build new executable
-cd desktop/src-tauri
-cargo tauri build
-cp desktop/src-tauri/target/release/app.exe Kalima.exe
-```
-
-The desktop app automatically:
-- Starts the Rust API server in-process
-- Opens in a native window (no external browser)
-- Loads data from `data/database/` and `data/search-index/` in the project directory
-
-### CLI/Server Mode
-```bash
-# Clone repository
-git clone https://github.com/wwwportal/Kalima.git
-cd Kalima
-
-# Build and run the API server (serves http://localhost:8080 by default)
-cd engine
-cargo run -p api --release
-```
-
-## Architecture
-
-- **Backend:** Rust (Axum + SQLite + Tantivy)
-  - 2,900 lines across 4 crates
-  - 50+ REST endpoints
-  - <1s startup, ~50MB memory
-- **Frontend:** Vanilla JavaScript (runs in the Tauri WebView)
-  - 17 modular files, no build system
-  - Layered canvas architecture
+Model Context Protocol (MCP) server that exposes Kalima's Quranic research databases as AI-callable tools.
 
 ## Features
 
-- Browse 114 surahs, 6,236 verses
-- Full-text search with Arabic diacritics
-- Root-based morphological search
-- Concordance search (Query Mode: `Q`, click tokens to build `#N key:value` patterns)
-- POS pattern search
-- Verb form analysis (Forms I-X)
-- Dependency tree visualization
-- Annotations & connections
-- Hypothesis management
-- Translation comparison
+20 tools for interacting with Quranic text and research claims:
 
-## API Endpoints
+### Quran Tools
+- `get_verse` - Get a specific verse with Arabic text
+- `get_surah` - Get an entire surah with all verses
+- `list_surahs` - List all 114 surahs
+- `search_verses` - Search for verses containing specific Arabic text
 
-### Verse Navigation
-- `GET /api/surahs` - List all surahs
-- `GET /api/verse/:surah/:ayah` - Get specific verse
-- `GET /api/surah/:number` - Get all verses in surah
+### Linguistic Analysis Tools
+- `search_by_linguistic_features` - Search verses by morphological features (POS, aspect, mood, verb form, root, etc.)
+- `create_pattern_interpretation` - Store linguistic pattern interpretations with associated claims
+- `create_surah_theme` - Create thematic interpretations for entire surahs
+- `add_verse_evidence` - Link verses as evidence to claims with verification status
 
-### Search
-- `GET /api/search?q=...` - Text search
-- `GET /api/search/roots?root=...` - Root search
-- `GET /api/search/morphology?q=...` - Morphology search
-- `GET /api/search/verb_forms?form=IV` - Verb form search
-- `POST /concordance` - Concordance search (sequential anchored patterns)
+### Workflow Tools
+- `start_workflow_session` - Start a systematic verse-by-verse verification workflow
+- `get_next_verse` - Get the next verse in an active workflow for verification
+- `submit_verification` - Submit verification result and automatically advance to next verse
+- `get_workflow_stats` - View progress, statistics, and verification breakdown for a workflow
+- `list_workflow_sessions` - List all workflow sessions with status and progress
+- `check_phase_transition` - Check and auto-transition claim phases based on evidence
 
-### Linguistic Data
-- `GET /api/morphology/:surah/:ayah` - Morphological segments
-- `GET /api/dependency/:surah/:ayah` - Dependency tree
-- `GET /api/roots` - List all roots
+### Research Tools
+- `search_claims` - Search research claims by phase/pattern
+- `get_claim_evidence` - Get verse evidence for a claim
+- `get_claim_dependencies` - Get claim dependency tree
+- `list_patterns` - List morphological/syntactic/semantic patterns
+- `save_insight` - Save new research insights to database
+- `update_claim_phase` - Update claim phase in falsification methodology
 
-### Research
-- `GET /api/annotations/:surah/:ayah` - Annotations
-- `POST /api/annotations/:surah/:ayah` - Create annotation
-- `GET /api/hypotheses/:verse_ref` - Hypotheses
-- `POST /api/hypotheses/:verse_ref` - Create hypothesis
+## Installation
 
-## Deployment
-
-### Docker
 ```bash
-docker-compose up -d
+npm install
+npm run build
 ```
 
-### Systemd (Linux)
+## Testing
+
 ```bash
-sudo cp deploy/kalima.service /etc/systemd/system/
-sudo systemctl enable kalima
-sudo systemctl start kalima
+node test-server.js
 ```
 
-### Nginx Reverse Proxy
-```bash
-sudo cp deploy/nginx.conf /etc/nginx/sites-available/kalima
-sudo ln -s /etc/nginx/sites-available/kalima /etc/nginx/sites-enabled/
-sudo systemctl reload nginx
+## Configuration for OpenCode
+
+Add to your OpenCode MCP configuration (typically in `~/.opencode/config.json` or Claude Desktop config):
+
+```json
+{
+  "mcpServers": {
+    "kalima": {
+      "command": "node",
+      "args": ["C:/Codex/Kalima/dist/index.js"],
+      "env": {
+        "KALIMA_DB_PATH": "C:/Codex/Kalima/data/database/kalima.db"
+      }
+    }
+  }
+}
 ```
 
-## Development
+### Claude Desktop Configuration
 
-### Running Tests
-```bash
-npm run test:unit
-cd desktop/src-tauri && cargo test
-npm run test:e2e
+If using Claude Desktop app on Windows, the config file is typically at:
+```
+C:\Users\<username>\AppData\Roaming\Claude\claude_desktop_config.json
 ```
 
-### Code Quality
-```bash
-cargo clippy --all-targets
-cargo fmt --all
-```
+Add the MCP server configuration to this file.
 
-## Performance
+## Usage with OpenCode
 
-- **Startup:** <1 second
-- **Search:** ~10-50ms
-- **Memory:** ~50MB
-- **Throughput:** >1000 req/s
+Once configured, the AI will have access to all 20 tools and can:
+- Query Quranic verses with proper Arabic rendering
+- Search verses by linguistic features (POS tags, verb forms, mood, aspect, roots)
+- Create and track linguistic pattern interpretations
+- Document surah themes and verify them verse-by-verse
+- Run systematic verse-by-verse verification workflows
+- Track progress and statistics across workflow sessions
+- Automatically detect contradictions and transition claim phases
+- Search and analyze research claims
+- Save insights discovered during conversation
+- Track research through falsification methodology phases
 
-## License
+### Example Queries
 
-MIT OR Apache-2.0
+**Quran Tools:**
+- "Show me verse 2:255" (Ayat al-Kursi)
+- "Get the full text of Surah Al-Fatihah"
+- "Search for verses containing the word 'رحمة'"
 
-## Credits
+**Linguistic Analysis:**
+- "Find verses with present tense verbs"
+- "Show me imperative verbs in the Quran"
+- "Search for verses with perfective aspect verbs"
+- "Find verses from the root ص-ل-و"
+- "Create a pattern interpretation: present tense verbs indicate ongoing actions"
+- "Create a surah theme for Al-Fatihah: opening prayer and guidance"
+- "Mark verse 1:1 as supporting my theme claim"
 
-- Quranic Arabic Corpus Project
-- MASAQ Morphological Dataset
-- Quranic Treebank Project
+**Workflow Tools:**
+- "Start a workflow to verify my pattern about present tense verbs"
+- "Show me the next verse in my workflow"
+- "This verse supports my hypothesis - record it and show me the next one"
+- "What are the statistics for my workflow session?"
+- "List all my active workflow sessions"
+- "Check if my claim should transition to a new phase"
 
-## Docs
+**Research Tools:**
+- "List all research claims in the hypothesis phase"
+- "What patterns have been identified for present tense verbs?"
+- "Save this insight: [your observation] with evidence from verse 12:7"
+- "Show me the evidence for claim X"
 
-- Command laws/spec: `docs/COMMAND_LAWS.md`
-- API contracts: `docs/API_CONTRACTS.md`
-- Testing strategy: `docs/TESTING.md`
-- Fixtures guidance: `docs/fixtures.md`
-- Runbook (setup/test/troubleshoot): `docs/RUNBOOK.md`
+## Linguistic Features
+
+The database contains full morphological analysis for 128,219 segments. You can search by:
+
+- **pos** - Part of speech: `VERB`, `NOUN`, `ADJ`, `PRON`, `P` (preposition), `T` (particle)
+- **aspect** - Verb aspect: `imperfective` (present), `perfective` (past), `imperative`
+- **mood** - Verb mood: `jussive`, `subjunctive`
+- **verb_form** - Arabic verb forms (I-X)
+- **root** - Arabic trilateral/quadrilateral roots
+- **person** - Grammatical person: `1st`, `2nd`, `3rd`
+- **gender** - `masculine`, `feminine`
+- **number** - `singular`, `dual`, `plural`
+- **case** - Noun case: `nominative`, `accusative`, `genitive`
+- **state** - Noun state: `definite`, `indefinite`, `construct`
+- **voice** - Verb voice: `active`, `passive`
+
+The search tool supports user-friendly names (e.g., "verb", "present") which are automatically normalized to database codes.

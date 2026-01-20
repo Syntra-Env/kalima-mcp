@@ -1,14 +1,18 @@
 # QuranResearch → Kalima Integration
 
-This document describes the integration of QuranResearch notes into the Kalima database.
+This document describes the integration of QuranResearch notes into the Kalima database and how to access them through OpenCode + MCP.
 
 ## Overview
 
-Previously, research findings were stored in two separate systems:
-- **Kalima**: SQLite database with Quranic text + morphology
-- **QuranResearch**: JSON database with 236 research notes/claims
+Research findings are now unified in a single SQLite database accessible through:
+- **OpenCode Desktop** via Model Context Protocol (MCP)
+- **Direct SQLite queries** for advanced analysis
 
-This integration unifies them into a single SQLite database.
+The database contains:
+- 6,236 Quranic verses with Arabic text and morphology
+- 236 research claims from QuranResearch
+- Morphological and semantic patterns
+- Evidence links between claims and verses
 
 ## What Was Added
 
@@ -29,123 +33,79 @@ Four new tables in Kalima's SQLite:
 4. **`claim_dependencies`** - Claims that build on other claims
    - Directed graph structure
 
-### API Endpoints
+### MCP Tools
 
-New REST endpoints in Kalima API:
+Kalima provides 10 MCP tools accessible through OpenCode:
 
-- `GET /api/claims?phase={phase}` - List claims, optionally filtered by phase
-- `GET /api/claims/{id}/evidence` - Get verse evidence for a claim
-- `GET /api/claims/{id}/dependencies` - Get dependency tree (uses recursive SQL)
-- `GET /api/research/patterns?pattern_type={type}` - List patterns
+**Quranic Text:**
+- `list_surahs` - List all 114 surahs
+- `get_verse` - Get specific verse with Arabic text
+- `get_surah` - Get complete chapter
+- `search_verses` - Full-text search in verses
 
-## Migration Guide
+**Research Claims:**
+- `search_claims` - Find claims by phase/pattern
+- `save_insight` - Save new research insights
+- `update_claim_phase` - Update claim research phase
+- `get_claim_evidence` - Get verse evidence for claims
 
-### Prerequisites
+**Linguistic Patterns:**
+- `list_patterns` - List morphological/semantic patterns
+- `get_pattern_occurrences` - Get verses using patterns
 
-1. Kalima database exists at `data/database/kalima.db`
-2. QuranResearch database exists at `../QuranResearch/quran_research_database.json`
-3. Python 3.9+ installed
+## Usage with OpenCode
 
-### Steps
+### Example Queries
 
-1. **Restart Kalima to create new tables**:
-   ```bash
-   cd apps/desktop/src-tauri
-   cargo tauri dev
-   ```
-   The schema migration runs automatically on startup.
+Start OpenCode Desktop and ask:
 
-2. **Run the migration script**:
-   ```bash
-   cd Kalima
-   python scripts/migrate_quran_research.py
-   ```
+**Quranic Text:**
+- "Show me verse 2:255"
+- "Get surah Al-Fatihah (surah 1)"
+- "Search for verses containing 'الله'"
 
-   This will:
-   - Read 236 notes from QuranResearch JSON
-   - Insert as claims into Kalima SQLite
-   - Create evidence links for verse references
-   - Create dependency links between claims
-   - Identify patterns (notes with no references but `pattern_query`)
+**Research Claims:**
+- "Search for claims about 'heart' in phase hypothesis"
+- "Show me all claims in question phase"
+- "Get evidence for claim ID claim_42"
 
-3. **Verify the migration**:
-   ```bash
-   python scripts/test_claims_api.py
-   ```
+**Linguistic Patterns:**
+- "List all semantic field patterns"
+- "Show me occurrences of pattern 'emphasis'"
 
-   Make sure the Kalima server is running first (`npm run dev`).
+### Saving New Insights
 
-4. **Archive the old JSON**:
-   ```bash
-   mv ../QuranResearch/quran_research_database.json ../QuranResearch/quran_research_database.json.backup
-   ```
+You can save research insights directly through OpenCode:
 
-## Usage Examples
+```
+"Save this insight: The word 'qalb' (heart) appears in contexts of
+transformation and change. Phase: hypothesis. Pattern: semantic_field_transformation"
+```
 
-### Query claims by phase
+The MCP server will:
+1. Generate a unique claim ID
+2. Store in the database
+3. Link to relevant verses if specified
+4. Set the research phase
+
+## Direct Database Access
+
+For advanced queries, you can query SQLite directly:
 
 ```bash
-# Get all claims still in question phase
-curl http://localhost:3000/api/claims?phase=question
+# Count claims by phase
+sqlite3 data/database/kalima.db "
+  SELECT phase, COUNT(*)
+  FROM claims
+  GROUP BY phase
+"
 
-# Get validated claims
-curl http://localhost:3000/api/claims?phase=active_verification
-```
-
-### Get evidence for a claim
-
-```bash
-curl http://localhost:3000/api/claims/claim_1/evidence
-```
-
-Returns:
-```json
-[
-  {
-    "id": "...",
-    "claim_id": "claim_1",
-    "surah": 51,
-    "ayah": 7,
-    "notes": "Supporting evidence from verse",
-    "created_at": "2026-01-20T..."
-  }
-]
-```
-
-### Get dependency tree
-
-```bash
-curl http://localhost:3000/api/claims/claim_1/dependencies
-```
-
-Returns:
-```json
-{
-  "claim": {
-    "id": "claim_1",
-    "content": "NCU framework...",
-    "phase": "question"
-  },
-  "dependencies": [
-    {
-      "id": "claim_2",
-      "content": "Mulk concept...",
-      "phase": "question"
-    }
-  ]
-}
-```
-
-The dependency query uses a recursive CTE, so it returns the entire dependency chain, not just direct dependencies.
-
-### List patterns
-
-```bash
-# All patterns
-curl http://localhost:3000/api/research/patterns
-
-# Just morphological patterns
-curl http://localhost:3000/api/research/patterns?pattern_type=morphological
+# Find all claims about a specific root
+sqlite3 data/database/kalima.db "
+  SELECT c.id, c.title, c.content
+  FROM claims c
+  WHERE c.content LIKE '%root%'
+"
 ```
 
 ## Database Statistics
@@ -166,71 +126,71 @@ sqlite3 data/database/kalima.db "SELECT COUNT(*) FROM claims"
 
 ## Architecture Benefits
 
-### Before
-- Two separate databases
-- Manual cross-referencing
-- No computational queries
-- JSON doesn't scale
-
-### After
-- Single SQLite database
-- SQL queries for complex relationships
-- Recursive CTEs for dependency graphs
+### Current (MCP + OpenCode)
+- Natural language interface via OpenCode
+- Direct SQLite access for complex queries
+- 10 MCP tools for structured operations
+- No build toolchain required (TypeScript + sql.js)
 - Scales to 10,000+ claims easily
 
-## Next Steps
-
-1. **UI Integration**: Add claims browser to desktop app
-2. **Visualization**: Dependency graph viewer
-3. **Consistency Checks**: Script to flag contradictory claims
-4. **Report Generation**: "All claims about root X"
-5. **Provenance Tracking**: Add `discovered_from` field
+### Archived (Tauri + Rust)
+- See `archive/` directory for reference implementation
+- REST API with 50+ endpoints
+- Rust backend with Axum + Tantivy
+- Required Rust toolchain
 
 ## Troubleshooting
 
-### Migration fails with "table already exists"
+### MCP Server not connecting to OpenCode
 
-This means the schema migration already ran. Safe to ignore.
+Check that the MCP server is configured:
 
-### API returns empty arrays
-
-Make sure:
-1. Migration script ran successfully
-2. Kalima server restarted after schema changes
-3. Correct API endpoint (check server logs)
-
-### Cannot connect to API
-
-Ensure Kalima is running:
 ```bash
-cd apps/desktop/src-tauri
-cargo tauri dev
+# Verify global config exists
+cat ~/.config/opencode/opencode.json
+
+# Should show:
+# {
+#   "mcp": {
+#     "kalima": {
+#       "type": "local",
+#       "command": ["node", "C:/Codex/Kalima/packages/mcp-server/dist/index.js"]
+#     }
+#   }
+# }
 ```
 
-Server should start on `http://localhost:3000`.
+If missing, run:
+```bash
+cd packages/mcp-server
+npm run add-to-opencode
+```
 
-## Rollback
+### Database queries return no results
 
-If something goes wrong:
+Check database integrity:
+```bash
+sqlite3 data/database/kalima.db "SELECT COUNT(*) FROM claims"
+sqlite3 data/database/kalima.db "SELECT COUNT(*) FROM verses"
+```
 
-1. Restore the backup:
-   ```bash
-   mv ../QuranResearch/quran_research_database.json.backup ../QuranResearch/quran_research_database.json
-   ```
+Should show:
+- 236 claims
+- 6,236 verses
 
-2. Delete Kalima's database and start fresh:
-   ```bash
-   rm data/database/kalima.db
-   # Run tauri dev to regenerate
-   ```
+### OpenCode can't find verses
 
-3. Re-ingest the Quran corpus:
-   ```bash
-   cargo run -p api --release --bin ingest -- \
-     --db data/database/kalima.db \
-     --index data/search-index \
-     --input datasets/combined.jsonl
-   ```
+Ensure the database file exists:
+```bash
+ls -lh data/database/kalima.db  # Should be ~31MB
+```
+
+## Known Issues
+
+See [packages/mcp-server/KNOWN_ISSUES.md](packages/mcp-server/KNOWN_ISSUES.md) for current known issues including:
+- Empty surah names (cosmetic issue)
+- Arabic text search normalization
+- Empty claim_evidence table (migration pending)
 
 ---
 
