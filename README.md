@@ -55,10 +55,14 @@ Add to your OpenCode config (`~/.config/opencode/opencode.json`):
 
 ```json
 {
-  "mcpServers": {
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
     "kalima": {
-      "command": "node",
-      "args": ["C:/Codex/Kalima/dist/index.js"],
+      "type": "local",
+      "command": [
+        "node",
+        "C:/Codex/Kalima/dist/index.js"
+      ],
       "env": {
         "KALIMA_DB_PATH": "C:/Codex/Kalima/data/database/kalima.db"
       }
