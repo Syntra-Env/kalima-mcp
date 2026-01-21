@@ -1,0 +1,687 @@
+{
+  "utcp": "1.0",
+  "name": "Kalima",
+  "description": "Quranic research tools using falsification methodology. Provides access to Quranic text, linguistic analysis, research claims management, and systematic verse-by-verse verification workflows.",
+  "version": "1.0.0",
+  "tools": [
+    {
+      "name": "get_verse",
+      "description": "Retrieve a specific verse from the Quran with its Arabic text. Use this when the user asks about a specific verse (e.g., 'Show me verse 2:255').",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "get_verse",
+        "parameters": {
+          "surah": "{surah}",
+          "ayah": "{ayah}"
+        }
+      },
+      "parameters": {
+        "surah": {
+          "type": "integer",
+          "description": "The surah (chapter) number (1-114)",
+          "required": true,
+          "minimum": 1,
+          "maximum": 114
+        },
+        "ayah": {
+          "type": "integer",
+          "description": "The ayah (verse) number within the surah",
+          "required": true,
+          "minimum": 1
+        }
+      }
+    },
+    {
+      "name": "get_surah",
+      "description": "Retrieve an entire surah (chapter) with all its verses. Use this when the user asks about a full chapter (e.g., 'Show me Surah Al-Fatiha').",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "get_surah",
+        "parameters": {
+          "surah": "{surah}"
+        }
+      },
+      "parameters": {
+        "surah": {
+          "type": "integer",
+          "description": "The surah (chapter) number (1-114)",
+          "required": true,
+          "minimum": 1,
+          "maximum": 114
+        }
+      }
+    },
+    {
+      "name": "list_surahs",
+      "description": "Get a list of all 114 surahs with their Arabic names and verse counts. Use this when the user wants to browse chapters or know chapter names.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "list_surahs",
+        "parameters": {}
+      },
+      "parameters": {}
+    },
+    {
+      "name": "search_verses",
+      "description": "Search for verses containing specific Arabic text. Use this for finding verses with particular words or phrases.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "search_verses",
+        "parameters": {
+          "query": "{query}",
+          "limit": "{limit}"
+        }
+      },
+      "parameters": {
+        "query": {
+          "type": "string",
+          "description": "Arabic text to search for",
+          "required": true
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of results (default: 20)",
+          "required": false,
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        }
+      }
+    },
+    {
+      "name": "search_claims",
+      "description": "Search research claims in the database. Claims are hypotheses or observations about the Quran being verified through falsification methodology.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "search_claims",
+        "parameters": {
+          "phase": "{phase}",
+          "pattern_id": "{pattern_id}",
+          "limit": "{limit}"
+        }
+      },
+      "parameters": {
+        "phase": {
+          "type": "string",
+          "description": "Filter by research phase",
+          "required": false,
+          "enum": ["question", "hypothesis", "validation", "active_verification", "passive_verification"]
+        },
+        "pattern_id": {
+          "type": "string",
+          "description": "Filter by pattern ID if looking for claims related to a specific pattern",
+          "required": false
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of results (default: 50)",
+          "required": false,
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        }
+      }
+    },
+    {
+      "name": "get_claim_evidence",
+      "description": "Get all evidence (verse references) supporting a specific research claim.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "get_claim_evidence",
+        "parameters": {
+          "claim_id": "{claim_id}"
+        }
+      },
+      "parameters": {
+        "claim_id": {
+          "type": "string",
+          "description": "The unique identifier of the claim",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "get_claim_dependencies",
+      "description": "Get the dependency tree for a claim - which other claims it depends on or relates to.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "get_claim_dependencies",
+        "parameters": {
+          "claim_id": "{claim_id}"
+        }
+      },
+      "parameters": {
+        "claim_id": {
+          "type": "string",
+          "description": "The unique identifier of the claim",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "list_patterns",
+      "description": "List morphological, syntactic, or semantic patterns identified in the Quran.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "list_patterns",
+        "parameters": {
+          "pattern_type": "{pattern_type}"
+        }
+      },
+      "parameters": {
+        "pattern_type": {
+          "type": "string",
+          "description": "Filter by pattern type",
+          "required": false,
+          "enum": ["morphological", "syntactic", "semantic"]
+        }
+      }
+    },
+    {
+      "name": "save_insight",
+      "description": "Save a new research claim or insight discovered during conversation. Use this to preserve important observations for future research.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "save_insight",
+        "parameters": {
+          "content": "{content}",
+          "phase": "{phase}",
+          "pattern_id": "{pattern_id}",
+          "evidence_verses": "{evidence_verses}"
+        }
+      },
+      "parameters": {
+        "content": {
+          "type": "string",
+          "description": "The claim or insight text",
+          "required": true
+        },
+        "phase": {
+          "type": "string",
+          "description": "Current research phase (default: question)",
+          "required": false,
+          "enum": ["question", "hypothesis", "validation"],
+          "default": "question"
+        },
+        "pattern_id": {
+          "type": "string",
+          "description": "Optional pattern ID this claim relates to",
+          "required": false
+        },
+        "evidence_verses": {
+          "type": "array",
+          "description": "Array of verse references as evidence",
+          "required": false,
+          "items": {
+            "type": "object",
+            "properties": {
+              "surah": {"type": "integer"},
+              "ayah": {"type": "integer"},
+              "notes": {"type": "string"}
+            },
+            "required": ["surah", "ayah"]
+          }
+        }
+      }
+    },
+    {
+      "name": "update_claim_phase",
+      "description": "Update the phase of an existing claim as research progresses through the falsification methodology.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "update_claim_phase",
+        "parameters": {
+          "claim_id": "{claim_id}",
+          "new_phase": "{new_phase}"
+        }
+      },
+      "parameters": {
+        "claim_id": {
+          "type": "string",
+          "description": "The claim ID to update",
+          "required": true
+        },
+        "new_phase": {
+          "type": "string",
+          "description": "The new research phase",
+          "required": true,
+          "enum": ["question", "hypothesis", "validation", "active_verification", "passive_verification"]
+        }
+      }
+    },
+    {
+      "name": "search_by_linguistic_features",
+      "description": "Search verses by linguistic features like part of speech, verb form, mood, aspect, root, etc. Use this for linguistic analysis like finding all present tense verbs, imperatives, or words from a specific root.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "search_by_linguistic_features",
+        "parameters": {
+          "pos": "{pos}",
+          "aspect": "{aspect}",
+          "mood": "{mood}",
+          "verb_form": "{verb_form}",
+          "voice": "{voice}",
+          "person": "{person}",
+          "number": "{number}",
+          "gender": "{gender}",
+          "root": "{root}",
+          "lemma": "{lemma}",
+          "case_value": "{case_value}",
+          "dependency_rel": "{dependency_rel}",
+          "role": "{role}",
+          "surah": "{surah}",
+          "limit": "{limit}"
+        }
+      },
+      "parameters": {
+        "pos": {
+          "type": "string",
+          "description": "Part of speech (e.g., 'VERB', 'NOUN', 'ADJ', 'PRON')",
+          "required": false
+        },
+        "aspect": {
+          "type": "string",
+          "description": "Verb aspect: 'imperfective' (present tense) or 'perfective' (past tense)",
+          "required": false
+        },
+        "mood": {
+          "type": "string",
+          "description": "Verb mood: 'indicative', 'subjunctive', 'imperative', 'jussive'",
+          "required": false
+        },
+        "verb_form": {
+          "type": "string",
+          "description": "Specific verb form",
+          "required": false
+        },
+        "voice": {
+          "type": "string",
+          "description": "Voice: 'active' or 'passive'",
+          "required": false
+        },
+        "person": {
+          "type": "string",
+          "description": "Grammatical person: '1st', '2nd', '3rd'",
+          "required": false
+        },
+        "number": {
+          "type": "string",
+          "description": "Number: 'singular', 'dual', 'plural'",
+          "required": false
+        },
+        "gender": {
+          "type": "string",
+          "description": "Gender: 'masculine', 'feminine'",
+          "required": false
+        },
+        "root": {
+          "type": "string",
+          "description": "Arabic root (e.g., 'ق-و-ل' for speech/saying)",
+          "required": false
+        },
+        "lemma": {
+          "type": "string",
+          "description": "Base word form",
+          "required": false
+        },
+        "case_value": {
+          "type": "string",
+          "description": "Grammatical case: 'nominative', 'accusative', 'genitive'",
+          "required": false
+        },
+        "dependency_rel": {
+          "type": "string",
+          "description": "Syntactic dependency relation",
+          "required": false
+        },
+        "role": {
+          "type": "string",
+          "description": "Grammatical role in sentence",
+          "required": false
+        },
+        "surah": {
+          "type": "integer",
+          "description": "Limit search to specific surah",
+          "required": false,
+          "minimum": 1,
+          "maximum": 114
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of results (default: 50)",
+          "required": false,
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        }
+      }
+    },
+    {
+      "name": "create_pattern_interpretation",
+      "description": "Create a linguistic pattern with interpretation. Use this to document observations like 'present tense verbs indicate ongoing or future actions'.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "create_pattern_interpretation",
+        "parameters": {
+          "description": "{description}",
+          "pattern_type": "{pattern_type}",
+          "interpretation": "{interpretation}",
+          "linguistic_features": "{linguistic_features}",
+          "scope": "{scope}",
+          "phase": "{phase}"
+        }
+      },
+      "parameters": {
+        "description": {
+          "type": "string",
+          "description": "Description of the pattern (e.g., 'Present tense verbs in the Quran')",
+          "required": true
+        },
+        "pattern_type": {
+          "type": "string",
+          "description": "Type of pattern",
+          "required": true,
+          "enum": ["morphological", "syntactic", "semantic"]
+        },
+        "interpretation": {
+          "type": "string",
+          "description": "The interpretation or meaning of this pattern",
+          "required": true
+        },
+        "linguistic_features": {
+          "type": "object",
+          "description": "The linguistic features that define this pattern (e.g., {pos: 'VERB', aspect: 'imperfective'})",
+          "required": false
+        },
+        "scope": {
+          "type": "string",
+          "description": "Scope of the pattern (default: 'all_verses')",
+          "required": false,
+          "default": "all_verses"
+        },
+        "phase": {
+          "type": "string",
+          "description": "Research phase (default: 'hypothesis')",
+          "required": false,
+          "enum": ["question", "hypothesis", "validation", "verification"],
+          "default": "hypothesis"
+        }
+      }
+    },
+    {
+      "name": "create_surah_theme",
+      "description": "Create a thematic interpretation for an entire surah. Use this to document the main theme or purpose of a chapter.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "create_surah_theme",
+        "parameters": {
+          "surah": "{surah}",
+          "theme": "{theme}",
+          "description": "{description}",
+          "phase": "{phase}"
+        }
+      },
+      "parameters": {
+        "surah": {
+          "type": "integer",
+          "description": "The surah number (1-114)",
+          "required": true,
+          "minimum": 1,
+          "maximum": 114
+        },
+        "theme": {
+          "type": "string",
+          "description": "The main theme of the surah",
+          "required": true
+        },
+        "description": {
+          "type": "string",
+          "description": "Additional description or details about the theme",
+          "required": false
+        },
+        "phase": {
+          "type": "string",
+          "description": "Research phase (default: 'hypothesis')",
+          "required": false,
+          "enum": ["question", "hypothesis", "validation", "verification"],
+          "default": "hypothesis"
+        }
+      }
+    },
+    {
+      "name": "add_verse_evidence",
+      "description": "Add a verse as evidence for a claim with verification status. Use this when verifying whether a verse supports, contradicts, or is unclear about a hypothesis.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "add_verse_evidence",
+        "parameters": {
+          "claim_id": "{claim_id}",
+          "surah": "{surah}",
+          "ayah": "{ayah}",
+          "verification": "{verification}",
+          "notes": "{notes}"
+        }
+      },
+      "parameters": {
+        "claim_id": {
+          "type": "string",
+          "description": "The claim or pattern ID this evidence relates to",
+          "required": true
+        },
+        "surah": {
+          "type": "integer",
+          "description": "The surah number",
+          "required": true,
+          "minimum": 1,
+          "maximum": 114
+        },
+        "ayah": {
+          "type": "integer",
+          "description": "The ayah number",
+          "required": true,
+          "minimum": 1
+        },
+        "verification": {
+          "type": "string",
+          "description": "Verification result",
+          "required": true,
+          "enum": ["supports", "contradicts", "unclear"]
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional notes about this verification",
+          "required": false
+        }
+      }
+    },
+    {
+      "name": "start_workflow_session",
+      "description": "Start a new verification workflow session to systematically verify verses one by one. Use this to begin a structured verification process for a linguistic pattern or surah theme.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "start_workflow_session",
+        "parameters": {
+          "claim_id": "{claim_id}",
+          "workflow_type": "{workflow_type}",
+          "linguistic_features": "{linguistic_features}",
+          "surah": "{surah}",
+          "limit": "{limit}"
+        }
+      },
+      "parameters": {
+        "claim_id": {
+          "type": "string",
+          "description": "The claim or pattern ID to verify",
+          "required": true
+        },
+        "workflow_type": {
+          "type": "string",
+          "description": "Type of workflow",
+          "required": true,
+          "enum": ["pattern", "surah_theme"]
+        },
+        "linguistic_features": {
+          "type": "object",
+          "description": "For pattern workflow: the linguistic features to search (e.g., {pos: 'VERB', aspect: 'imperfective'})",
+          "required": false
+        },
+        "surah": {
+          "type": "integer",
+          "description": "For surah_theme workflow: the surah number to verify",
+          "required": false,
+          "minimum": 1,
+          "maximum": 114
+        },
+        "limit": {
+          "type": "integer",
+          "description": "For pattern workflow: maximum number of verses (default: 100)",
+          "required": false,
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        }
+      }
+    },
+    {
+      "name": "get_next_verse",
+      "description": "Get the next verse in an active workflow session for verification. Returns the verse text, progress, and completion status.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "get_next_verse",
+        "parameters": {
+          "session_id": "{session_id}"
+        }
+      },
+      "parameters": {
+        "session_id": {
+          "type": "string",
+          "description": "The workflow session ID",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "submit_verification",
+      "description": "Submit verification for the current verse in a workflow and advance to the next verse. Saves the verification result and automatically returns the next verse.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "submit_verification",
+        "parameters": {
+          "session_id": "{session_id}",
+          "verification": "{verification}",
+          "notes": "{notes}"
+        }
+      },
+      "parameters": {
+        "session_id": {
+          "type": "string",
+          "description": "The workflow session ID",
+          "required": true
+        },
+        "verification": {
+          "type": "string",
+          "description": "Verification result for current verse",
+          "required": true,
+          "enum": ["supports", "contradicts", "unclear"]
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional notes about this verification",
+          "required": false
+        }
+      }
+    },
+    {
+      "name": "get_workflow_stats",
+      "description": "Get statistics and progress for a workflow session. Shows total verses, verified count, remaining, and verification breakdown (supports/contradicts/unclear).",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "get_workflow_stats",
+        "parameters": {
+          "session_id": "{session_id}"
+        }
+      },
+      "parameters": {
+        "session_id": {
+          "type": "string",
+          "description": "The workflow session ID",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "list_workflow_sessions",
+      "description": "IMPORTANT: ALWAYS use this MCP tool to list workflow sessions. DO NOT use Bash/SQL commands to query the database directly. This tool lists all workflow sessions with their status and progress. Can filter by status (active/completed/paused). Example: To see all active sessions, call this tool with status: 'active'. Returns session_id, claim_id, progress, etc.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "list_workflow_sessions",
+        "parameters": {
+          "status": "{status}"
+        }
+      },
+      "parameters": {
+        "status": {
+          "type": "string",
+          "description": "Optional status filter",
+          "required": false,
+          "enum": ["active", "completed", "paused"]
+        }
+      }
+    },
+    {
+      "name": "check_phase_transition",
+      "description": "Check if a claim should transition to a new research phase based on verification results. Auto-transitions to 'rejected' if contradictions found, or 'validated' if sufficient supporting evidence.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "check_phase_transition",
+        "parameters": {
+          "session_id": "{session_id}"
+        }
+      },
+      "parameters": {
+        "session_id": {
+          "type": "string",
+          "description": "The workflow session ID",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "delete_claim",
+      "description": "IMPORTANT: ALWAYS use this MCP tool to delete claims. DO NOT use Bash commands with SQL queries (e.g., node -e 'db.exec(...)'). This tool safely deletes a claim and its associated evidence from the database. Example: To delete claim_123, call this tool with claim_id: 'claim_123'. Automatically handles foreign key constraints and cascading deletions.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "delete_claim",
+        "parameters": {
+          "claim_id": "{claim_id}"
+        }
+      },
+      "parameters": {
+        "claim_id": {
+          "type": "string",
+          "description": "The claim ID to delete (format: claim_123)",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "delete_multiple_claims",
+      "description": "Delete multiple claims at once. Use for cleaning up test/duplicate entries.",
+      "call_template": {
+        "protocol": "mcp",
+        "tool_name": "delete_multiple_claims",
+        "parameters": {
+          "claim_ids": "{claim_ids}"
+        }
+      },
+      "parameters": {
+        "claim_ids": {
+          "type": "array",
+          "description": "Array of claim IDs to delete",
+          "required": true,
+          "items": {"type": "string"}
+        }
+      }
+    }
+  ]
+}
