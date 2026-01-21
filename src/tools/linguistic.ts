@@ -1,5 +1,5 @@
 import { getDatabase, Verse, Pattern } from '../db.js';
-import { randomUUID } from 'crypto';
+import { generatePatternId, generateClaimId, generateEvidenceId } from '../utils/shortId.js';
 import { writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -232,7 +232,7 @@ export async function createPatternInterpretation(data: {
   } = data;
 
   try {
-    const pattern_id = `pattern-${randomUUID()}`;
+    const pattern_id = generatePatternId(db);
     const now = new Date().toISOString();
 
     // Insert the pattern
@@ -242,7 +242,7 @@ export async function createPatternInterpretation(data: {
     );
 
     // Create a linked claim with the interpretation
-    const claim_id = `claim-${randomUUID()}`;
+    const claim_id = generateClaimId(db);
     const claim_content = `${description}\n\nInterpretation: ${interpretation}${
       linguistic_features ? `\n\nLinguistic features: ${JSON.stringify(linguistic_features)}` : ''
     }`;
@@ -293,7 +293,7 @@ export async function createSurahTheme(data: {
       ? surahResult[0].values[0][0]
       : `Surah ${surah}`;
 
-    const claim_id = `claim-${randomUUID()}`;
+    const claim_id = generateClaimId(db);
     const now = new Date().toISOString();
 
     const claim_content = `Surah ${surah} (${surahName}) - Theme: ${theme}${
@@ -363,7 +363,7 @@ export async function addVerseEvidence(data: {
       };
     }
 
-    const evidence_id = `evidence-${randomUUID()}`;
+    const evidence_id = generateEvidenceId(db);
     const now = new Date().toISOString();
 
     // Create notes with verification status

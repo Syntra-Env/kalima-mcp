@@ -28,4 +28,14 @@ export declare function saveInsight(data: {
     message: string;
 }>;
 export declare function updateClaimPhase(claim_id: string, new_phase: string): Promise<boolean>;
+export declare function deleteClaim(claim_id: string): Promise<{
+    success: boolean;
+    message: string;
+}>;
+export declare function deleteMultipleClaims(claim_ids: string[]): Promise<{
+    success: boolean;
+    deleted: number;
+    failed: string[];
+    message: string;
+}>;
 //# sourceMappingURL=research.d.ts.map

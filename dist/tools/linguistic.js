@@ -1,5 +1,5 @@
 import { getDatabase } from '../db.js';
-import { randomUUID } from 'crypto';
+import { generatePatternId, generateClaimId, generateEvidenceId } from '../utils/shortId.js';
 import { writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -132,12 +132,12 @@ export async function createPatternInterpretation(data) {
     const db = await getDatabase();
     const { description, pattern_type, interpretation, linguistic_features, scope = 'all_verses', phase = 'hypothesis' } = data;
     try {
-        const pattern_id = `pattern-${randomUUID()}`;
+        const pattern_id = generatePatternId(db);
         const now = new Date().toISOString();
         // Insert the pattern
         db.run('INSERT INTO patterns (id, description, pattern_type, scope, phase, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [pattern_id, description, pattern_type, scope, phase, now, now]);
         // Create a linked claim with the interpretation
-        const claim_id = `claim-${randomUUID()}`;
+        const claim_id = generateClaimId(db);
         const claim_content = `${description}\n\nInterpretation: ${interpretation}${linguistic_features ? `\n\nLinguistic features: ${JSON.stringify(linguistic_features)}` : ''}`;
         db.run('INSERT INTO claims (id, content, phase, pattern_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', [claim_id, claim_content, phase, pattern_id, now, now]);
         // Persist changes to disk
@@ -172,7 +172,7 @@ export async function createSurahTheme(data) {
         const surahName = surahResult.length && surahResult[0].values.length
             ? surahResult[0].values[0][0]
             : `Surah ${surah}`;
-        const claim_id = `claim-${randomUUID()}`;
+        const claim_id = generateClaimId(db);
         const now = new Date().toISOString();
         const claim_content = `Surah ${surah} (${surahName}) - Theme: ${theme}${description ? `\n\nDescription: ${description}` : ''}`;
         // Insert the claim
@@ -220,7 +220,7 @@ export async function addVerseEvidence(data) {
                 message: `Verse ${surah}:${ayah} not found`
             };
         }
-        const evidence_id = `evidence-${randomUUID()}`;
+        const evidence_id = generateEvidenceId(db);
         const now = new Date().toISOString();
         // Create notes with verification status
         const evidenceNotes = `[${verification.toUpperCase()}] ${notes || ''}`.trim();

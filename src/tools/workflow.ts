@@ -1,7 +1,7 @@
 // Workflow system for systematic verse-by-verse verification
 import { getDatabase } from '../db.js';
 import { searchByLinguisticFeatures } from './linguistic.js';
-import { v4 as uuidv4 } from 'uuid';
+import { generateSessionId, generateEvidenceId } from '../utils/shortId.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { writeFileSync } from 'fs';
@@ -43,7 +43,7 @@ export async function startWorkflowSession(options: {
   first_verse?: { surah: number; ayah: number; text: string };
 }> {
   const db = await getDatabase();
-  const session_id = `session-${uuidv4()}`;
+  const session_id = generateSessionId(db);
 
   try {
     // Verify claim exists
@@ -313,7 +313,7 @@ export async function submitVerification(options: {
     `);
 
     // Save verification as evidence
-    const evidenceId = `evidence-${uuidv4()}`;
+    const evidenceId = generateEvidenceId(db);
     db.exec(
       `INSERT INTO verse_evidence
        (id, claim_id, verse_surah, verse_ayah, verification, notes, verified_at)

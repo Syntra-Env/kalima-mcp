@@ -1,5 +1,5 @@
 import { getDatabase } from '../db.js';
-import { randomUUID } from 'crypto';
+import { generateClaimId, generateEvidenceId } from '../utils/shortId.js';
 import { writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -104,13 +104,13 @@ export async function saveInsight(data) {
     const db = await getDatabase();
     const { content, phase = 'question', pattern_id, evidence_verses = [] } = data;
     try {
-        const claim_id = `claim-${randomUUID()}`;
+        const claim_id = generateClaimId(db);
         const now = new Date().toISOString();
         // Insert the claim
         db.run('INSERT INTO claims (id, content, phase, pattern_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', [claim_id, content, phase, pattern_id || null, now, now]);
         // Insert evidence verses
         for (const evidence of evidence_verses) {
-            const evidence_id = `evidence-${randomUUID()}`;
+            const evidence_id = generateEvidenceId(db);
             db.run('INSERT INTO claim_evidence (id, claim_id, surah, ayah, notes, created_at) VALUES (?, ?, ?, ?, ?, ?)', [evidence_id, claim_id, evidence.surah, evidence.ayah, evidence.notes || null, now]);
         }
         // Persist changes to disk
@@ -146,6 +146,61 @@ export async function updateClaimPhase(claim_id, new_phase) {
     }
     catch (error) {
         return false;
+    }
+}
+export async function deleteClaim(claim_id) {
+    const db = await getDatabase();
+    try {
+        // Check if claim exists first
+        const checkResult = db.exec('SELECT id FROM claims WHERE id = ?', [claim_id]);
+        if (!checkResult.length || !checkResult[0].values.length) {
+            return { success: false, message: `Claim ${claim_id} not found` };
+        }
+        // Delete associated evidence first (foreign key constraint)
+        db.run('DELETE FROM claim_evidence WHERE claim_id = ?', [claim_id]);
+        // Delete associated dependencies
+        db.run('DELETE FROM claim_dependencies WHERE claim_id = ? OR depends_on_claim_id = ?', [claim_id, claim_id]);
+        // Delete the claim
+        db.run('DELETE FROM claims WHERE id = ?', [claim_id]);
+        // Persist changes to disk
+        saveDatabase(db);
+        return { success: true, message: `Claim ${claim_id} deleted successfully` };
+    }
+    catch (error) {
+        return { success: false, message: `Failed to delete claim: ${error}` };
+    }
+}
+export async function deleteMultipleClaims(claim_ids) {
+    const db = await getDatabase();
+    const failed = [];
+    let deleted = 0;
+    try {
+        for (const claim_id of claim_ids) {
+            // Check if claim exists
+            const checkResult = db.exec('SELECT id FROM claims WHERE id = ?', [claim_id]);
+            if (!checkResult.length || !checkResult[0].values.length) {
+                failed.push(claim_id);
+                continue;
+            }
+            // Delete associated evidence first
+            db.run('DELETE FROM claim_evidence WHERE claim_id = ?', [claim_id]);
+            // Delete associated dependencies
+            db.run('DELETE FROM claim_dependencies WHERE claim_id = ? OR depends_on_claim_id = ?', [claim_id, claim_id]);
+            // Delete the claim
+            db.run('DELETE FROM claims WHERE id = ?', [claim_id]);
+            deleted++;
+        }
+        // Persist changes to disk
+        saveDatabase(db);
+        return {
+            success: true,
+            deleted,
+            failed,
+            message: `Deleted ${deleted} claims. ${failed.length > 0 ? `Failed: ${failed.length}` : ''}`
+        };
+    }
+    catch (error) {
+        return { success: false, deleted, failed, message: `Failed during deletion: ${error}` };
     }
 }
 //# sourceMappingURL=research.js.map
