@@ -15,7 +15,9 @@ import {
   getClaimDependencies,
   listPatterns,
   saveInsight,
-  updateClaimPhase
+  updateClaimPhase,
+  deleteClaim,
+  deleteMultipleClaims
 } from './tools/research.js';
 import {
   searchByLinguisticFeatures,
@@ -491,7 +493,7 @@ const tools: Tool[] = [
   },
   {
     name: 'list_workflow_sessions',
-    description: 'List all workflow sessions with their status and progress. Can filter by status (active/completed/paused).',
+    description: 'IMPORTANT: ALWAYS use this MCP tool to list workflow sessions. DO NOT use Bash/SQL commands to query the database directly. This tool lists all workflow sessions with their status and progress. Can filter by status (active/completed/paused). Example: To see all active sessions, call this tool with status: "active". Returns session_id, claim_id, progress, etc.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -516,6 +518,35 @@ const tools: Tool[] = [
         }
       },
       required: ['session_id']
+    }
+  },
+  {
+    name: 'delete_claim',
+    description: 'IMPORTANT: ALWAYS use this MCP tool to delete claims. DO NOT use Bash commands with SQL queries (e.g., node -e "db.exec(...)"). This tool safely deletes a claim and its associated evidence from the database. Example: To delete claim_123, call this tool with claim_id: "claim_123". Automatically handles foreign key constraints and cascading deletions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        claim_id: {
+          type: 'string',
+          description: 'The claim ID to delete (format: claim_123)'
+        }
+      },
+      required: ['claim_id']
+    }
+  },
+  {
+    name: 'delete_multiple_claims',
+    description: 'Delete multiple claims at once. Use for cleaning up test/duplicate entries.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        claim_ids: {
+          type: 'array',
+          description: 'Array of claim IDs to delete',
+          items: { type: 'string' }
+        }
+      },
+      required: ['claim_ids']
     }
   }
 ];
@@ -811,6 +842,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'check_phase_transition': {
         const { session_id } = args as { session_id: string };
         const result = await checkAndTransitionPhase(session_id);
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify(result, null, 2)
+          }]
+        };
+      }
+
+      case 'delete_claim': {
+        const { claim_id } = args as { claim_id: string };
+        const result = await deleteClaim(claim_id);
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify(result, null, 2)
+          }]
+        };
+      }
+
+      case 'delete_multiple_claims': {
+        const { claim_ids } = args as { claim_ids: string[] };
+        const result = await deleteMultipleClaims(claim_ids);
         return {
           content: [{
             type: 'text',
