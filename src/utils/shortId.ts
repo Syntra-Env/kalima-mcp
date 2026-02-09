@@ -3,43 +3,53 @@
 
 import { Database as SqlJsDatabase } from 'sql.js';
 
+// In-memory cache for last-issued ID number per type
+const idCache: Record<string, number> = {};
+
 /**
- * Get the next available short ID number for a given type
+ * Get the next available short ID number for a given type.
+ * Uses SQL MAX on first call, then increments from cache.
  */
 function getNextShortIdNumber(db: SqlJsDatabase, type: 'claim' | 'session' | 'pattern' | 'evidence'): number {
-  const tableName = type === 'claim' ? 'claims' :
-                    type === 'session' ? 'workflow_sessions' :
-                    type === 'pattern' ? 'patterns' : 'verse_evidence';
+  if (idCache[type] !== undefined) {
+    idCache[type]++;
+    return idCache[type];
+  }
 
-  const columnName = type === 'session' ? 'session_id' : 'id';
+  const prefix = type + '_';
+  const prefixLen = prefix.length;
+  let maxNumber = 0;
 
-  try {
-    // Get the maximum existing number for this type
-    const result = db.exec(
-      `SELECT ${columnName} FROM ${tableName} WHERE ${columnName} LIKE '${type}_%'`
-    );
-
-    if (result.length === 0 || result[0].values.length === 0) {
-      return 1; // Start from 1
-    }
-
-    let maxNumber = 0;
-    for (const row of result[0].values) {
-      const shortId = row[0] as string;
-      const match = shortId.match(/^[a-z]+_(\d+)$/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > maxNumber) {
-          maxNumber = num;
-        }
+  if (type === 'evidence') {
+    for (const tableName of ['claim_evidence', 'verse_evidence']) {
+      try {
+        const result = db.exec(
+          `SELECT MAX(CAST(SUBSTR(id, ${prefixLen + 1}) AS INTEGER)) FROM ${tableName} WHERE id LIKE '${prefix}%'`
+        );
+        const val = result[0]?.values[0]?.[0] as number | null;
+        if (val && val > maxNumber) maxNumber = val;
+      } catch (e) {
+        // Table doesn't exist yet, skip
       }
     }
+  } else {
+    const tableName = type === 'claim' ? 'claims' :
+                      type === 'session' ? 'workflow_sessions' : 'patterns';
+    const columnName = type === 'session' ? 'session_id' : 'id';
 
-    return maxNumber + 1;
-  } catch (e) {
-    // Table or column doesn't exist yet, start from 1
-    return 1;
+    try {
+      const result = db.exec(
+        `SELECT MAX(CAST(SUBSTR(${columnName}, ${prefixLen + 1}) AS INTEGER)) FROM ${tableName} WHERE ${columnName} LIKE '${prefix}%'`
+      );
+      const val = result[0]?.values[0]?.[0] as number | null;
+      if (val) maxNumber = val;
+    } catch (e) {
+      // Table doesn't exist yet
+    }
   }
+
+  idCache[type] = maxNumber + 1;
+  return idCache[type];
 }
 
 /**

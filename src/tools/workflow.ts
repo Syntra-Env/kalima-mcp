@@ -1,21 +1,7 @@
 // Workflow system for systematic verse-by-verse verification
-import { getDatabase } from '../db.js';
+import { getDatabase, saveDatabase } from '../db.js';
 import { searchByLinguisticFeatures } from './linguistic.js';
 import { generateSessionId, generateEvidenceId } from '../utils/shortId.js';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { writeFileSync } from 'fs';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Helper to persist database changes
-function saveDatabase(db: any): void {
-  const dbPath = process.env.KALIMA_DB_PATH || join(__dirname, '../../../../data/database/kalima.db');
-  const data = db.export();
-  const buffer = Buffer.from(data);
-  writeFileSync(dbPath, buffer);
-}
 
 // Verification result tracking
 interface VerificationResult {
@@ -101,23 +87,6 @@ export async function startWorkflowSession(options: {
         total_verses: 0
       };
     }
-
-    // Create workflow_sessions table if it doesn't exist
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS workflow_sessions (
-        session_id TEXT PRIMARY KEY,
-        claim_id TEXT NOT NULL,
-        workflow_type TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        current_index INTEGER NOT NULL,
-        total_verses INTEGER NOT NULL,
-        status TEXT NOT NULL,
-        linguistic_features TEXT,
-        surah INTEGER,
-        verses_json TEXT NOT NULL,
-        FOREIGN KEY (claim_id) REFERENCES claims(id)
-      )
-    `);
 
     // Store session
     const versesJson = JSON.stringify(verses);
@@ -297,20 +266,6 @@ export async function submitVerification(options: {
     const [claimId, currentIndex, totalVerses, versesJson] = sessionResult[0].values[0];
     const verses = JSON.parse(versesJson as string);
     const currentVerse = verses[currentIndex as number];
-
-    // Create verse_evidence table if it doesn't exist
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS verse_evidence (
-        id TEXT PRIMARY KEY,
-        claim_id TEXT NOT NULL,
-        verse_surah INTEGER NOT NULL,
-        verse_ayah INTEGER NOT NULL,
-        verification TEXT NOT NULL,
-        notes TEXT,
-        verified_at TEXT NOT NULL,
-        FOREIGN KEY (claim_id) REFERENCES claims(id)
-      )
-    `);
 
     // Save verification as evidence
     const evidenceId = generateEvidenceId(db);

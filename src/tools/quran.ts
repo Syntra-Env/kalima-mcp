@@ -1,15 +1,5 @@
 import { getDatabase, Verse, Surah } from '../db.js';
-
-// Helper to transform sql.js results to typed objects
-function rowsToObjects<T>(columns: string[], values: any[][]): T[] {
-  return values.map(row => {
-    const obj: any = {};
-    columns.forEach((col, idx) => {
-      obj[col] = row[idx];
-    });
-    return obj as T;
-  });
-}
+import { rowsToObjects, normalizeArabic } from '../utils/dbHelpers.js';
 
 export async function getVerse(surah: number, ayah: number): Promise<Verse | null> {
   const db = await getDatabase();
@@ -80,47 +70,23 @@ export async function listSurahs(): Promise<Surah[]> {
   return rowsToObjects<Surah>(result[0].columns, result[0].values);
 }
 
-// Normalize Arabic text for search by:
-// 1. Removing diacritics (harakat): َ ً ُ ٌ ِ ٍ ّ ْ
-// 2. Normalizing alef forms: أ إ آ ٱ → ا
-// 3. Normalizing yaa forms: ى → ي
-function normalizeArabic(text: string): string {
-  return text
-    // Remove Arabic diacritics
-    .replace(/[\u064B-\u065F\u0670]/g, '')
-    // Normalize alef forms to basic alef
-    .replace(/[أإآٱ]/g, 'ا')
-    // Normalize yaa forms
-    .replace(/ى/g, 'ي')
-    .trim();
-}
-
 export async function searchVerses(query: string, limit: number = 20): Promise<Verse[]> {
   const db = await getDatabase();
-
-  // Normalize the search query
   const normalizedQuery = normalizeArabic(query);
 
-  // Since SQLite doesn't have built-in Arabic normalization,
-  // we need to fetch all verses and filter in JavaScript
+  // Query the pre-normalized column directly in SQL
   const result = db.exec(
-    `SELECT v.surah_number, v.ayah_number, vt.text
-     FROM verses v
-     JOIN verse_texts vt ON v.surah_number = vt.surah_number AND v.ayah_number = vt.ayah_number
-     ORDER BY v.surah_number ASC, v.ayah_number ASC`
+    `SELECT surah_number, ayah_number, text
+     FROM verse_texts
+     WHERE normalized_text LIKE ?
+     ORDER BY surah_number ASC, ayah_number ASC
+     LIMIT ?`,
+    [`%${normalizedQuery}%`, limit]
   );
 
   if (!result.length || !result[0].values.length) {
     return [];
   }
 
-  const allVerses = rowsToObjects<Verse>(result[0].columns, result[0].values);
-
-  // Filter verses by normalized text
-  const matchedVerses = allVerses.filter(verse =>
-    normalizeArabic(verse.text).includes(normalizedQuery)
-  );
-
-  // Return limited results
-  return matchedVerses.slice(0, limit);
+  return rowsToObjects<Verse>(result[0].columns, result[0].values);
 }
