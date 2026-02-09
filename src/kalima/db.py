@@ -1,7 +1,7 @@
 """Database connection manager for Kalima.
 
 Opens the SQLite database directly (no WASM), uses WAL mode for better
-concurrent read performance, and initializes views/tables/indexes on first connect.
+concurrent read performance, and initializes tables/indexes on first connect.
 """
 
 import os
@@ -40,9 +40,9 @@ def get_connection() -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
 
-    _initialize_verse_claims_view(conn)
-    _initialize_pattern_linguistic_features(conn)
-    _initialize_workflow_tables(conn)
+    _initialize_ref_features(conn)
+    _initialize_scope_columns(conn)
+    _initialize_confidence_column(conn)
     _initialize_search_index(conn)
 
     _conn = conn
@@ -82,95 +82,55 @@ def invalidate_graph_cache():
 
 # --- Initialization functions ---
 
-def _initialize_verse_claims_view(conn: sqlite3.Connection):
+def _initialize_ref_features(conn: sqlite3.Connection):
     conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_claim_evidence_verse
-        ON claim_evidence(surah, ayah)
-    """)
-
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_verse_evidence_verse
-        ON verse_evidence(verse_surah, verse_ayah)
-    """)
-
-    conn.execute("DROP VIEW IF EXISTS verse_claims")
-
-    conn.execute("""
-        CREATE VIEW verse_claims AS
-        SELECT
-            surah,
-            ayah,
-            claim_id,
-            'claim_evidence' as evidence_type,
-            notes,
-            NULL as verification,
-            created_at
-        FROM claim_evidence
-        UNION ALL
-        SELECT
-            verse_surah as surah,
-            verse_ayah as ayah,
-            claim_id,
-            'verse_evidence' as evidence_type,
-            notes,
-            verification,
-            verified_at as created_at
-        FROM verse_evidence
-    """)
-
-
-def _initialize_pattern_linguistic_features(conn: sqlite3.Connection):
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS pattern_linguistic_features (
-            id TEXT PRIMARY KEY,
-            pattern_id TEXT,
+        CREATE TABLE IF NOT EXISTS ref_features (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             feature_type TEXT NOT NULL,
-            feature_value TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (pattern_id) REFERENCES patterns(id) ON DELETE CASCADE
+            category TEXT,
+            lookup_key TEXT NOT NULL,
+            label_ar TEXT,
+            label_en TEXT,
+            buckwalter TEXT,
+            frequency INTEGER,
+            extra TEXT,
+            UNIQUE(feature_type, category, lookup_key)
         )
     """)
-
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_pattern_ling_features_pattern
-        ON pattern_linguistic_features(pattern_id)
-    """)
-
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_pattern_ling_features_type_value
-        ON pattern_linguistic_features(feature_type, feature_value)
-    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ref_features_type ON ref_features(feature_type)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ref_features_lookup ON ref_features(feature_type, lookup_key)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ref_features_type_cat ON ref_features(feature_type, category)")
 
 
-def _initialize_workflow_tables(conn: sqlite3.Connection):
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS workflow_sessions (
-            session_id TEXT PRIMARY KEY,
-            claim_id TEXT NOT NULL,
-            workflow_type TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            current_index INTEGER NOT NULL,
-            total_verses INTEGER NOT NULL,
-            status TEXT NOT NULL,
-            linguistic_features TEXT,
-            surah INTEGER,
-            verses_json TEXT NOT NULL,
-            FOREIGN KEY (claim_id) REFERENCES claims(id)
-        )
-    """)
 
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS verse_evidence (
-            id TEXT PRIMARY KEY,
-            claim_id TEXT NOT NULL,
-            verse_surah INTEGER NOT NULL,
-            verse_ayah INTEGER NOT NULL,
-            verification TEXT NOT NULL,
-            notes TEXT,
-            verified_at TEXT NOT NULL,
-            FOREIGN KEY (claim_id) REFERENCES claims(id)
-        )
-    """)
+def _initialize_scope_columns(conn: sqlite3.Connection):
+    """Add scope and inline verification columns to entries (idempotent)."""
+    cols = [
+        ("scope_type", "TEXT"),
+        ("scope_value", "TEXT"),
+        ("verse_total", "INTEGER"),
+        ("verse_verified", "INTEGER DEFAULT 0"),
+        ("verse_supports", "INTEGER DEFAULT 0"),
+        ("verse_contradicts", "INTEGER DEFAULT 0"),
+        ("verse_unclear", "INTEGER DEFAULT 0"),
+        ("verse_current_index", "INTEGER DEFAULT 0"),
+        ("verse_queue", "TEXT"),
+        ("verification_started_at", "TEXT"),
+        ("verification_updated_at", "TEXT"),
+    ]
+    for col_name, col_type in cols:
+        try:
+            conn.execute(f"ALTER TABLE entries ADD COLUMN {col_name} {col_type}")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+
+
+def _initialize_confidence_column(conn: sqlite3.Connection):
+    try:
+        conn.execute("ALTER TABLE entries ADD COLUMN confidence REAL")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
 
 
 def _initialize_search_index(conn: sqlite3.Connection):

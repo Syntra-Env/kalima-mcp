@@ -1,13 +1,13 @@
-"""Workflow tools: systematic verse-by-verse verification sessions."""
+"""Workflow tools: entry-centric verification with inline state."""
 
 import json
-import math
 from datetime import datetime, timezone
 
 from mcp.server.fastmcp import FastMCP
 
 from ..db import get_connection, save_database, invalidate_graph_cache
-from ..utils.short_id import generate_session_id, generate_evidence_id
+from ..utils.short_id import generate_entry_id
+from ..utils.features import TERM_TYPE_TO_FEATURE
 
 mcp: FastMCP
 
@@ -16,107 +16,181 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _compute_confidence(conn, entry_id: str) -> float | None:
+    """Compute and store confidence score for an entry using inline columns.
+
+    confidence = coverage * support_ratio
+    where coverage = verified_count / total_relevant
+    and support_ratio = supports / verified_count
+    """
+    row = conn.execute(
+        "SELECT verse_total, verse_verified, verse_supports FROM entries WHERE id = ?",
+        (entry_id,)
+    ).fetchone()
+
+    if not row or not row['verse_total'] or row['verse_total'] == 0:
+        return None
+    if not row['verse_verified'] or row['verse_verified'] == 0:
+        return None
+
+    coverage = row['verse_verified'] / row['verse_total']
+    support_ratio = row['verse_supports'] / row['verse_verified']
+    confidence = round(coverage * support_ratio, 4)
+
+    conn.execute("UPDATE entries SET confidence = ? WHERE id = ?", (confidence, entry_id))
+    return confidence
+
+
+def compute_verse_universe(conn, scope_type: str, scope_value: str, limit: int = 500) -> list[dict]:
+    """Compute the set of verses an entry's scope covers.
+
+    Returns list of {surah, ayah} dicts.
+    """
+    if scope_type in ('root', 'lemma'):
+        from .linguistic import _resolve_feature_id
+        fk_id = _resolve_feature_id(conn, scope_type, scope_value)
+        if fk_id is None:
+            return []
+        fk_col = f"{scope_type}_id"
+        rows = conn.execute(
+            f"""SELECT DISTINCT t.verse_surah AS surah, t.verse_ayah AS ayah
+                FROM segments s
+                JOIN tokens t ON s.token_id = t.id
+                WHERE s.{fk_col} = ?
+                ORDER BY t.verse_surah, t.verse_ayah
+                LIMIT ?""",
+            (fk_id, limit)
+        ).fetchall()
+        return [{"surah": r["surah"], "ayah": r["ayah"]} for r in rows]
+
+    elif scope_type == 'pattern':
+        from .linguistic import _normalize_feature, _resolve_feature_id
+
+        features = json.loads(scope_value) if isinstance(scope_value, str) else scope_value
+        conditions = []
+        params: list = []
+
+        for key, val in features.items():
+            if val is not None:
+                normalized = _normalize_feature(key, str(val))
+                fk_id = _resolve_feature_id(conn, key, normalized)
+                if fk_id is None:
+                    return []
+                conditions.append(f"s.{key}_id = ?")
+                params.append(fk_id)
+
+        if not conditions:
+            return []
+
+        where_clause = " AND ".join(conditions)
+        params.append(limit)
+
+        rows = conn.execute(
+            f"""SELECT DISTINCT t.verse_surah AS surah, t.verse_ayah AS ayah
+                FROM segments s
+                JOIN tokens t ON s.token_id = t.id
+                WHERE {where_clause}
+                ORDER BY t.verse_surah, t.verse_ayah
+                LIMIT ?""",
+            params
+        ).fetchall()
+        return [{"surah": r["surah"], "ayah": r["ayah"]} for r in rows]
+
+    elif scope_type == 'surah':
+        surah_num = int(scope_value)
+        rows = conn.execute(
+            "SELECT surah_number AS surah, ayah_number AS ayah FROM verse_texts WHERE surah_number = ? ORDER BY ayah_number",
+            (surah_num,)
+        ).fetchall()
+        return [{"surah": r["surah"], "ayah": r["ayah"]} for r in rows]
+
+    elif scope_type == 'verse_range':
+        # scope_value format: "surah:start-end" e.g. "2:1-10"
+        parts = scope_value.split(":")
+        surah_num = int(parts[0])
+        ayah_range = parts[1].split("-")
+        start_ayah = int(ayah_range[0])
+        end_ayah = int(ayah_range[1])
+
+        rows = conn.execute(
+            "SELECT surah_number AS surah, ayah_number AS ayah FROM verse_texts WHERE surah_number = ? AND ayah_number BETWEEN ? AND ? ORDER BY ayah_number",
+            (surah_num, start_ayah, end_ayah)
+        ).fetchall()
+        return [{"surah": r["surah"], "ayah": r["ayah"]} for r in rows]
+
+    else:
+        # character, stylistic, etc. — manual verification only
+        return []
+
+
 def register(server: FastMCP):
     global mcp
     mcp = server
 
     @mcp.tool()
-    def start_workflow_session(
-        claim_id: str,
-        workflow_type: str,
-        linguistic_features: dict | None = None,
-        surah: int | None = None,
-        limit: int = 100,
-    ) -> dict:
-        """Start a new verification workflow session to systematically verify verses one by one."""
+    def start_verification(entry_id: str, limit: int = 500) -> dict:
+        """Start a new verification workflow for an entry.
+
+        Computes the verse universe from the entry's scope, stores the queue,
+        and returns the first verse. Requires scope_type and scope_value to be set.
+        """
         conn = get_connection()
-        sid = generate_session_id(conn)
 
         try:
-            if not conn.execute("SELECT id FROM claims WHERE id = ?", (claim_id,)).fetchone():
-                return {"success": False, "session_id": "", "message": f"Claim {claim_id} not found", "total_verses": 0}
+            entry = conn.execute(
+                "SELECT id, scope_type, scope_value, verse_queue, verse_current_index FROM entries WHERE id = ?",
+                (entry_id,)
+            ).fetchone()
 
-            verses = []
+            if not entry:
+                return {"success": False, "message": f"Entry {entry_id} not found"}
 
-            if workflow_type == 'pattern' and linguistic_features:
-                # Import here to avoid circular dependency
-                from .linguistic import _normalize_feature
+            if not entry['scope_type'] or not entry['scope_value']:
+                return {"success": False, "message": f"Entry {entry_id} has no scope set. Set scope_type and scope_value first."}
 
-                conditions = []
-                params: list = []
+            # Compute verse universe
+            queue = compute_verse_universe(conn, entry['scope_type'], entry['scope_value'], limit)
 
-                for key, val in linguistic_features.items():
-                    if val is not None:
-                        normalized = _normalize_feature(key, str(val))
-                        conditions.append(f"s.{key} = ?")
-                        params.append(normalized)
+            if not queue:
+                return {"success": False, "message": f"No verses found for scope {entry['scope_type']}={entry['scope_value']}"}
 
-                if not conditions:
-                    return {"success": False, "session_id": "", "message": "No linguistic features specified", "total_verses": 0}
-
-                where_clause = " AND ".join(conditions)
-                params.append(limit)
-
-                rows = conn.execute(
-                    f"""SELECT DISTINCT
-                        t.verse_surah AS surah_number,
-                        t.verse_ayah AS ayah_number,
-                        vt.text
-                    FROM segments s
-                    JOIN tokens t ON s.token_id = t.id
-                    JOIN verse_texts vt ON t.verse_surah = vt.surah_number AND t.verse_ayah = vt.ayah_number
-                    WHERE {where_clause}
-                    ORDER BY t.verse_surah ASC, t.verse_ayah ASC
-                    LIMIT ?""",
-                    params
-                ).fetchall()
-                verses = [dict(r) for r in rows]
-
-            elif workflow_type == 'surah_theme' and surah:
-                rows = conn.execute(
-                    """SELECT surah_number, ayah_number, text
-                       FROM verse_texts
-                       WHERE surah_number = ?
-                       ORDER BY ayah_number ASC""",
-                    (surah,)
-                ).fetchall()
-                verses = [dict(r) for r in rows]
-            else:
-                return {
-                    "success": False, "session_id": "",
-                    "message": "Invalid workflow configuration: must specify either linguistic_features for pattern workflow or surah for surah_theme workflow",
-                    "total_verses": 0,
-                }
-
-            if not verses:
-                return {"success": False, "session_id": "", "message": "No verses found matching criteria", "total_verses": 0}
-
-            verses_json = json.dumps(verses)
-            ling_json = json.dumps(linguistic_features) if linguistic_features else None
+            now = _now()
+            queue_json = json.dumps(queue)
 
             conn.execute(
-                """INSERT INTO workflow_sessions
-                   (session_id, claim_id, workflow_type, created_at, current_index,
-                    total_verses, status, linguistic_features, surah, verses_json)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (sid, claim_id, workflow_type, _now(), 0, len(verses), 'active', ling_json, surah, verses_json)
+                """UPDATE entries SET
+                    verse_total = ?,
+                    verse_current_index = 0,
+                    verse_queue = ?,
+                    verification_started_at = ?,
+                    verification_updated_at = ?
+                   WHERE id = ?""",
+                (len(queue), queue_json, now, now, entry_id)
             )
             save_database()
 
-            first = verses[0] if verses else None
+            first = queue[0]
+            verse_text = conn.execute(
+                "SELECT text FROM verse_texts WHERE surah_number = ? AND ayah_number = ?",
+                (first['surah'], first['ayah'])
+            ).fetchone()
+
             return {
                 "success": True,
-                "session_id": sid,
-                "message": f"Workflow session started with {len(verses)} verses to verify",
-                "total_verses": len(verses),
-                "first_verse": {"surah": first['surah_number'], "ayah": first['ayah_number'], "text": first['text']} if first else None,
+                "message": f"Verification started with {len(queue)} verses",
+                "total_verses": len(queue),
+                "first_verse": {
+                    "surah": first['surah'],
+                    "ayah": first['ayah'],
+                    "text": verse_text['text'] if verse_text else "",
+                },
             }
         except Exception as e:
-            return {"success": False, "session_id": "", "message": f"Error starting workflow: {e}", "total_verses": 0}
+            return {"success": False, "message": f"Error starting verification: {e}"}
 
     @mcp.tool()
-    def get_next_verse(session_id: str) -> dict:
-        """Get the next verse in an active workflow session for verification.
+    def continue_verification(entry_id: str) -> dict:
+        """Continue verification for an entry, returning the current verse.
 
         Returns ONLY the Arabic verse text, progress, and completion status.
         DO NOT add English translations when presenting verses to the user.
@@ -124,231 +198,269 @@ def register(server: FastMCP):
         conn = get_connection()
 
         try:
-            row = conn.execute(
-                "SELECT current_index, total_verses, verses_json, status FROM workflow_sessions WHERE session_id = ?",
-                (session_id,)
+            entry = conn.execute(
+                "SELECT verse_total, verse_current_index, verse_queue FROM entries WHERE id = ?",
+                (entry_id,)
             ).fetchone()
 
-            if not row:
-                return {"success": False, "message": "Session not found", "progress": {"current": 0, "total": 0, "percentage": 0}, "completed": False}
+            if not entry:
+                return {"success": False, "message": f"Entry {entry_id} not found", "progress": {}, "completed": False}
 
-            current_index, total_verses, verses_json, status = row['current_index'], row['total_verses'], row['verses_json'], row['status']
+            if not entry['verse_queue']:
+                return {"success": False, "message": "No verification queue. Call start_verification first.", "progress": {}, "completed": False}
 
-            if status == 'completed':
-                return {"success": True, "message": "Workflow already completed", "progress": {"current": total_verses, "total": total_verses, "percentage": 100}, "completed": True}
+            queue = json.loads(entry['verse_queue'])
+            total = entry['verse_total'] or len(queue)
+            current_index = entry['verse_current_index'] or 0
 
-            verses = json.loads(verses_json)
-
-            if current_index >= len(verses):
-                conn.execute("UPDATE workflow_sessions SET status = ?, current_index = ? WHERE session_id = ?", ('completed', current_index, session_id))
-                save_database()
-                return {"success": True, "message": "All verses verified - workflow complete", "progress": {"current": total_verses, "total": total_verses, "percentage": 100}, "completed": True}
-
-            verse = verses[current_index]
-            percentage = round((current_index / total_verses) * 100)
-
-            return {
-                "success": True,
-                "message": f"Verse {current_index + 1} of {total_verses}",
-                "verse": {"surah": verse['surah_number'], "ayah": verse['ayah_number'], "text": verse['text']},
-                "progress": {"current": current_index + 1, "total": total_verses, "percentage": percentage},
-                "completed": False,
-            }
-        except Exception as e:
-            return {"success": False, "message": f"Error getting next verse: {e}", "progress": {"current": 0, "total": 0, "percentage": 0}, "completed": False}
-
-    @mcp.tool()
-    def submit_verification(
-        session_id: str,
-        verification: str,
-        notes: str | None = None,
-    ) -> dict:
-        """Submit verification for the current verse in a workflow and advance to the next verse."""
-        conn = get_connection()
-
-        try:
-            row = conn.execute(
-                "SELECT claim_id, current_index, total_verses, verses_json FROM workflow_sessions WHERE session_id = ?",
-                (session_id,)
-            ).fetchone()
-
-            if not row:
-                return {"success": False, "message": "Session not found", "progress": {"current": 0, "total": 0, "percentage": 0}, "completed": False}
-
-            claim_id, current_index, total_verses, verses_json = row['claim_id'], row['current_index'], row['total_verses'], row['verses_json']
-            verses = json.loads(verses_json)
-            current_verse = verses[current_index]
-
-            # Save verification as evidence
-            eid = generate_evidence_id(conn)
-            conn.execute(
-                """INSERT INTO verse_evidence
-                   (id, claim_id, verse_surah, verse_ayah, verification, notes, verified_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (eid, claim_id, current_verse['surah_number'], current_verse['ayah_number'], verification, notes or '', _now())
-            )
-
-            # Advance to next verse
-            next_index = current_index + 1
-            conn.execute("UPDATE workflow_sessions SET current_index = ? WHERE session_id = ?", (next_index, session_id))
-            save_database()
-            invalidate_graph_cache()
-
-            if next_index >= len(verses):
-                conn.execute("UPDATE workflow_sessions SET status = ? WHERE session_id = ?", ('completed', session_id))
-                save_database()
+            if current_index >= len(queue):
                 return {
-                    "success": True, "message": "Verification saved. Workflow complete!",
-                    "evidence_id": eid,
-                    "progress": {"current": total_verses, "total": total_verses, "percentage": 100},
+                    "success": True,
+                    "message": "All verses verified — verification complete",
+                    "progress": {"current": total, "total": total, "percentage": 100},
                     "completed": True,
                 }
 
-            next_verse = verses[next_index]
-            percentage = round((next_index / total_verses) * 100)
+            verse = queue[current_index]
+            verse_text = conn.execute(
+                "SELECT text FROM verse_texts WHERE surah_number = ? AND ayah_number = ?",
+                (verse['surah'], verse['ayah'])
+            ).fetchone()
+
+            percentage = round((current_index / total) * 100)
 
             return {
                 "success": True,
-                "message": f"Verification saved. Moving to verse {next_index + 1} of {total_verses}",
-                "evidence_id": eid,
-                "next_verse": {"surah": next_verse['surah_number'], "ayah": next_verse['ayah_number'], "text": next_verse['text']},
-                "progress": {"current": next_index + 1, "total": total_verses, "percentage": percentage},
+                "message": f"Verse {current_index + 1} of {total}",
+                "verse": {
+                    "surah": verse['surah'],
+                    "ayah": verse['ayah'],
+                    "text": verse_text['text'] if verse_text else "",
+                },
+                "progress": {"current": current_index + 1, "total": total, "percentage": percentage},
                 "completed": False,
             }
         except Exception as e:
-            return {"success": False, "message": f"Error submitting verification: {e}", "progress": {"current": 0, "total": 0, "percentage": 0}, "completed": False}
+            return {"success": False, "message": f"Error: {e}", "progress": {}, "completed": False}
 
     @mcp.tool()
-    def get_workflow_stats(session_id: str) -> dict:
-        """Get statistics and progress for a workflow session."""
+    def submit_verification(
+        entry_id: str,
+        verification: str,
+        notes: str | None = None,
+    ) -> dict:
+        """Submit verification for the current verse and advance to the next."""
         conn = get_connection()
 
         try:
-            session = conn.execute(
-                "SELECT claim_id, current_index, total_verses, status FROM workflow_sessions WHERE session_id = ?",
-                (session_id,)
+            entry = conn.execute(
+                """SELECT verse_total, verse_current_index, verse_queue,
+                          verse_verified, verse_supports, verse_contradicts, verse_unclear
+                   FROM entries WHERE id = ?""",
+                (entry_id,)
             ).fetchone()
 
-            if not session:
-                return {"success": False, "message": "Session not found"}
+            if not entry:
+                return {"success": False, "message": f"Entry {entry_id} not found"}
 
-            claim_id, current_index, total_verses = session['claim_id'], session['current_index'], session['total_verses']
+            if not entry['verse_queue']:
+                return {"success": False, "message": "No verification queue."}
 
-            verification_rows = conn.execute(
-                "SELECT verification, COUNT(*) as count FROM verse_evidence WHERE claim_id = ? GROUP BY verification",
-                (claim_id,)
-            ).fetchall()
+            queue = json.loads(entry['verse_queue'])
+            current_index = entry['verse_current_index'] or 0
 
-            counts = {"supports": 0, "contradicts": 0, "unclear": 0, "total_verified": 0}
-            for vr in verification_rows:
-                v = vr['verification']
-                if v in counts:
-                    counts[v] = vr['count']
-            counts['total_verified'] = counts['supports'] + counts['contradicts'] + counts['unclear']
+            if current_index >= len(queue):
+                return {"success": False, "message": "Verification already complete."}
 
-            percentage = round((current_index / total_verses) * 100) if total_verses > 0 else 0
+            current_verse = queue[current_index]
+            now = _now()
+
+            # Map verification to dependency type
+            dep_type_map = {'supports': 'supports', 'contradicts': 'contradicts', 'unclear': 'related'}
+            dep_type = dep_type_map.get(verification, 'related')
+
+            # Save evidence as verse-scoped child entry
+            eid = generate_entry_id(conn)
+            scope_value = f"{current_verse['surah']}:{current_verse['ayah']}"
+            parent_row = conn.execute("SELECT phase, category FROM entries WHERE id = ?", (entry_id,)).fetchone()
+            conn.execute(
+                """INSERT INTO entries (id, content, phase, category, scope_type, scope_value, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, 'verse', ?, ?, ?)""",
+                (eid, notes or f"Verification: {verification}", parent_row['phase'], parent_row['category'],
+                 scope_value, now, now)
+            )
+            conn.execute(
+                """INSERT INTO entry_dependencies (entry_id, depends_on_entry_id, dependency_type, created_at)
+                   VALUES (?, ?, ?, ?)""",
+                (eid, entry_id, dep_type, now)
+            )
+
+            # Update inline counters
+            verified = (entry['verse_verified'] or 0) + 1
+            supports = (entry['verse_supports'] or 0) + (1 if verification == 'supports' else 0)
+            contradicts = (entry['verse_contradicts'] or 0) + (1 if verification == 'contradicts' else 0)
+            unclear = (entry['verse_unclear'] or 0) + (1 if verification == 'unclear' else 0)
+            next_index = current_index + 1
+
+            conn.execute(
+                """UPDATE entries SET
+                    verse_current_index = ?,
+                    verse_verified = ?,
+                    verse_supports = ?,
+                    verse_contradicts = ?,
+                    verse_unclear = ?,
+                    verification_updated_at = ?
+                   WHERE id = ?""",
+                (next_index, verified, supports, contradicts, unclear, now, entry_id)
+            )
+
+            save_database()
+            invalidate_graph_cache()
+
+            total = entry['verse_total'] or len(queue)
+
+            # Check if done
+            if next_index >= len(queue):
+                confidence = _compute_confidence(conn, entry_id)
+                save_database()
+                return {
+                    "success": True,
+                    "message": "Verification saved. All verses complete!",
+                    "entry_id": eid,
+                    "progress": {"current": total, "total": total, "percentage": 100},
+                    "completed": True,
+                    "confidence": confidence,
+                }
+
+            # Return next verse
+            next_verse = queue[next_index]
+            verse_text = conn.execute(
+                "SELECT text FROM verse_texts WHERE surah_number = ? AND ayah_number = ?",
+                (next_verse['surah'], next_verse['ayah'])
+            ).fetchone()
+
+            percentage = round((next_index / total) * 100)
 
             return {
                 "success": True,
-                "message": "Workflow statistics retrieved",
+                "message": f"Verification saved. Moving to verse {next_index + 1} of {total}",
+                "entry_id": eid,
+                "next_verse": {
+                    "surah": next_verse['surah'],
+                    "ayah": next_verse['ayah'],
+                    "text": verse_text['text'] if verse_text else "",
+                },
+                "progress": {"current": next_index + 1, "total": total, "percentage": percentage},
+                "completed": False,
+            }
+        except Exception as e:
+            return {"success": False, "message": f"Error submitting verification: {e}"}
+
+    @mcp.tool()
+    def get_verification_stats(entry_id: str) -> dict:
+        """Get verification statistics for an entry. Reads inline columns — no aggregation needed."""
+        conn = get_connection()
+
+        try:
+            entry = conn.execute(
+                """SELECT verse_total, verse_verified, verse_supports, verse_contradicts,
+                          verse_unclear, verse_current_index, scope_type, scope_value,
+                          verification_started_at, verification_updated_at, confidence
+                   FROM entries WHERE id = ?""",
+                (entry_id,)
+            ).fetchone()
+
+            if not entry:
+                return {"success": False, "message": f"Entry {entry_id} not found"}
+
+            total = entry['verse_total'] or 0
+            verified = entry['verse_verified'] or 0
+            current_index = entry['verse_current_index'] or 0
+            remaining = max(0, total - current_index) if total else 0
+            percentage = round((current_index / total) * 100) if total > 0 else 0
+
+            return {
+                "success": True,
+                "message": "Verification statistics retrieved",
                 "stats": {
-                    "total_verses": total_verses,
-                    "verified": current_index,
-                    "remaining": total_verses - current_index,
+                    "scope_type": entry['scope_type'],
+                    "scope_value": entry['scope_value'],
+                    "total_verses": total,
+                    "verified": verified,
+                    "remaining": remaining,
                     "percentage_complete": percentage,
-                    "verification_counts": counts,
-                    "has_contradictions": counts['contradicts'] > 0,
+                    "verification_counts": {
+                        "supports": entry['verse_supports'] or 0,
+                        "contradicts": entry['verse_contradicts'] or 0,
+                        "unclear": entry['verse_unclear'] or 0,
+                        "total_verified": verified,
+                    },
+                    "has_contradictions": (entry['verse_contradicts'] or 0) > 0,
+                    "confidence": entry['confidence'],
+                    "started_at": entry['verification_started_at'],
+                    "updated_at": entry['verification_updated_at'],
                 },
             }
         except Exception as e:
-            return {"success": False, "message": f"Error getting workflow stats: {e}"}
+            return {"success": False, "message": f"Error getting stats: {e}"}
 
     @mcp.tool()
-    def list_workflow_sessions(status: str | None = None) -> dict:
-        """List all workflow sessions with their status and progress."""
+    def check_phase_transition(entry_id: str) -> dict:
+        """Check if an entry should transition to a new research phase based on verification results."""
         conn = get_connection()
 
         try:
-            sql = """SELECT session_id, claim_id, workflow_type, created_at,
-                            current_index, total_verses, status
-                     FROM workflow_sessions"""
-            params: list = []
+            entry = conn.execute(
+                """SELECT phase, verse_total, verse_verified, verse_supports,
+                          verse_contradicts, verse_unclear, verse_current_index
+                   FROM entries WHERE id = ?""",
+                (entry_id,)
+            ).fetchone()
 
-            if status:
-                sql += " WHERE status = ?"
-                params.append(status)
-            sql += " ORDER BY created_at DESC"
+            if not entry:
+                return {"success": False, "message": f"Entry {entry_id} not found"}
 
-            rows = conn.execute(sql, params).fetchall()
+            current_phase = entry['phase']
+            supports = entry['verse_supports'] or 0
+            contradicts = entry['verse_contradicts'] or 0
+            total = entry['verse_total'] or 0
+            current_index = entry['verse_current_index'] or 0
+            percentage = round((current_index / total) * 100) if total > 0 else 0
 
-            if not rows:
-                return {"success": True, "message": "No workflow sessions found", "sessions": []}
-
-            sessions = []
-            for r in rows:
-                percentage = round((r['current_index'] / r['total_verses']) * 100) if r['total_verses'] > 0 else 0
-                sessions.append({
-                    "session_id": r['session_id'],
-                    "claim_id": r['claim_id'],
-                    "workflow_type": r['workflow_type'],
-                    "created_at": r['created_at'],
-                    "progress": {"current": r['current_index'], "total": r['total_verses'], "percentage": percentage},
-                    "status": r['status'],
-                })
-
-            return {"success": True, "message": f"Found {len(sessions)} workflow session(s)", "sessions": sessions}
-        except Exception as e:
-            return {"success": False, "message": f"Error listing workflow sessions: {e}", "sessions": []}
-
-    @mcp.tool()
-    def check_phase_transition(session_id: str) -> dict:
-        """Check if a claim should transition to a new research phase based on verification results."""
-        conn = get_connection()
-
-        try:
-            # Get stats via the stats function
-            stats_result = get_workflow_stats(session_id)
-            if not stats_result.get('success') or 'stats' not in stats_result:
-                return {"success": False, "message": "Failed to get workflow statistics"}
-
-            stats = stats_result['stats']
-
-            session = conn.execute("SELECT claim_id FROM workflow_sessions WHERE session_id = ?", (session_id,)).fetchone()
-            if not session:
-                return {"success": False, "message": "Session not found"}
-
-            claim_id = session['claim_id']
-            claim = conn.execute("SELECT phase FROM claims WHERE id = ?", (claim_id,)).fetchone()
-            if not claim:
-                return {"success": False, "message": "Claim not found"}
-
-            current_phase = claim['phase']
             new_phase = None
             reason = ""
 
-            vc = stats['verification_counts']
-
-            if stats['has_contradictions'] and vc['contradicts'] > 0:
+            if contradicts > 0:
                 new_phase = 'rejected'
-                reason = f"Found {vc['contradicts']} contradicting verse(s)"
-            elif stats['percentage_complete'] == 100 and vc['supports'] >= 3:
+                reason = f"Found {contradicts} contradicting verse(s)"
+            elif percentage == 100 and supports >= 3:
                 new_phase = 'validated'
-                reason = f"Workflow complete with {vc['supports']} supporting verses and no contradictions"
-            elif current_phase == 'hypothesis' and vc['supports'] >= 3:
+                reason = f"Verification complete with {supports} supporting verses and no contradictions"
+            elif current_phase == 'hypothesis' and supports >= 3:
                 new_phase = 'validation'
-                reason = f"Found {vc['supports']} supporting verses, ready for broader validation"
+                reason = f"Found {supports} supporting verses, ready for broader validation"
 
             if new_phase and new_phase != current_phase:
-                conn.execute("UPDATE claims SET phase = ? WHERE id = ?", (new_phase, claim_id))
+                conn.execute("UPDATE entries SET phase = ? WHERE id = ?", (new_phase, entry_id))
                 save_database()
                 invalidate_graph_cache()
 
+                confidence = _compute_confidence(conn, entry_id)
+                if confidence is not None:
+                    save_database()
+
                 return {
                     "success": True,
-                    "message": f"Phase transition: {current_phase} → {new_phase}",
+                    "message": f"Phase transition: {current_phase} -> {new_phase}",
                     "phase_transition": {"from": current_phase, "to": new_phase, "reason": reason},
+                    "confidence": confidence,
                 }
 
-            return {"success": True, "message": f"No phase transition needed (current: {current_phase})"}
+            # Always recompute confidence when checking
+            confidence = _compute_confidence(conn, entry_id)
+            if confidence is not None:
+                save_database()
+
+            return {"success": True, "message": f"No phase transition needed (current: {current_phase})", "confidence": confidence}
         except Exception as e:
             return {"success": False, "message": f"Error checking phase transition: {e}"}
