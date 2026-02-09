@@ -15,9 +15,16 @@ import {
   getClaimDependencies,
   listPatterns,
   saveInsight,
-  updateClaimPhase,
+  getClaim,
   deleteClaim,
-  deleteMultipleClaims
+  deleteMultipleClaims,
+  getVerseClaims,
+  getClaimStats,
+  saveBulkInsights,
+  updateClaim,
+  findRelatedClaims,
+  addClaimDependency,
+  deletePattern
 } from './tools/research.js';
 import {
   searchByLinguisticFeatures,
@@ -33,27 +40,156 @@ import {
   listWorkflowSessions,
   checkAndTransitionPhase
 } from './tools/workflow.js';
+import { getVerseWithContext } from './tools/context.js';
 import { closeDatabase } from './db.js';
+import { jsonResponse, errorResponse } from './utils/dbHelpers.js';
 
-// Define all available tools
+// Tool handler type
+type ToolHandler = (args: Record<string, any>) => Promise<unknown>;
+
+// Tool handlers - each returns data, serialization is handled by the dispatch wrapper
+const handlers: Record<string, ToolHandler> = {
+  get_verse: async (args) => {
+    const verse = await getVerse(args.surah, args.ayah);
+    if (!verse) return { error: `Verse ${args.surah}:${args.ayah} not found` };
+    return verse;
+  },
+
+  get_surah: async (args) => {
+    const result = await getSurah(args.surah);
+    if (!result) return { error: `Surah ${args.surah} not found` };
+    return result;
+  },
+
+  list_surahs: async () => {
+    return await listSurahs();
+  },
+
+  search_verses: async (args) => {
+    return await searchVerses(args.query, args.limit);
+  },
+
+  search_claims: async (args) => {
+    return await searchClaims(args);
+  },
+
+  get_claim: async (args) => {
+    const claim = await getClaim(args.claim_id);
+    if (!claim) return { error: `Claim ${args.claim_id} not found` };
+    return claim;
+  },
+
+  get_claim_evidence: async (args) => {
+    return await getClaimEvidence(args.claim_id);
+  },
+
+  get_claim_dependencies: async (args) => {
+    return await getClaimDependencies(args.claim_id);
+  },
+
+  list_patterns: async (args) => {
+    return await listPatterns(args.pattern_type);
+  },
+
+  save_insight: async (args) => {
+    return await saveInsight(args as any);
+  },
+
+  search_by_linguistic_features: async (args) => {
+    return await searchByLinguisticFeatures(args as any);
+  },
+
+  create_pattern_interpretation: async (args) => {
+    return await createPatternInterpretation(args as any);
+  },
+
+  create_surah_theme: async (args) => {
+    return await createSurahTheme(args as any);
+  },
+
+  add_verse_evidence: async (args) => {
+    return await addVerseEvidence(args as any);
+  },
+
+  start_workflow_session: async (args) => {
+    return await startWorkflowSession(args as any);
+  },
+
+  get_next_verse: async (args) => {
+    return await getNextVerseInWorkflow(args.session_id);
+  },
+
+  submit_verification: async (args) => {
+    return await submitVerification(args as any);
+  },
+
+  get_workflow_stats: async (args) => {
+    return await getWorkflowStats(args.session_id);
+  },
+
+  list_workflow_sessions: async (args) => {
+    return await listWorkflowSessions(args);
+  },
+
+  check_phase_transition: async (args) => {
+    return await checkAndTransitionPhase(args.session_id);
+  },
+
+  delete_claim: async (args) => {
+    return await deleteClaim(args.claim_id);
+  },
+
+  delete_multiple_claims: async (args) => {
+    return await deleteMultipleClaims(args.claim_ids);
+  },
+
+  get_claim_stats: async () => {
+    return await getClaimStats();
+  },
+
+  save_bulk_insights: async (args) => {
+    return await saveBulkInsights(args as any);
+  },
+
+  update_claim: async (args) => {
+    return await updateClaim(args as any);
+  },
+
+  get_verse_claims: async (args) => {
+    return await getVerseClaims(args.surah, args.ayah);
+  },
+
+  get_verse_with_context: async (args) => {
+    return await getVerseWithContext(args.surah, args.ayah, {
+      include_root_claims: args.include_root_claims ?? true,
+      include_form_claims: args.include_form_claims ?? true,
+      include_pos_claims: args.include_pos_claims ?? true
+    });
+  },
+
+  find_related_claims: async (args) => {
+    return await findRelatedClaims(args.claim_id, args.limit);
+  },
+
+  add_claim_dependency: async (args) => {
+    return await addClaimDependency(args as any);
+  },
+
+  delete_pattern: async (args) => {
+    return await deletePattern(args.pattern_id);
+  }
+};
+
+// Tool definitions
 const tools: Tool[] = [
   {
     name: 'get_verse',
-    description: 'Retrieve a specific verse from the Quran with its Arabic text. Use this when the user asks about a specific verse (e.g., "Show me verse 2:255").',
+    description: 'Retrieve a specific verse from the Quran with ONLY its Arabic text. DO NOT add English translations when presenting verses to the user. Only show interpretations if they exist in the database. Use this when the user asks about a specific verse (e.g., "Show me verse 2:255").',
     inputSchema: {
       type: 'object',
       properties: {
-        surah: {
-          type: 'number',
-          description: 'The surah (chapter) number (1-114)',
-          minimum: 1,
-          maximum: 114
-        },
-        ayah: {
-          type: 'number',
-          description: 'The ayah (verse) number within the surah',
-          minimum: 1
-        }
+        surah: { type: 'number', description: 'The surah (chapter) number (1-114)', minimum: 1, maximum: 114 },
+        ayah: { type: 'number', description: 'The ayah (verse) number within the surah', minimum: 1 }
       },
       required: ['surah', 'ayah']
     }
@@ -64,12 +200,7 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        surah: {
-          type: 'number',
-          description: 'The surah (chapter) number (1-114)',
-          minimum: 1,
-          maximum: 114
-        }
+        surah: { type: 'number', description: 'The surah (chapter) number (1-114)', minimum: 1, maximum: 114 }
       },
       required: ['surah']
     }
@@ -77,11 +208,7 @@ const tools: Tool[] = [
   {
     name: 'list_surahs',
     description: 'Get a list of all 114 surahs with their Arabic names and verse counts. Use this when the user wants to browse chapters or know chapter names.',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-      required: []
-    }
+    inputSchema: { type: 'object', properties: {}, required: [] }
   },
   {
     name: 'search_verses',
@@ -89,43 +216,35 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        query: {
-          type: 'string',
-          description: 'Arabic text to search for'
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of results (default: 20)',
-          minimum: 1,
-          maximum: 100
-        }
+        query: { type: 'string', description: 'Arabic text to search for' },
+        limit: { type: 'number', description: 'Maximum number of results (default: 20)', minimum: 1, maximum: 100 }
       },
       required: ['query']
     }
   },
   {
     name: 'search_claims',
-    description: 'Search research claims in the database. Claims are hypotheses or observations about the Quran being verified through falsification methodology.',
+    description: 'Search research claims by keyword, phase, or pattern. Returns claims matching the specified filters. Use this for broad searches (e.g., "find all claims about roots"). For a specific claim by ID, use get_claim instead. For claims linked to a specific verse, use get_verse_claims.',
     inputSchema: {
       type: 'object',
       properties: {
-        phase: {
-          type: 'string',
-          description: 'Filter by research phase',
-          enum: ['question', 'hypothesis', 'validation', 'active_verification', 'passive_verification']
-        },
-        pattern_id: {
-          type: 'string',
-          description: 'Filter by pattern ID if looking for claims related to a specific pattern'
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of results (default: 50)',
-          minimum: 1,
-          maximum: 200
-        }
+        query: { type: 'string', description: 'Search keyword(s) to match against claim content (case-insensitive substring match)' },
+        phase: { type: 'string', description: 'Filter by research phase', enum: ['question', 'hypothesis', 'validation', 'active_verification', 'passive_verification'] },
+        pattern_id: { type: 'string', description: 'Filter by pattern ID if looking for claims related to a specific pattern' },
+        limit: { type: 'number', description: 'Maximum number of results (default: 50)', minimum: 1, maximum: 200 }
       },
       required: []
+    }
+  },
+  {
+    name: 'get_claim',
+    description: 'Get a single claim by its ID. Returns the full claim including content, phase, pattern_id, and timestamps. Use this when you know the exact claim ID. For keyword search use search_claims; for verse-linked claims use get_verse_claims.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        claim_id: { type: 'string', description: 'The claim ID (e.g., "claim_42")' }
+      },
+      required: ['claim_id']
     }
   },
   {
@@ -134,10 +253,7 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        claim_id: {
-          type: 'string',
-          description: 'The unique identifier of the claim'
-        }
+        claim_id: { type: 'string', description: 'The unique identifier of the claim' }
       },
       required: ['claim_id']
     }
@@ -148,10 +264,7 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        claim_id: {
-          type: 'string',
-          description: 'The unique identifier of the claim'
-        }
+        claim_id: { type: 'string', description: 'The unique identifier of the claim' }
       },
       required: ['claim_id']
     }
@@ -162,45 +275,26 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        pattern_type: {
-          type: 'string',
-          description: 'Filter by pattern type',
-          enum: ['morphological', 'syntactic', 'semantic']
-        }
+        pattern_type: { type: 'string', description: 'Filter by pattern type', enum: ['morphological', 'syntactic', 'semantic'] }
       },
       required: []
     }
   },
   {
     name: 'save_insight',
-    description: 'Save a new research claim or insight discovered during conversation. Use this to preserve important observations for future research.',
+    description: 'Save a single research claim or insight discovered during conversation. Use this to preserve important observations for future research. When saving 2+ claims at once, prefer save_bulk_insights instead -- it is significantly faster.',
     inputSchema: {
       type: 'object',
       properties: {
-        content: {
-          type: 'string',
-          description: 'The claim or insight text'
-        },
-        phase: {
-          type: 'string',
-          description: 'Current research phase (default: question)',
-          enum: ['question', 'hypothesis', 'validation'],
-          default: 'question'
-        },
-        pattern_id: {
-          type: 'string',
-          description: 'Optional pattern ID this claim relates to'
-        },
+        content: { type: 'string', description: 'The claim or insight text' },
+        phase: { type: 'string', description: 'Current research phase (default: question)', enum: ['question', 'hypothesis', 'validation'], default: 'question' },
+        pattern_id: { type: 'string', description: 'Optional pattern ID this claim relates to' },
         evidence_verses: {
           type: 'array',
           description: 'Array of verse references as evidence',
           items: {
             type: 'object',
-            properties: {
-              surah: { type: 'number' },
-              ayah: { type: 'number' },
-              notes: { type: 'string' }
-            },
+            properties: { surah: { type: 'number' }, ayah: { type: 'number' }, notes: { type: 'string' } },
             required: ['surah', 'ayah']
           }
         }
@@ -209,95 +303,26 @@ const tools: Tool[] = [
     }
   },
   {
-    name: 'update_claim_phase',
-    description: 'Update the phase of an existing claim as research progresses through the falsification methodology.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        claim_id: {
-          type: 'string',
-          description: 'The claim ID to update'
-        },
-        new_phase: {
-          type: 'string',
-          description: 'The new research phase',
-          enum: ['question', 'hypothesis', 'validation', 'active_verification', 'passive_verification']
-        }
-      },
-      required: ['claim_id', 'new_phase']
-    }
-  },
-  {
     name: 'search_by_linguistic_features',
     description: 'Search verses by linguistic features like part of speech, verb form, mood, aspect, root, etc. Use this for linguistic analysis like finding all present tense verbs, imperatives, or words from a specific root.',
     inputSchema: {
       type: 'object',
       properties: {
-        pos: {
-          type: 'string',
-          description: 'Part of speech (e.g., "VERB", "NOUN", "ADJ", "PRON")'
-        },
-        aspect: {
-          type: 'string',
-          description: 'Verb aspect: "imperfective" (present tense) or "perfective" (past tense)'
-        },
-        mood: {
-          type: 'string',
-          description: 'Verb mood: "indicative", "subjunctive", "imperative", "jussive"'
-        },
-        verb_form: {
-          type: 'string',
-          description: 'Specific verb form'
-        },
-        voice: {
-          type: 'string',
-          description: 'Voice: "active" or "passive"'
-        },
-        person: {
-          type: 'string',
-          description: 'Grammatical person: "1st", "2nd", "3rd"'
-        },
-        number: {
-          type: 'string',
-          description: 'Number: "singular", "dual", "plural"'
-        },
-        gender: {
-          type: 'string',
-          description: 'Gender: "masculine", "feminine"'
-        },
-        root: {
-          type: 'string',
-          description: 'Arabic root (e.g., "ق-و-ل" for speech/saying)'
-        },
-        lemma: {
-          type: 'string',
-          description: 'Base word form'
-        },
-        case_value: {
-          type: 'string',
-          description: 'Grammatical case: "nominative", "accusative", "genitive"'
-        },
-        dependency_rel: {
-          type: 'string',
-          description: 'Syntactic dependency relation'
-        },
-        role: {
-          type: 'string',
-          description: 'Grammatical role in sentence'
-        },
-        surah: {
-          type: 'number',
-          description: 'Limit search to specific surah',
-          minimum: 1,
-          maximum: 114
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of results (default: 50)',
-          minimum: 1,
-          maximum: 200,
-          default: 50
-        }
+        pos: { type: 'string', description: 'Part of speech (e.g., "VERB", "NOUN", "ADJ", "PRON")' },
+        aspect: { type: 'string', description: 'Verb aspect: "imperfective" (present tense) or "perfective" (past tense)' },
+        mood: { type: 'string', description: 'Verb mood: "indicative", "subjunctive", "imperative", "jussive"' },
+        verb_form: { type: 'string', description: 'Specific verb form' },
+        voice: { type: 'string', description: 'Voice: "active" or "passive"' },
+        person: { type: 'string', description: 'Grammatical person: "1st", "2nd", "3rd"' },
+        number: { type: 'string', description: 'Number: "singular", "dual", "plural"' },
+        gender: { type: 'string', description: 'Gender: "masculine", "feminine"' },
+        root: { type: 'string', description: 'Arabic root (e.g., "ق-و-ل" for speech/saying)' },
+        lemma: { type: 'string', description: 'Base word form' },
+        case_value: { type: 'string', description: 'Grammatical case: "nominative", "accusative", "genitive"' },
+        dependency_rel: { type: 'string', description: 'Syntactic dependency relation' },
+        role: { type: 'string', description: 'Grammatical role in sentence' },
+        surah: { type: 'number', description: 'Limit search to specific surah', minimum: 1, maximum: 114 },
+        limit: { type: 'number', description: 'Maximum number of results (default: 50)', minimum: 1, maximum: 200, default: 50 }
       },
       required: []
     }
@@ -308,34 +333,12 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        description: {
-          type: 'string',
-          description: 'Description of the pattern (e.g., "Present tense verbs in the Quran")'
-        },
-        pattern_type: {
-          type: 'string',
-          description: 'Type of pattern',
-          enum: ['morphological', 'syntactic', 'semantic']
-        },
-        interpretation: {
-          type: 'string',
-          description: 'The interpretation or meaning of this pattern'
-        },
-        linguistic_features: {
-          type: 'object',
-          description: 'The linguistic features that define this pattern (e.g., {pos: "VERB", aspect: "imperfective"})'
-        },
-        scope: {
-          type: 'string',
-          description: 'Scope of the pattern (default: "all_verses")',
-          default: 'all_verses'
-        },
-        phase: {
-          type: 'string',
-          description: 'Research phase (default: "hypothesis")',
-          enum: ['question', 'hypothesis', 'validation', 'verification'],
-          default: 'hypothesis'
-        }
+        description: { type: 'string', description: 'Description of the pattern (e.g., "Present tense verbs in the Quran")' },
+        pattern_type: { type: 'string', description: 'Type of pattern', enum: ['morphological', 'syntactic', 'semantic'] },
+        interpretation: { type: 'string', description: 'The interpretation or meaning of this pattern' },
+        linguistic_features: { type: 'object', description: 'The linguistic features that define this pattern (e.g., {pos: "VERB", aspect: "imperfective"})' },
+        scope: { type: 'string', description: 'Scope of the pattern (default: "all_verses")', default: 'all_verses' },
+        phase: { type: 'string', description: 'Research phase (default: "hypothesis")', enum: ['question', 'hypothesis', 'validation', 'verification'], default: 'hypothesis' }
       },
       required: ['description', 'pattern_type', 'interpretation']
     }
@@ -346,26 +349,10 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        surah: {
-          type: 'number',
-          description: 'The surah number (1-114)',
-          minimum: 1,
-          maximum: 114
-        },
-        theme: {
-          type: 'string',
-          description: 'The main theme of the surah'
-        },
-        description: {
-          type: 'string',
-          description: 'Additional description or details about the theme'
-        },
-        phase: {
-          type: 'string',
-          description: 'Research phase (default: "hypothesis")',
-          enum: ['question', 'hypothesis', 'validation', 'verification'],
-          default: 'hypothesis'
-        }
+        surah: { type: 'number', description: 'The surah number (1-114)', minimum: 1, maximum: 114 },
+        theme: { type: 'string', description: 'The main theme of the surah' },
+        description: { type: 'string', description: 'Additional description or details about the theme' },
+        phase: { type: 'string', description: 'Research phase (default: "hypothesis")', enum: ['question', 'hypothesis', 'validation', 'verification'], default: 'hypothesis' }
       },
       required: ['surah', 'theme']
     }
@@ -376,30 +363,11 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        claim_id: {
-          type: 'string',
-          description: 'The claim or pattern ID this evidence relates to'
-        },
-        surah: {
-          type: 'number',
-          description: 'The surah number',
-          minimum: 1,
-          maximum: 114
-        },
-        ayah: {
-          type: 'number',
-          description: 'The ayah number',
-          minimum: 1
-        },
-        verification: {
-          type: 'string',
-          description: 'Verification result',
-          enum: ['supports', 'contradicts', 'unclear']
-        },
-        notes: {
-          type: 'string',
-          description: 'Optional notes about this verification'
-        }
+        claim_id: { type: 'string', description: 'The claim or pattern ID this evidence relates to' },
+        surah: { type: 'number', description: 'The surah number', minimum: 1, maximum: 114 },
+        ayah: { type: 'number', description: 'The ayah number', minimum: 1 },
+        verification: { type: 'string', description: 'Verification result', enum: ['supports', 'contradicts', 'unclear'] },
+        notes: { type: 'string', description: 'Optional notes about this verification' }
       },
       required: ['claim_id', 'surah', 'ayah', 'verification']
     }
@@ -410,46 +378,22 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        claim_id: {
-          type: 'string',
-          description: 'The claim or pattern ID to verify'
-        },
-        workflow_type: {
-          type: 'string',
-          description: 'Type of workflow',
-          enum: ['pattern', 'surah_theme']
-        },
-        linguistic_features: {
-          type: 'object',
-          description: 'For pattern workflow: the linguistic features to search (e.g., {pos: "VERB", aspect: "imperfective"})'
-        },
-        surah: {
-          type: 'number',
-          description: 'For surah_theme workflow: the surah number to verify',
-          minimum: 1,
-          maximum: 114
-        },
-        limit: {
-          type: 'number',
-          description: 'For pattern workflow: maximum number of verses (default: 100)',
-          minimum: 1,
-          maximum: 500,
-          default: 100
-        }
+        claim_id: { type: 'string', description: 'The claim or pattern ID to verify' },
+        workflow_type: { type: 'string', description: 'Type of workflow', enum: ['pattern', 'surah_theme'] },
+        linguistic_features: { type: 'object', description: 'For pattern workflow: the linguistic features to search (e.g., {pos: "VERB", aspect: "imperfective"})' },
+        surah: { type: 'number', description: 'For surah_theme workflow: the surah number to verify', minimum: 1, maximum: 114 },
+        limit: { type: 'number', description: 'For pattern workflow: maximum number of verses (default: 100)', minimum: 1, maximum: 500, default: 100 }
       },
       required: ['claim_id', 'workflow_type']
     }
   },
   {
     name: 'get_next_verse',
-    description: 'Get the next verse in an active workflow session for verification. Returns the verse text, progress, and completion status.',
+    description: 'Get the next verse in an active workflow session for verification. Returns ONLY the Arabic verse text, progress, and completion status. DO NOT add English translations when presenting verses to the user.',
     inputSchema: {
       type: 'object',
       properties: {
-        session_id: {
-          type: 'string',
-          description: 'The workflow session ID'
-        }
+        session_id: { type: 'string', description: 'The workflow session ID' }
       },
       required: ['session_id']
     }
@@ -460,19 +404,9 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        session_id: {
-          type: 'string',
-          description: 'The workflow session ID'
-        },
-        verification: {
-          type: 'string',
-          description: 'Verification result for current verse',
-          enum: ['supports', 'contradicts', 'unclear']
-        },
-        notes: {
-          type: 'string',
-          description: 'Optional notes about this verification'
-        }
+        session_id: { type: 'string', description: 'The workflow session ID' },
+        verification: { type: 'string', description: 'Verification result for current verse', enum: ['supports', 'contradicts', 'unclear'] },
+        notes: { type: 'string', description: 'Optional notes about this verification' }
       },
       required: ['session_id', 'verification']
     }
@@ -483,10 +417,7 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        session_id: {
-          type: 'string',
-          description: 'The workflow session ID'
-        }
+        session_id: { type: 'string', description: 'The workflow session ID' }
       },
       required: ['session_id']
     }
@@ -497,11 +428,7 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        status: {
-          type: 'string',
-          description: 'Optional status filter',
-          enum: ['active', 'completed', 'paused']
-        }
+        status: { type: 'string', description: 'Optional status filter', enum: ['active', 'completed', 'paused'] }
       },
       required: []
     }
@@ -512,10 +439,7 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        session_id: {
-          type: 'string',
-          description: 'The workflow session ID'
-        }
+        session_id: { type: 'string', description: 'The workflow session ID' }
       },
       required: ['session_id']
     }
@@ -526,10 +450,7 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        claim_id: {
-          type: 'string',
-          description: 'The claim ID to delete (format: claim_123)'
-        }
+        claim_id: { type: 'string', description: 'The claim ID to delete (format: claim_123)' }
       },
       required: ['claim_id']
     }
@@ -540,28 +461,122 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        claim_ids: {
-          type: 'array',
-          description: 'Array of claim IDs to delete',
-          items: { type: 'string' }
-        }
+        claim_ids: { type: 'array', description: 'Array of claim IDs to delete', items: { type: 'string' } }
       },
       required: ['claim_ids']
+    }
+  },
+  {
+    name: 'get_claim_stats',
+    description: 'Get database statistics: total claims, breakdown by phase, total patterns, total evidence links, and claim ID range. Use this for a quick overview of the database state.',
+    inputSchema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'save_bulk_insights',
+    description: 'Save multiple research claims at once in a single operation. Much more efficient than calling save_insight repeatedly. Each claim gets its own sequential ID. Does not support evidence_verses -- use add_verse_evidence separately after saving if needed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        claims: {
+          type: 'array',
+          description: 'Array of claims to save',
+          items: {
+            type: 'object',
+            properties: {
+              content: { type: 'string', description: 'The claim or insight text' },
+              phase: { type: 'string', description: 'Research phase (default: question)', enum: ['question', 'hypothesis', 'validation'] },
+              pattern_id: { type: 'string', description: 'Optional pattern ID this claim relates to' }
+            },
+            required: ['content']
+          }
+        }
+      },
+      required: ['claims']
+    }
+  },
+  {
+    name: 'update_claim',
+    description: 'Update an existing claim\'s content, phase, or pattern_id. Use this to edit claim text, change research phase (question/hypothesis/validation/active_verification/passive_verification), or link to a pattern. This is the only tool for modifying existing claims.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        claim_id: { type: 'string', description: 'The claim ID to update' },
+        content: { type: 'string', description: 'New content text for the claim' },
+        phase: { type: 'string', description: 'New research phase', enum: ['question', 'hypothesis', 'validation', 'active_verification', 'passive_verification'] },
+        pattern_id: { type: 'string', description: 'Pattern ID to link this claim to' }
+      },
+      required: ['claim_id']
+    }
+  },
+  {
+    name: 'get_verse_claims',
+    description: 'Get all claims that reference a specific verse as evidence. Use this to check existing interpretations before adding new claims about a verse, and to detect potential contradictions. For morphology-aware analysis with word-level claims, use get_verse_with_context instead.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        surah: { type: 'number', description: 'The surah (chapter) number (1-114)', minimum: 1, maximum: 114 },
+        ayah: { type: 'number', description: 'The ayah (verse) number', minimum: 1 }
+      },
+      required: ['surah', 'ayah']
+    }
+  },
+  {
+    name: 'get_verse_with_context',
+    description: 'Get a verse with morphology-aware claim context. For each word, surfaces related claims based on its root, verb form, and POS from the pattern_linguistic_features table. More comprehensive than get_verse_claims but heavier. Use when you need to understand what is already known about each word in the verse.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        surah: { type: 'number', description: 'The surah (chapter) number (1-114)', minimum: 1, maximum: 114 },
+        ayah: { type: 'number', description: 'The ayah (verse) number', minimum: 1 },
+        include_root_claims: { type: 'boolean', description: 'Include claims about word roots (default: true)', default: true },
+        include_form_claims: { type: 'boolean', description: 'Include claims about verb forms (default: true)', default: true },
+        include_pos_claims: { type: 'boolean', description: 'Include claims about parts of speech (default: true)', default: true }
+      },
+      required: ['surah', 'ayah']
+    }
+  },
+  {
+    name: 'find_related_claims',
+    description: 'Find claims structurally related to a given claim through shared verse evidence, shared patterns, or same-surah evidence. Use this to discover non-obvious connections between claims. Returns claims grouped by relationship type.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        claim_id: { type: 'string', description: 'The claim ID to find related claims for' },
+        limit: { type: 'number', description: 'Maximum results per relationship type (default: 20)', minimum: 1, maximum: 100, default: 20 }
+      },
+      required: ['claim_id']
+    }
+  },
+  {
+    name: 'add_claim_dependency',
+    description: 'Create a typed relationship between two claims. Use this to record that one claim depends on, supports, contradicts, or refines another. These relationships are surfaced by get_claim_dependencies.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        claim_id: { type: 'string', description: 'The source claim ID' },
+        depends_on_claim_id: { type: 'string', description: 'The target claim ID' },
+        dependency_type: { type: 'string', description: 'Type of relationship', enum: ['depends_on', 'supports', 'contradicts', 'refines', 'related'] }
+      },
+      required: ['claim_id', 'depends_on_claim_id', 'dependency_type']
+    }
+  },
+  {
+    name: 'delete_pattern',
+    description: 'Delete a pattern and unlink any claims that reference it (claims are preserved, their pattern_id is set to null). Use this to clean up duplicate or test patterns.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pattern_id: { type: 'string', description: 'The pattern ID to delete (e.g., "pattern_24")' }
+      },
+      required: ['pattern_id']
     }
   }
 ];
 
 // Create MCP server
 const server = new Server(
-  {
-    name: 'kalima-mcp-server',
-    version: '1.0.0',
-  },
-  {
-    capabilities: {
-      tools: {},
-    },
-  }
+  { name: 'kalima-mcp-server', version: '1.0.0' },
+  { capabilities: { tools: {} } }
 );
 
 // Handle tool list requests
@@ -569,326 +584,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return { tools };
 });
 
-// Handle tool execution
+// Handle tool execution via handler map
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+  const handler = handlers[name];
+
+  if (!handler) {
+    return errorResponse(`Unknown tool: ${name}`);
+  }
 
   try {
-    switch (name) {
-      case 'get_verse': {
-        const { surah, ayah } = args as { surah: number; ayah: number };
-        const verse = await getVerse(surah, ayah);
-
-        if (!verse) {
-          return {
-            content: [{
-              type: 'text',
-              text: `Verse ${surah}:${ayah} not found in database.`
-            }]
-          };
-        }
-
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(verse, null, 2)
-          }]
-        };
-      }
-
-      case 'get_surah': {
-        const { surah } = args as { surah: number };
-        const result = await getSurah(surah);
-
-        if (!result) {
-          return {
-            content: [{
-              type: 'text',
-              text: `Surah ${surah} not found in database.`
-            }]
-          };
-        }
-
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(result, null, 2)
-          }]
-        };
-      }
-
-      case 'list_surahs': {
-        const surahs = await listSurahs();
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(surahs, null, 2)
-          }]
-        };
-      }
-
-      case 'search_verses': {
-        const { query, limit } = args as { query: string; limit?: number };
-        const verses = await searchVerses(query, limit);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(verses, null, 2)
-          }]
-        };
-      }
-
-      case 'search_claims': {
-        const options = args as { phase?: string; pattern_id?: string; limit?: number };
-        const claims = await searchClaims(options);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(claims, null, 2)
-          }]
-        };
-      }
-
-      case 'get_claim_evidence': {
-        const { claim_id } = args as { claim_id: string };
-        const evidence = await getClaimEvidence(claim_id);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(evidence, null, 2)
-          }]
-        };
-      }
-
-      case 'get_claim_dependencies': {
-        const { claim_id } = args as { claim_id: string };
-        const result = await getClaimDependencies(claim_id);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(result, null, 2)
-          }]
-        };
-      }
-
-      case 'list_patterns': {
-        const { pattern_type } = args as { pattern_type?: string };
-        const patterns = await listPatterns(pattern_type);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(patterns, null, 2)
-          }]
-        };
-      }
-
-      case 'save_insight': {
-        const data = args as {
-          content: string;
-          phase?: string;
-          pattern_id?: string;
-          evidence_verses?: Array<{ surah: number; ayah: number; notes?: string }>;
-        };
-        const result = await saveInsight(data);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(result, null, 2)
-          }]
-        };
-      }
-
-      case 'update_claim_phase': {
-        const { claim_id, new_phase } = args as { claim_id: string; new_phase: string };
-        const success = await updateClaimPhase(claim_id, new_phase);
-        const message = success
-          ? `Claim ${claim_id} updated to phase: ${new_phase}`
-          : `Failed to update claim ${claim_id}`;
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({ success, message }, null, 2)
-          }]
-        };
-      }
-
-      case 'search_by_linguistic_features': {
-        const options = args as any;
-        const verses = await searchByLinguisticFeatures(options);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(verses, null, 2)
-          }]
-        };
-      }
-
-      case 'create_pattern_interpretation': {
-        const data = args as {
-          description: string;
-          pattern_type: 'morphological' | 'syntactic' | 'semantic';
-          interpretation: string;
-          linguistic_features?: object;
-          scope?: string;
-          phase?: 'question' | 'hypothesis' | 'validation' | 'verification';
-        };
-        const result = await createPatternInterpretation(data);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(result, null, 2)
-          }]
-        };
-      }
-
-      case 'create_surah_theme': {
-        const data = args as {
-          surah: number;
-          theme: string;
-          description?: string;
-          phase?: 'question' | 'hypothesis' | 'validation' | 'verification';
-        };
-        const result = await createSurahTheme(data);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(result, null, 2)
-          }]
-        };
-      }
-
-      case 'add_verse_evidence': {
-        const data = args as {
-          claim_id: string;
-          surah: number;
-          ayah: number;
-          verification: 'supports' | 'contradicts' | 'unclear';
-          notes?: string;
-        };
-        const result = await addVerseEvidence(data);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(result, null, 2)
-          }]
-        };
-      }
-
-      case 'start_workflow_session': {
-        const data = args as {
-          claim_id: string;
-          workflow_type: 'pattern' | 'surah_theme';
-          linguistic_features?: any;
-          surah?: number;
-          limit?: number;
-        };
-        const result = await startWorkflowSession(data);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(result, null, 2)
-          }]
-        };
-      }
-
-      case 'get_next_verse': {
-        const { session_id } = args as { session_id: string };
-        const result = await getNextVerseInWorkflow(session_id);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(result, null, 2)
-          }]
-        };
-      }
-
-      case 'submit_verification': {
-        const data = args as {
-          session_id: string;
-          verification: 'supports' | 'contradicts' | 'unclear';
-          notes?: string;
-        };
-        const result = await submitVerification(data);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(result, null, 2)
-          }]
-        };
-      }
-
-      case 'get_workflow_stats': {
-        const { session_id } = args as { session_id: string };
-        const result = await getWorkflowStats(session_id);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(result, null, 2)
-          }]
-        };
-      }
-
-      case 'list_workflow_sessions': {
-        const data = args as { status?: 'active' | 'completed' | 'paused' };
-        const result = await listWorkflowSessions(data);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(result, null, 2)
-          }]
-        };
-      }
-
-      case 'check_phase_transition': {
-        const { session_id } = args as { session_id: string };
-        const result = await checkAndTransitionPhase(session_id);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(result, null, 2)
-          }]
-        };
-      }
-
-      case 'delete_claim': {
-        const { claim_id } = args as { claim_id: string };
-        const result = await deleteClaim(claim_id);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(result, null, 2)
-          }]
-        };
-      }
-
-      case 'delete_multiple_claims': {
-        const { claim_ids } = args as { claim_ids: string[] };
-        const result = await deleteMultipleClaims(claim_ids);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(result, null, 2)
-          }]
-        };
-      }
-
-      default:
-        return {
-          content: [{
-            type: 'text',
-            text: `Unknown tool: ${name}`
-          }],
-          isError: true
-        };
-    }
+    const result = await handler(args ?? {});
+    return jsonResponse(result);
   } catch (error) {
-    return {
-      content: [{
-        type: 'text',
-        text: `Error executing ${name}: ${error}`
-      }],
-      isError: true
-    };
+    return errorResponse(`Error executing ${name}: ${error}`);
   }
 });
 
