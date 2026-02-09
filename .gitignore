@@ -12,7 +12,7 @@ venv/
 .venv/
 
 # Runtime data
-data/database/
+data/
 *.db
 *.db-shm
 *.db-wal
@@ -22,12 +22,22 @@ data/database/
 .mcp.json
 .claude/settings.local.json
 
+# Node (legacy)
+node_modules/
+
 # Temporary files
 temp_*.json
 
 # Backup files
 *.backup
 *.backup_*
+*.bak-*
+
+# Vendored JS (legacy)
+lib/
+
+# Windows artifacts
+nul
 
 # OS files
 .DS_Store
