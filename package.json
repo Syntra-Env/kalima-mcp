@@ -4,9 +4,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
-    "test": "node tests/test-server.js",
-    "pretest": "echo KALIMA_DB_PATH=data/database/kalima.db"
+    "build": "tsc"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.1.0",
