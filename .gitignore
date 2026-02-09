@@ -1,34 +1,18 @@
-# Rust build artifacts
-/engine/target/
-/engine/**/*.rs.bk
-/desktop/src-tauri/target/
-/desktop/src-tauri/gen/
-Cargo.lock
+# Node
+/node_modules/
 
-# Executable binaries
+# Executables
 kalima.exe
 Kalima.exe
 kalima
 
-# Node/test artifacts
-/node_modules/
-/playwright-report/
-/test-results/
-/.playwright/
-
-# Local tooling (e.g., msedgedriver.exe)
-/tools/webdriver/*.exe
-/tools/webdriver/*.zip
-
-# Runtime data directories
+# Runtime data
 data/database/
 data/search-index/
 /kalima-index/
-/kalima.db
-/quran.db
+*.db
 *.db-shm
 *.db-wal
-engine/search/kalima-index-test-local/
 
 # Local config
 .env
@@ -47,7 +31,6 @@ temp_*.json
 *.swp
 *.swo
 *~
-.metadata/
 
 # Logs
 *.log
@@ -56,16 +39,3 @@ temp_*.json
 .vscode/
 .idea/
 *.iml
-
-# Python (legacy - for archive compatibility)
-/.venv/
-__pycache__/
-*.pyc
-*.pyo
-
-# ML model artifacts
-packages/ml/checkpoints/
-packages/ml/src/checkpoints/
-
-# Apps directory (remnants from old branch structure)
-/apps/
