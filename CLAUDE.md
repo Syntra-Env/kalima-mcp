@@ -66,7 +66,7 @@ pip install -e .
 
 ### Key directories
 - `src/kalima/` — Python source
-- `src/kalima/tools/` — Tool implementations (quran, research, linguistic, workflow, context, graph)
+- `src/kalima/tools/` — Tool implementations (quran, research, linguistic, workflow, context)
 - `src/kalima/utils/` — Shared helpers (arabic, short_id, features)
 - `src/kalima/db.py` — SQLite connection manager (WAL mode, native sqlite3)
 - `src/kalima/server.py` — FastMCP server entry point

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from mcp.server.fastmcp import FastMCP
 
-from ..db import get_connection, save_database, invalidate_graph_cache
+from ..db import get_connection, save_database
 from ..utils.short_id import generate_entry_id
 from ..utils.features import TERM_TYPE_TO_FEATURE
 
@@ -315,7 +315,7 @@ def register(server: FastMCP):
             )
 
             save_database()
-            invalidate_graph_cache()
+
 
             total = entry['verse_total'] or len(queue)
 
@@ -443,7 +443,7 @@ def register(server: FastMCP):
             if new_phase and new_phase != current_phase:
                 conn.execute("UPDATE entries SET phase = ? WHERE id = ?", (new_phase, entry_id))
                 save_database()
-                invalidate_graph_cache()
+    
 
                 confidence = _compute_confidence(conn, entry_id)
                 if confidence is not None:

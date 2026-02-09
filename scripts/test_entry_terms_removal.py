@@ -97,26 +97,6 @@ def test_get_entry_stats():
     print(f"PASS: get_entry_stats() returned {result['total_entries']} entries, {result['health']['orphan_entries']} orphans")
 
 
-def test_render_graph():
-    """render_graph should use shared_scope edges."""
-    from kalima.tools.graph import register as reg_graph, _build_graph, _invalidate_cache
-    from mcp.server.fastmcp import FastMCP
-
-    server = FastMCP("test")
-    reg_graph(server)
-
-    _invalidate_cache()
-    G = _build_graph()
-
-    # Check for shared_scope edges
-    scope_edges = [(u, v) for u, v, d in G.edges(data=True) if d.get('relation') == 'shared_scope']
-    term_edges = [(u, v) for u, v, d in G.edges(data=True) if d.get('relation') == 'shared_term']
-
-    assert len(term_edges) == 0, f"Should have no shared_term edges, got {len(term_edges)}"
-    print(f"PASS: Graph has {len(scope_edges)} shared_scope edges, 0 shared_term edges")
-    print(f"  Total nodes: {G.number_of_nodes()}, total edges: {G.number_of_edges()}")
-
-
 def test_create_pattern_interpretation():
     """create_pattern_interpretation should work without entry_terms."""
     from kalima.tools.linguistic import register as reg_linguistic
@@ -202,7 +182,6 @@ if __name__ == "__main__":
         test_get_verse_with_context,
         test_find_related_entries,
         test_get_entry_stats,
-        test_render_graph,
         test_create_pattern_interpretation,
         test_link_entry_terms_removed,
         test_delete_entry,

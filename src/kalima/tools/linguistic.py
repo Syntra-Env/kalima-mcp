@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from mcp.server.fastmcp import FastMCP
 
-from ..db import get_connection, save_database, invalidate_graph_cache
+from ..db import get_connection, save_database
 from ..utils.short_id import generate_entry_id
 from ..utils.features import TERM_TYPE_TO_FEATURE
 from .research import _find_duplicate
@@ -341,7 +341,7 @@ def register(server: FastMCP):
                 )
 
             save_database()
-            invalidate_graph_cache()
+
 
             return {
                 "success": True,
@@ -383,7 +383,7 @@ def register(server: FastMCP):
                 )
 
             save_database()
-            invalidate_graph_cache()
+
 
             return {
                 "success": True,
@@ -446,7 +446,7 @@ def register(server: FastMCP):
 
             confidence = _compute_confidence(conn, entry_id)
             save_database()
-            invalidate_graph_cache()
+
 
             return {
                 "success": True,

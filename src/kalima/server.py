@@ -6,7 +6,7 @@ import sys
 from mcp.server.fastmcp import FastMCP
 
 from .db import close_database
-from .tools import quran, context, research, linguistic, workflow, graph
+from .tools import quran, context, research, linguistic, workflow
 
 # Create FastMCP server
 mcp = FastMCP("kalima-mcp-server")
@@ -17,7 +17,6 @@ context.register(mcp)
 research.register(mcp)
 linguistic.register(mcp)
 workflow.register(mcp)
-graph.register(mcp)
 
 
 def _cleanup(signum=None, frame=None):

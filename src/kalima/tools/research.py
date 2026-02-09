@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from mcp.server.fastmcp import FastMCP
 
-from ..db import get_connection, save_database, invalidate_graph_cache
+from ..db import get_connection, save_database
 from ..utils.short_id import generate_entry_id
 
 mcp: FastMCP
@@ -304,7 +304,7 @@ def register(server: FastMCP):
                 )
 
             save_database()
-            invalidate_graph_cache()
+
 
             return {
                 "success": True,
@@ -351,7 +351,7 @@ def register(server: FastMCP):
                 created_ids.append(eid)
 
             save_database()
-            invalidate_graph_cache()
+
 
             all_ids = created_ids + deduped_ids
             msg = f"Saved {len(created_ids)} new entries"
@@ -408,7 +408,7 @@ def register(server: FastMCP):
             params.append(entry_id)
             conn.execute(f"UPDATE entries SET {', '.join(updates)} WHERE id = ?", params)
             save_database()
-            invalidate_graph_cache()
+
 
             return {"success": True, "message": f"Entry {entry_id} updated successfully"}
         except Exception as e:
@@ -441,7 +441,7 @@ def register(server: FastMCP):
             conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
 
             save_database()
-            invalidate_graph_cache()
+
 
             return {"success": True, "message": f"Entry {entry_id} deleted successfully"}
         except Exception as e:
@@ -480,7 +480,7 @@ def register(server: FastMCP):
                 deleted += 1
 
             save_database()
-            invalidate_graph_cache()
+
 
             msg = f"Deleted {deleted} entries."
             if failed:
@@ -646,7 +646,7 @@ def register(server: FastMCP):
                 (entry_id, depends_on_entry_id, dependency_type, now)
             )
             save_database()
-            invalidate_graph_cache()
+
 
             return {"success": True, "message": f"Dependency created: {entry_id} --{dependency_type}--> {depends_on_entry_id}"}
         except Exception as e:

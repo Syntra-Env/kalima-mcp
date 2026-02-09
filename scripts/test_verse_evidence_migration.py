@@ -117,26 +117,6 @@ def test_get_verse_with_context():
     print(f"PASS: get_verse_with_context(1,5) returned {len(result['direct_verse_entries'])} direct entries")
 
 
-def test_render_graph():
-    """render_graph should still work after migration."""
-    from kalima.tools.graph import register as reg_graph, _build_graph, _invalidate_cache
-    from mcp.server.fastmcp import FastMCP
-
-    server = FastMCP("test")
-    reg_graph(server)
-
-    _invalidate_cache()
-    G = _build_graph()
-
-    assert G.number_of_nodes() > 0, "Graph should have nodes"
-    assert G.number_of_edges() > 0, "Graph should have edges"
-
-    # Should still have verse nodes
-    verse_nodes = [n for n, d in G.nodes(data=True) if d.get('type') == 'verse']
-    assert len(verse_nodes) > 0, "Graph should still have verse nodes"
-    print(f"PASS: Graph has {G.number_of_nodes()} nodes, {G.number_of_edges()} edges, {len(verse_nodes)} verse nodes")
-
-
 def test_find_related_entries():
     """find_related_entries should work with entry-based evidence."""
     from kalima.tools.research import register as reg_research
@@ -204,7 +184,6 @@ if __name__ == "__main__":
         test_get_verse_entries,
         test_get_entry_stats,
         test_get_verse_with_context,
-        test_render_graph,
         test_find_related_entries,
         test_delete_entry,
     ]

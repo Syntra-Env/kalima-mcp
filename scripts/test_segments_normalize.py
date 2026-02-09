@@ -160,22 +160,6 @@ def test_compute_verse_universe():
     print(f"PASS: compute_verse_universe('pattern', V+IMPF) returned {len(verses2)} verses")
 
 
-def test_render_graph():
-    """render_graph should still work after normalization."""
-    from kalima.tools.graph import register as reg_graph, _build_graph, _invalidate_cache
-    from mcp.server.fastmcp import FastMCP
-
-    server = FastMCP("test")
-    reg_graph(server)
-
-    _invalidate_cache()
-    G = _build_graph()
-
-    assert G.number_of_nodes() > 0, "Graph should have nodes"
-    assert G.number_of_edges() > 0, "Graph should have edges"
-    print(f"PASS: Graph has {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
-
-
 def test_ref_features_completeness():
     """Every unique FK value in segments should correspond to a ref_features row."""
     conn = get_connection()
@@ -202,7 +186,6 @@ if __name__ == "__main__":
         test_compare_roots,
         test_get_verse_with_context,
         test_compute_verse_universe,
-        test_render_graph,
         test_ref_features_completeness,
     ]
 

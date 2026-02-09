@@ -25,15 +25,10 @@ def get_connection() -> sqlite3.Connection:
     )
 
     if not Path(db_path).exists():
-        # Also check quran.db in project root
-        alt_path = str(Path(__file__).resolve().parent.parent.parent / 'quran.db')
-        if Path(alt_path).exists():
-            db_path = alt_path
-        else:
-            raise FileNotFoundError(
-                f"Database not found at {db_path}. "
-                f"Set KALIMA_DB_PATH environment variable to the correct path."
-            )
+        raise FileNotFoundError(
+            f"Database not found at {db_path}. "
+            f"Set KALIMA_DB_PATH environment variable to the correct path."
+        )
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -61,23 +56,6 @@ def close_database():
     if _conn:
         _conn.close()
         _conn = None
-
-
-# --- Graph cache invalidation hook ---
-
-_graph_invalidation_callback = None
-
-
-def set_graph_invalidation_callback(callback):
-    """Register a callback to invalidate the graph cache on writes."""
-    global _graph_invalidation_callback
-    _graph_invalidation_callback = callback
-
-
-def invalidate_graph_cache():
-    """Call the registered graph cache invalidation callback."""
-    if _graph_invalidation_callback:
-        _graph_invalidation_callback()
 
 
 # --- Initialization functions ---
