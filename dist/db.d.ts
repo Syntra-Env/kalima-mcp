@@ -1,5 +1,10 @@
 import { Database as SqlJsDatabase } from 'sql.js';
 export declare function getDatabase(): Promise<SqlJsDatabase>;
+/**
+ * Save the in-memory database to disk
+ * CRITICAL: Must be called after any write operations to persist changes
+ */
+export declare function saveDatabase(database?: SqlJsDatabase): void;
 export declare function closeDatabase(): void;
 export interface Verse {
     surah_number: number;

@@ -1,27 +1,6 @@
-import { getDatabase } from '../db.js';
+import { getDatabase, saveDatabase } from '../db.js';
 import { generatePatternId, generateClaimId, generateEvidenceId } from '../utils/shortId.js';
-import { writeFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-// Helper to transform sql.js results to typed objects
-function rowsToObjects(columns, values) {
-    return values.map(row => {
-        const obj = {};
-        columns.forEach((col, idx) => {
-            obj[col] = row[idx];
-        });
-        return obj;
-    });
-}
-// Helper to persist database changes to disk
-function saveDatabase(db) {
-    const dbPath = process.env.KALIMA_DB_PATH || join(__dirname, '../../../../data/database/kalima.db');
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    writeFileSync(dbPath, buffer);
-}
+import { rowsToObjects } from '../utils/dbHelpers.js';
 // Map user-friendly names to database codes
 function normalizeLinguisticFeature(key, value) {
     const mappings = {
@@ -136,6 +115,15 @@ export async function createPatternInterpretation(data) {
         const now = new Date().toISOString();
         // Insert the pattern
         db.run('INSERT INTO patterns (id, description, pattern_type, scope, phase, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [pattern_id, description, pattern_type, scope, phase, now, now]);
+        // Store linguistic features in pattern_linguistic_features table
+        if (linguistic_features && typeof linguistic_features === 'object') {
+            for (const [featureType, featureValue] of Object.entries(linguistic_features)) {
+                if (featureValue !== null && featureValue !== undefined) {
+                    const featureId = `feat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    db.run('INSERT INTO pattern_linguistic_features (id, pattern_id, feature_type, feature_value, created_at) VALUES (?, ?, ?, ?, ?)', [featureId, pattern_id, featureType, String(featureValue), now]);
+                }
+            }
+        }
         // Create a linked claim with the interpretation
         const claim_id = generateClaimId(db);
         const claim_content = `${description}\n\nInterpretation: ${interpretation}${linguistic_features ? `\n\nLinguistic features: ${JSON.stringify(linguistic_features)}` : ''}`;

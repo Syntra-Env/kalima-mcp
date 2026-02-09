@@ -1,47 +1,110 @@
-import { getDatabase } from '../db.js';
+import { getDatabase, saveDatabase } from '../db.js';
 import { generateClaimId, generateEvidenceId } from '../utils/shortId.js';
-import { writeFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-// Helper to transform sql.js results to typed objects
-function rowsToObjects(columns, values) {
-    return values.map(row => {
-        const obj = {};
-        columns.forEach((col, idx) => {
-            obj[col] = row[idx];
-        });
-        return obj;
-    });
-}
-// Helper to persist database changes to disk
-function saveDatabase(db) {
-    const dbPath = process.env.KALIMA_DB_PATH || join(__dirname, '../../../../data/database/kalima.db');
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    writeFileSync(dbPath, buffer);
-}
+import { rowsToObjects } from '../utils/dbHelpers.js';
 export async function searchClaims(options) {
     const db = await getDatabase();
-    const { phase, pattern_id, limit = 50 } = options;
-    let query = 'SELECT * FROM claims WHERE 1=1';
+    const { phase, pattern_id, query: searchQuery, limit = 50 } = options;
+    let sql = 'SELECT * FROM claims WHERE 1=1';
     const params = [];
+    if (searchQuery) {
+        sql += ' AND lower(content) LIKE ?';
+        params.push(`%${searchQuery.toLowerCase()}%`);
+    }
     if (phase) {
-        query += ' AND phase = ?';
+        sql += ' AND phase = ?';
         params.push(phase);
     }
     if (pattern_id) {
-        query += ' AND pattern_id = ?';
+        sql += ' AND pattern_id = ?';
         params.push(pattern_id);
     }
-    query += ' ORDER BY updated_at DESC LIMIT ?';
+    sql += ' ORDER BY updated_at DESC LIMIT ?';
     params.push(limit);
-    const result = db.exec(query, params);
+    const result = db.exec(sql, params);
     if (!result.length || !result[0].values.length) {
         return [];
     }
     return rowsToObjects(result[0].columns, result[0].values);
+}
+export async function getClaimStats() {
+    const db = await getDatabase();
+    const totalResult = db.exec('SELECT count(*) FROM claims');
+    const total_claims = totalResult[0]?.values[0]?.[0] ?? 0;
+    const phaseResult = db.exec('SELECT phase, count(*) FROM claims GROUP BY phase ORDER BY count(*) DESC');
+    const by_phase = {};
+    if (phaseResult.length > 0) {
+        for (const row of phaseResult[0].values) {
+            by_phase[row[0]] = row[1];
+        }
+    }
+    const patternResult = db.exec('SELECT count(*) FROM patterns');
+    const total_patterns = patternResult[0]?.values[0]?.[0] ?? 0;
+    const evidenceResult = db.exec('SELECT count(*) FROM claim_evidence');
+    const total_evidence = evidenceResult[0]?.values[0]?.[0] ?? 0;
+    const rangeResult = db.exec("SELECT min(id), max(id) FROM claims WHERE id LIKE 'claim_%'");
+    const id_range = {
+        min: rangeResult[0]?.values[0]?.[0] ?? '',
+        max: rangeResult[0]?.values[0]?.[1] ?? ''
+    };
+    return { total_claims, by_phase, total_patterns, total_evidence, id_range };
+}
+export async function saveBulkInsights(data) {
+    const db = await getDatabase();
+    const { claims } = data;
+    try {
+        const claim_ids = [];
+        const now = new Date().toISOString();
+        for (const claim of claims) {
+            const claim_id = generateClaimId(db);
+            db.run('INSERT INTO claims (id, content, phase, pattern_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', [claim_id, claim.content, claim.phase || 'question', claim.pattern_id || null, now, now]);
+            claim_ids.push(claim_id);
+        }
+        saveDatabase(db);
+        return {
+            success: true,
+            claim_ids,
+            message: `Saved ${claim_ids.length} claims (${claim_ids[0]} through ${claim_ids[claim_ids.length - 1]})`
+        };
+    }
+    catch (error) {
+        return {
+            success: false,
+            claim_ids: [],
+            message: `Failed to save bulk insights: ${error}`
+        };
+    }
+}
+export async function updateClaim(data) {
+    const db = await getDatabase();
+    const { claim_id, content, phase, pattern_id } = data;
+    try {
+        const checkResult = db.exec('SELECT id FROM claims WHERE id = ?', [claim_id]);
+        if (!checkResult.length || !checkResult[0].values.length) {
+            return { success: false, message: `Claim ${claim_id} not found` };
+        }
+        const now = new Date().toISOString();
+        const updates = ['updated_at = ?'];
+        const params = [now];
+        if (content !== undefined) {
+            updates.push('content = ?');
+            params.push(content);
+        }
+        if (phase !== undefined) {
+            updates.push('phase = ?');
+            params.push(phase);
+        }
+        if (pattern_id !== undefined) {
+            updates.push('pattern_id = ?');
+            params.push(pattern_id);
+        }
+        params.push(claim_id);
+        db.run(`UPDATE claims SET ${updates.join(', ')} WHERE id = ?`, params);
+        saveDatabase(db);
+        return { success: true, message: `Claim ${claim_id} updated successfully` };
+    }
+    catch (error) {
+        return { success: false, message: `Failed to update claim: ${error}` };
+    }
 }
 export async function getClaimEvidence(claim_id) {
     const db = await getDatabase();
@@ -129,24 +192,12 @@ export async function saveInsight(data) {
         };
     }
 }
-export async function updateClaimPhase(claim_id, new_phase) {
+export async function getClaim(claim_id) {
     const db = await getDatabase();
-    try {
-        const now = new Date().toISOString();
-        // Check if claim exists first
-        const checkResult = db.exec('SELECT id FROM claims WHERE id = ?', [claim_id]);
-        if (!checkResult.length || !checkResult[0].values.length) {
-            return false;
-        }
-        // Update the claim
-        db.run('UPDATE claims SET phase = ?, updated_at = ? WHERE id = ?', [new_phase, now, claim_id]);
-        // Persist changes to disk
-        saveDatabase(db);
-        return true;
-    }
-    catch (error) {
-        return false;
-    }
+    const result = db.exec('SELECT * FROM claims WHERE id = ?', [claim_id]);
+    if (!result.length || !result[0].values.length)
+        return null;
+    return rowsToObjects(result[0].columns, result[0].values)[0];
 }
 export async function deleteClaim(claim_id) {
     const db = await getDatabase();
@@ -201,6 +252,171 @@ export async function deleteMultipleClaims(claim_ids) {
     }
     catch (error) {
         return { success: false, deleted, failed, message: `Failed during deletion: ${error}` };
+    }
+}
+export async function getVerseClaims(surah, ayah) {
+    const db = await getDatabase();
+    const result = db.exec(`SELECT
+      vc.claim_id,
+      c.content as claim_content,
+      c.phase as claim_phase,
+      vc.evidence_type,
+      vc.verification,
+      vc.notes,
+      vc.created_at
+    FROM verse_claims vc
+    JOIN claims c ON c.id = vc.claim_id
+    WHERE vc.surah = ? AND vc.ayah = ?
+    ORDER BY vc.created_at DESC`, [surah, ayah]);
+    if (!result.length || !result[0].values.length) {
+        return [];
+    }
+    return rowsToObjects(result[0].columns, result[0].values);
+}
+export async function findRelatedClaims(claim_id, limit = 20) {
+    const db = await getDatabase();
+    // Get the source claim
+    const claimResult = db.exec('SELECT * FROM claims WHERE id = ?', [claim_id]);
+    if (!claimResult.length || !claimResult[0].values.length) {
+        return { claim: null, shared_evidence: [], same_pattern: [], same_surah_claims: [] };
+    }
+    const claim = rowsToObjects(claimResult[0].columns, claimResult[0].values)[0];
+    // 1. Claims sharing exact verse evidence (via verse_claims view which unions claim_evidence + verse_evidence)
+    const sharedResult = db.exec(`SELECT DISTINCT c.id, c.content, c.phase, c.pattern_id, c.note_file, c.created_at, c.updated_at,
+            vc2.surah, vc2.ayah
+     FROM verse_claims vc1
+     JOIN verse_claims vc2 ON vc1.surah = vc2.surah AND vc1.ayah = vc2.ayah AND vc1.claim_id != vc2.claim_id
+     JOIN claims c ON c.id = vc2.claim_id
+     WHERE vc1.claim_id = ?
+     ORDER BY c.updated_at DESC
+     LIMIT ?`, [claim_id, limit]);
+    const sharedMap = new Map();
+    if (sharedResult.length && sharedResult[0].values.length) {
+        for (const row of sharedResult[0].values) {
+            const cols = sharedResult[0].columns;
+            const id = row[cols.indexOf('id')];
+            const surah = row[cols.indexOf('surah')];
+            const ayah = row[cols.indexOf('ayah')];
+            if (!sharedMap.has(id)) {
+                sharedMap.set(id, {
+                    claim: {
+                        id,
+                        content: row[cols.indexOf('content')],
+                        phase: row[cols.indexOf('phase')],
+                        pattern_id: row[cols.indexOf('pattern_id')],
+                        note_file: row[cols.indexOf('note_file')],
+                        created_at: row[cols.indexOf('created_at')],
+                        updated_at: row[cols.indexOf('updated_at')],
+                    },
+                    shared_verses: []
+                });
+            }
+            sharedMap.get(id).shared_verses.push({ surah, ayah });
+        }
+    }
+    // 2. Claims in the same pattern
+    let same_pattern = [];
+    if (claim.pattern_id) {
+        const patternResult = db.exec('SELECT * FROM claims WHERE pattern_id = ? AND id != ? ORDER BY updated_at DESC LIMIT ?', [claim.pattern_id, claim_id, limit]);
+        if (patternResult.length && patternResult[0].values.length) {
+            same_pattern = rowsToObjects(patternResult[0].columns, patternResult[0].values);
+        }
+    }
+    // 3. Claims with evidence in the same surah (weaker signal)
+    const surahResult = db.exec(`SELECT DISTINCT c.id, c.content, c.phase, c.pattern_id, c.note_file, c.created_at, c.updated_at,
+            vc2.surah
+     FROM verse_claims vc1
+     JOIN verse_claims vc2 ON vc1.surah = vc2.surah AND vc1.claim_id != vc2.claim_id
+       AND NOT (vc1.ayah = vc2.ayah)
+     JOIN claims c ON c.id = vc2.claim_id
+     WHERE vc1.claim_id = ?
+       AND vc2.claim_id NOT IN (
+         SELECT vc3.claim_id FROM verse_claims vc3
+         JOIN verse_claims vc4 ON vc3.surah = vc4.surah AND vc3.ayah = vc4.ayah AND vc3.claim_id != vc4.claim_id
+         WHERE vc4.claim_id = ?
+       )
+     ORDER BY c.updated_at DESC
+     LIMIT ?`, [claim_id, claim_id, limit]);
+    const surahMap = new Map();
+    if (surahResult.length && surahResult[0].values.length) {
+        for (const row of surahResult[0].values) {
+            const cols = surahResult[0].columns;
+            const id = row[cols.indexOf('id')];
+            if (!surahMap.has(id)) {
+                surahMap.set(id, {
+                    claim: {
+                        id,
+                        content: row[cols.indexOf('content')],
+                        phase: row[cols.indexOf('phase')],
+                        pattern_id: row[cols.indexOf('pattern_id')],
+                        note_file: row[cols.indexOf('note_file')],
+                        created_at: row[cols.indexOf('created_at')],
+                        updated_at: row[cols.indexOf('updated_at')],
+                    },
+                    surah: row[cols.indexOf('surah')]
+                });
+            }
+        }
+    }
+    return {
+        claim,
+        shared_evidence: Array.from(sharedMap.values()),
+        same_pattern,
+        same_surah_claims: Array.from(surahMap.values())
+    };
+}
+export async function addClaimDependency(data) {
+    const db = await getDatabase();
+    const { claim_id, depends_on_claim_id, dependency_type } = data;
+    const validTypes = ['depends_on', 'supports', 'contradicts', 'refines', 'related'];
+    if (!validTypes.includes(dependency_type)) {
+        return { success: false, message: `Invalid dependency_type. Must be one of: ${validTypes.join(', ')}` };
+    }
+    if (claim_id === depends_on_claim_id) {
+        return { success: false, message: 'A claim cannot depend on itself' };
+    }
+    try {
+        // Validate both claims exist
+        const check1 = db.exec('SELECT id FROM claims WHERE id = ?', [claim_id]);
+        if (!check1.length || !check1[0].values.length) {
+            return { success: false, message: `Claim ${claim_id} not found` };
+        }
+        const check2 = db.exec('SELECT id FROM claims WHERE id = ?', [depends_on_claim_id]);
+        if (!check2.length || !check2[0].values.length) {
+            return { success: false, message: `Claim ${depends_on_claim_id} not found` };
+        }
+        // Check for duplicate
+        const dupCheck = db.exec('SELECT claim_id FROM claim_dependencies WHERE claim_id = ? AND depends_on_claim_id = ? AND dependency_type = ?', [claim_id, depends_on_claim_id, dependency_type]);
+        if (dupCheck.length && dupCheck[0].values.length) {
+            return { success: false, message: `Dependency already exists: ${claim_id} --${dependency_type}--> ${depends_on_claim_id}` };
+        }
+        const now = new Date().toISOString();
+        db.run('INSERT INTO claim_dependencies (claim_id, depends_on_claim_id, dependency_type, created_at) VALUES (?, ?, ?, ?)', [claim_id, depends_on_claim_id, dependency_type, now]);
+        saveDatabase(db);
+        return { success: true, message: `Dependency created: ${claim_id} --${dependency_type}--> ${depends_on_claim_id}` };
+    }
+    catch (error) {
+        return { success: false, message: `Failed to add dependency: ${error}` };
+    }
+}
+export async function deletePattern(pattern_id) {
+    const db = await getDatabase();
+    try {
+        const checkResult = db.exec('SELECT id FROM patterns WHERE id = ?', [pattern_id]);
+        if (!checkResult.length || !checkResult[0].values.length) {
+            return { success: false, message: `Pattern ${pattern_id} not found` };
+        }
+        // Unlink claims (set pattern_id to null, don't delete claims)
+        db.run('UPDATE claims SET pattern_id = NULL WHERE pattern_id = ?', [pattern_id]);
+        // Delete linguistic features
+        db.run('DELETE FROM pattern_linguistic_features WHERE pattern_id = ?', [pattern_id]);
+        // Delete the pattern
+        db.run('DELETE FROM patterns WHERE id = ?', [pattern_id]);
+        saveDatabase(db);
+        return { success: true, message: `Pattern ${pattern_id} deleted. Associated claims preserved with pattern_id set to null.` };
+    }
+    catch (error) {
+        return { success: false, message: `Failed to delete pattern: ${error}` };
     }
 }
 //# sourceMappingURL=research.js.map
