@@ -1,15 +1,8 @@
 # Node
 /node_modules/
 
-# Executables
-kalima.exe
-Kalima.exe
-kalima
-
 # Runtime data
 data/database/
-data/search-index/
-/kalima-index/
 *.db
 *.db-shm
 *.db-wal
