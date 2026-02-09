@@ -43,15 +43,16 @@
 
 ## MCP Server
 
-This project is an MCP (Model Context Protocol) server built with TypeScript/sql.js. The database is at `quran.db` (or path in `KALIMA_DB_PATH` env var).
+This project is an MCP (Model Context Protocol) server built with Python/FastMCP. The database is at `data/database/kalima.db` (or path in `KALIMA_DB_PATH` env var).
 
-### Build
+### Install
 ```
-npm run build
+pip install -e .
 ```
 
 ### Key directories
-- `src/` — TypeScript source
-- `src/tools/` — Tool implementations (quran, research, linguistic, workflow, context)
-- `src/utils/` — Shared helpers (dbHelpers, shortId)
-- `dist/` — Compiled JS output
+- `src/kalima/` — Python source
+- `src/kalima/tools/` — Tool implementations (quran, research, linguistic, workflow, context, graph)
+- `src/kalima/utils/` — Shared helpers (arabic, short_id)
+- `src/kalima/db.py` — SQLite connection manager (WAL mode, native sqlite3)
+- `src/kalima/server.py` — FastMCP server entry point

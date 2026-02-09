@@ -1,5 +1,15 @@
-# Node
-/node_modules/
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
 
 # Runtime data
 data/database/

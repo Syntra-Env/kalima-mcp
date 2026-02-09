@@ -1,12 +1,11 @@
 # Kalima - Quranic Research MCP Server
 
-MCP server for Quranic text analysis, morphological research, and falsification-based linguistic exploration.
+MCP server for Quranic text analysis, morphological research, graph analysis, and falsification-based linguistic exploration.
 
 ## Setup
 
 ```bash
-npm install
-npm run build
+pip install -e .
 ```
 
 ### Configuration
@@ -17,17 +16,17 @@ Add to `.mcp.json` or your MCP client config:
 {
   "mcpServers": {
     "kalima": {
-      "command": "node",
-      "args": ["dist/index.js"],
+      "command": "python",
+      "args": ["-X", "utf8", "-m", "kalima.server"],
       "env": {
-        "KALIMA_DB_PATH": "data/database/kalima.db"
+        "PYTHONPATH": "src"
       }
     }
   }
 }
 ```
 
-## Tools (26)
+## Tools (36)
 
 ### Quran (4)
 - `get_verse` - Get a specific verse (Arabic text only)
@@ -41,7 +40,7 @@ Add to `.mcp.json` or your MCP client config:
 - `create_surah_theme` - Create thematic interpretations for surahs
 - `add_verse_evidence` - Link verses as evidence to claims with verification status
 
-### Research (12)
+### Research (15)
 - `search_claims` - Search claims by keyword, phase, or pattern
 - `get_claim` - Get a single claim by ID
 - `save_insight` - Save a research claim
@@ -65,9 +64,17 @@ Add to `.mcp.json` or your MCP client config:
 - `list_workflow_sessions` - List all sessions
 - `check_phase_transition` - Auto-transition claim phases based on evidence
 
+### Graph Analysis (6) — NEW
+- `analyze_coherence` - Composite coherence score (0.0–1.0) for research knowledge base
+- `find_contradictions` - Detect explicit and implicit contradictions
+- `compute_centrality` - Rank claims by importance (degree, betweenness, pagerank, eigenvector)
+- `find_clusters` - Community detection (Louvain, label propagation, greedy modularity)
+- `suggest_validation_order` - Topological sort for optimal validation ordering
+- `detect_circular_dependencies` - Find circular reasoning in claim dependencies
+
 ## Database
 
-SQLite database (`data/database/kalima.db`) contains:
+SQLite database (`data/database/kalima.db`) opened directly with WAL mode. Contains:
 
 - 6,236 verses (complete Quran)
 - 114 surahs
@@ -78,22 +85,22 @@ SQLite database (`data/database/kalima.db`) contains:
 
 ```
 Kalima/
-├── src/                    # TypeScript source
-│   ├── index.ts            # MCP server entry point + tool definitions
-│   ├── db.ts               # Database connection and schema
-│   ├── tools/              # Tool implementations
-│   │   ├── quran.ts
-│   │   ├── linguistic.ts
-│   │   ├── research.ts
-│   │   ├── workflow.ts
-│   │   └── context.ts
+├── src/kalima/             # Python source
+│   ├── server.py           # FastMCP server entry point
+│   ├── db.py               # SQLite connection manager (WAL mode)
+│   ├── tools/
+│   │   ├── quran.py        # Verse retrieval and search
+│   │   ├── linguistic.py   # Morphological search and pattern creation
+│   │   ├── research.py     # Claims CRUD, evidence, dependencies
+│   │   ├── workflow.py     # Verification session state machine
+│   │   ├── context.py      # Morphology-aware verse context
+│   │   └── graph.py        # NetworkX graph analysis
 │   └── utils/
-│       ├── dbHelpers.ts
-│       └── shortId.ts
-├── dist/                   # Compiled JavaScript
-├── datasets/               # Reference corpus data
+│       ├── arabic.py       # Arabic text normalization
+│       └── short_id.py     # Sequential ID generation
 ├── data/database/          # SQLite database (gitignored)
-└── package.json
+├── pyproject.toml          # Python package config
+└── requirements.txt
 ```
 
 ## Research Methodology
