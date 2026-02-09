@@ -4,7 +4,7 @@ import re
 import sqlite3
 import sys
 
-DB_PATH = r"c:\Codex\Kalima\data\database\kalima.db"
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "kalima.db"
 
 # Category mapping: content prefix → category
 CATEGORY_MAP = [

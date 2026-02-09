@@ -14,7 +14,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "database" / "kalima.db"
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "kalima.db"
 
 # Maps old entry_terms term_type -> (feature_type, category) in ref_features
 TERM_TYPE_MAP = {

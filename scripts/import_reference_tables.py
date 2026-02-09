@@ -1,4 +1,4 @@
-"""Import reference datasets (CSV + XLSX) into kalima.db.
+"""Import reference datasets (CSV + XLSX) into kalima database.
 
 Run once:  python -X utf8 scripts/import_reference_tables.py
 
@@ -23,7 +23,7 @@ try:
 except ImportError:
     openpyxl = None
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "database" / "kalima.db"
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "kalima.db"
 DATASETS = Path(__file__).resolve().parent.parent / "datasets" / "Quranic"
 
 conn = sqlite3.connect(str(DB_PATH))
@@ -187,7 +187,7 @@ def import_morph_features():
 
 
 def main():
-    print("Importing reference tables into kalima.db...")
+    print("Importing reference tables into kalima database...")
     import_lemmas()
     import_roots()
     import_pos_tags()

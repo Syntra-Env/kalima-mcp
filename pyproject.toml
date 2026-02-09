@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-kalima = "kalima.server:main"
+kalima = "src.server:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]

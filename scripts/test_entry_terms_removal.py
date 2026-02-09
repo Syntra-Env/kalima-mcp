@@ -7,9 +7,9 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from kalima.db import get_connection
+from src.db import get_connection
 
 
 def test_entry_terms_gone():
@@ -47,7 +47,7 @@ def test_scoped_entries():
 
 def test_get_verse_with_context():
     """get_verse_with_context should still surface related entries via scope."""
-    from kalima.tools.context import register as reg_context
+    from src.tools.context import register as reg_context
     from mcp.server.fastmcp import FastMCP
 
     server = FastMCP("test")
@@ -65,7 +65,7 @@ def test_get_verse_with_context():
 
 def test_find_related_entries():
     """find_related_entries should use shared_scope instead of shared_terms."""
-    from kalima.tools.research import register as reg_research
+    from src.tools.research import register as reg_research
     from mcp.server.fastmcp import FastMCP
 
     server = FastMCP("test")
@@ -82,7 +82,7 @@ def test_find_related_entries():
 
 def test_get_entry_stats():
     """get_entry_stats should work without entry_terms."""
-    from kalima.tools.research import register as reg_research
+    from src.tools.research import register as reg_research
     from mcp.server.fastmcp import FastMCP
 
     server = FastMCP("test")
@@ -99,8 +99,8 @@ def test_get_entry_stats():
 
 def test_create_pattern_interpretation():
     """create_pattern_interpretation should work without entry_terms."""
-    from kalima.tools.linguistic import register as reg_linguistic
-    from kalima.tools.research import register as reg_research
+    from src.tools.linguistic import register as reg_linguistic
+    from src.tools.research import register as reg_research
     from mcp.server.fastmcp import FastMCP
 
     server = FastMCP("test")
@@ -136,8 +136,8 @@ def test_create_pattern_interpretation():
 
 def test_link_entry_terms_removed():
     """link_entry_terms tool should no longer be registered."""
-    from kalima.tools.linguistic import register as reg_linguistic
-    from kalima.tools.research import register as reg_research
+    from src.tools.linguistic import register as reg_linguistic
+    from src.tools.research import register as reg_research
     from mcp.server.fastmcp import FastMCP
 
     server = FastMCP("test")
@@ -152,13 +152,13 @@ def test_link_entry_terms_removed():
 
 def test_delete_entry():
     """delete_entry should work without entry_terms references."""
-    from kalima.tools.research import register as reg_research
+    from src.tools.research import register as reg_research
     from mcp.server.fastmcp import FastMCP
 
     conn = get_connection()
 
     # Create a test entry
-    from kalima.utils.short_id import generate_entry_id
+    from src.utils.short_id import generate_entry_id
     eid = generate_entry_id(conn)
     conn.execute(
         "INSERT INTO entries (id, content, phase, category, created_at, updated_at) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",

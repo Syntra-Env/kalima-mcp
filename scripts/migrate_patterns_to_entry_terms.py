@@ -14,7 +14,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "database" / "kalima.db"
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "kalima.db"
 
 
 def main():

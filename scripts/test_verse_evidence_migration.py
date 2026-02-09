@@ -8,9 +8,9 @@ from pathlib import Path
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from kalima.db import get_connection
+from src.db import get_connection
 
 
 def test_verse_evidence_table_gone():
@@ -45,7 +45,7 @@ def test_verse_entries_have_dependencies():
 
 def test_get_entry_evidence():
     """get_entry_evidence should return verse-scoped children."""
-    from kalima.tools.research import register as reg_research
+    from src.tools.research import register as reg_research
     from mcp.server.fastmcp import FastMCP
 
     server = FastMCP("test")
@@ -67,7 +67,7 @@ def test_get_entry_evidence():
 
 def test_get_verse_entries():
     """get_verse_entries should find verse-scoped entries for a verse."""
-    from kalima.tools.research import register as reg_research
+    from src.tools.research import register as reg_research
     from mcp.server.fastmcp import FastMCP
 
     server = FastMCP("test")
@@ -83,7 +83,7 @@ def test_get_verse_entries():
 
 def test_get_entry_stats():
     """get_entry_stats should work without verse_evidence table."""
-    from kalima.tools.research import register as reg_research
+    from src.tools.research import register as reg_research
     from mcp.server.fastmcp import FastMCP
 
     server = FastMCP("test")
@@ -101,7 +101,7 @@ def test_get_entry_stats():
 
 def test_get_verse_with_context():
     """get_verse_with_context should use entry-based queries."""
-    from kalima.tools.context import register as reg_context
+    from src.tools.context import register as reg_context
     from mcp.server.fastmcp import FastMCP
 
     server = FastMCP("test")
@@ -119,7 +119,7 @@ def test_get_verse_with_context():
 
 def test_find_related_entries():
     """find_related_entries should work with entry-based evidence."""
-    from kalima.tools.research import register as reg_research
+    from src.tools.research import register as reg_research
     from mcp.server.fastmcp import FastMCP
 
     server = FastMCP("test")
@@ -136,7 +136,7 @@ def test_find_related_entries():
 
 def test_delete_entry():
     """delete_entry should clean up verse-scoped children."""
-    from kalima.tools.research import register as reg_research
+    from src.tools.research import register as reg_research
     from mcp.server.fastmcp import FastMCP
 
     server = FastMCP("test")

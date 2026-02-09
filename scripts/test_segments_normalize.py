@@ -9,9 +9,9 @@ from pathlib import Path
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from kalima.db import get_connection
+from src.db import get_connection
 
 
 def test_segments_schema():
@@ -66,8 +66,8 @@ def test_no_null_pos():
 
 def test_search_by_linguistic_features():
     """search_by_linguistic_features should work with FK-based queries."""
-    from kalima.tools.linguistic import register as reg_linguistic
-    from kalima.tools.research import register as reg_research
+    from src.tools.linguistic import register as reg_linguistic
+    from src.tools.research import register as reg_research
     from mcp.server.fastmcp import FastMCP
 
     server = FastMCP("test")
@@ -96,8 +96,8 @@ def test_search_by_linguistic_features():
 
 def test_compare_roots():
     """compare_roots should work with FK-based queries."""
-    from kalima.tools.linguistic import register as reg_linguistic
-    from kalima.tools.research import register as reg_research
+    from src.tools.linguistic import register as reg_linguistic
+    from src.tools.research import register as reg_research
     from mcp.server.fastmcp import FastMCP
 
     server = FastMCP("test")
@@ -119,7 +119,7 @@ def test_compare_roots():
 
 def test_get_verse_with_context():
     """get_verse_with_context should resolve FK columns to text."""
-    from kalima.tools.context import register as reg_context
+    from src.tools.context import register as reg_context
     from mcp.server.fastmcp import FastMCP
 
     server = FastMCP("test")
@@ -144,7 +144,7 @@ def test_get_verse_with_context():
 
 def test_compute_verse_universe():
     """compute_verse_universe should work with FK-based queries."""
-    from kalima.tools.workflow import compute_verse_universe
+    from src.tools.workflow import compute_verse_universe
 
     conn = get_connection()
 

@@ -17,11 +17,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import sqlite3
 
-DB_PATH = Path(__file__).resolve().parent.parent / 'data' / 'database' / 'kalima.db'
+DB_PATH = Path(__file__).resolve().parent.parent / 'data' / 'kalima.db'
 
 
 def _now():

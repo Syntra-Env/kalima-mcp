@@ -21,7 +21,7 @@ def get_connection() -> sqlite3.Connection:
 
     db_path = os.environ.get(
         'KALIMA_DB_PATH',
-        str(Path(__file__).resolve().parent.parent.parent / 'data' / 'database' / 'kalima.db')
+        str(Path(__file__).resolve().parent.parent / 'data' / 'kalima.db')
     )
 
     if not Path(db_path).exists():

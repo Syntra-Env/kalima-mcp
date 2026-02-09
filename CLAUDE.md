@@ -43,7 +43,7 @@
 
 ## MCP Server
 
-This project is an MCP (Model Context Protocol) server built with Python/FastMCP. The database is at `data/database/kalima.db` (or path in `KALIMA_DB_PATH` env var).
+This project is an MCP (Model Context Protocol) server built with Python/FastMCP. The database is at `data/kalima.db` (or path in `KALIMA_DB_PATH` env var).
 
 ### Database schema
 - `entries` — All research data lives here. Each has:
@@ -65,8 +65,8 @@ pip install -e .
 ```
 
 ### Key directories
-- `src/kalima/` — Python source
-- `src/kalima/tools/` — Tool implementations (quran, research, linguistic, workflow, context)
-- `src/kalima/utils/` — Shared helpers (arabic, short_id, features)
-- `src/kalima/db.py` — SQLite connection manager (WAL mode, native sqlite3)
-- `src/kalima/server.py` — FastMCP server entry point
+- `src/` — Python package (importable as `src`)
+- `src/tools/` — Tool implementations (quran, research, linguistic, workflow, context)
+- `src/utils/` — Shared helpers (arabic, short_id, features)
+- `src/db.py` — SQLite connection manager (WAL mode, native sqlite3)
+- `src/server.py` — FastMCP server entry point

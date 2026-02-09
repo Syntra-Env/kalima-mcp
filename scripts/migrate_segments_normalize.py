@@ -21,11 +21,11 @@ import time
 from pathlib import Path
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from kalima.utils.features import TERM_TYPE_TO_FEATURE
+from src.utils.features import TERM_TYPE_TO_FEATURE
 
-DB_PATH = Path(__file__).resolve().parent.parent / 'data' / 'database' / 'kalima.db'
+DB_PATH = Path(__file__).resolve().parent.parent / 'data' / 'kalima.db'
 
 
 def migrate():
