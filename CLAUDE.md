@@ -6,7 +6,7 @@
 
 2. **NEVER translate Quranic Arabic into English.** Do not provide English renderings of verses. The user works directly with the Arabic text and derives meaning through the methodology below.
 
-3. **Only present interpretations that exist in the Kalima database** (claims, patterns, evidence). If asked about a verse with no database entries, state that no verified interpretation exists yet rather than defaulting to conventional readings.
+3. **Only present interpretations that exist in the Kalima database** (entries, patterns, evidence). If asked about a verse with no database entries, state that no verified interpretation exists yet rather than defaulting to conventional readings.
 
 4. **Define Quranic terms using only the Quran itself.** External sources (hadith, biblical parallels, pre-Islamic poetry, traditional dictionaries, Lane's Lexicon) must not override internal Quranic consistency. Words are defined by their usage across ALL Quranic instances.
 
@@ -45,6 +45,20 @@
 
 This project is an MCP (Model Context Protocol) server built with Python/FastMCP. The database is at `data/database/kalima.db` (or path in `KALIMA_DB_PATH` env var).
 
+### Database schema
+- `entries` — All research data lives here. Each has:
+  - `id` (entry_N), `content`, `phase`, `category`, `confidence`, timestamps
+  - Scope: `scope_type` (root, lemma, pattern, surah, verse_range, verse, character, stylistic), `scope_value`
+  - Verse evidence entries use `scope_type='verse'`, `scope_value='surah:ayah'` and link to parent via `entry_dependencies`
+  - Inline verification: `verse_total`, `verse_verified`, `verse_supports`, `verse_contradicts`, `verse_unclear`, `verse_current_index`, `verse_queue` (JSON), `verification_started_at`, `verification_updated_at`
+- `ref_features` — Unified linguistic reference table (roots, lemmas, POS, morph features, dependency relations). Each has `feature_type`, `category`, `lookup_key`, labels, frequency. Serves as FK target for normalized `segments` columns
+- `segments` — Morphological segments of Quranic tokens. Feature columns are normalized as integer FKs to `ref_features` (e.g. `root_id`, `lemma_id`, `pos_id`, `verb_form_id`, etc.). Non-feature columns: `id`, `token_id`, `form`
+- `entry_dependencies` — Typed relationships between entries (entry_id, depends_on_entry_id, dependency_type: depends_on, supports, contradicts, refines, related)
+
+Entry categories: `quranic_research`, `root_analysis`, `ncu`, `methodology`, `historical`, `design`, `essay`, `personal`, `session`, `question`, `uncategorized`
+
+Scope types: `root`, `lemma`, `pattern`, `surah`, `verse_range`, `verse`, `character`, `stylistic`
+
 ### Install
 ```
 pip install -e .
@@ -53,6 +67,6 @@ pip install -e .
 ### Key directories
 - `src/kalima/` — Python source
 - `src/kalima/tools/` — Tool implementations (quran, research, linguistic, workflow, context, graph)
-- `src/kalima/utils/` — Shared helpers (arabic, short_id)
+- `src/kalima/utils/` — Shared helpers (arabic, short_id, features)
 - `src/kalima/db.py` — SQLite connection manager (WAL mode, native sqlite3)
 - `src/kalima/server.py` — FastMCP server entry point
