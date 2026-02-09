@@ -25,9 +25,15 @@ data/database/
 data/search-index/
 /kalima-index/
 /kalima.db
+/quran.db
 *.db-shm
 *.db-wal
 engine/search/kalima-index-test-local/
+
+# Local config
+.env
+.mcp.json
+.claude/settings.local.json
 
 # Temporary files
 temp_*.json
