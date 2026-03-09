@@ -74,9 +74,10 @@ def compute_verse_universe(conn, entry: dict, limit: int = 500, **kwargs) -> lis
         fk_col = f"{col_name}_id"
         rows = conn.execute(
             f"""SELECT DISTINCT w.verse_surah AS surah, w.verse_ayah AS ayah
-                FROM morphemes m
-                JOIN words w ON m.word_id = w.id
-                WHERE m.{fk_col} = ?
+                FROM morpheme_library ml
+                JOIN word_morphemes wm ON wm.morpheme_library_id = ml.id
+                JOIN words w ON w.word_library_id = wm.word_library_id
+                WHERE ml.{fk_col} = ?
                 ORDER BY w.verse_surah, w.verse_ayah
                 LIMIT ?""",
             (feature_id, limit)
@@ -112,9 +113,10 @@ def compute_verse_universe(conn, entry: dict, limit: int = 500, **kwargs) -> lis
 
         rows = conn.execute(
             f"""SELECT DISTINCT w.verse_surah AS surah, w.verse_ayah AS ayah
-                FROM morphemes m
-                JOIN words w ON m.word_id = w.id
-                WHERE {where_clause}
+                FROM morpheme_library ml
+                JOIN word_morphemes wm ON wm.morpheme_library_id = ml.id
+                JOIN words w ON w.word_library_id = wm.word_library_id
+                WHERE {where_clause.replace('m.', 'ml.')}
                 ORDER BY w.verse_surah, w.verse_ayah
                 LIMIT ?""",
             params

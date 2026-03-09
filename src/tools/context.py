@@ -53,8 +53,9 @@ def register(server: FastMCP):
         words_rows = conn.execute(
             """SELECT
                 w.id as word_id,
-                w.text as word_text,
                 w.word_index,
+                w.word_library_id,
+                ml.uthmani_text AS morpheme_text,
                 rf_root.lookup_key AS root,
                 rf_lemma.lookup_key AS lemma,
                 rf_pos.lookup_key AS pos,
@@ -65,35 +66,48 @@ def register(server: FastMCP):
                 rf_dep.lookup_key AS dependency_rel,
                 rf_dn.lookup_key AS derived_noun_type
             FROM words w
-            LEFT JOIN morphemes m ON m.word_id = w.id
-            LEFT JOIN features rf_root ON m.root_id = rf_root.id
-            LEFT JOIN features rf_lemma ON m.lemma_id = rf_lemma.id
-            LEFT JOIN features rf_pos ON m.pos_id = rf_pos.id
-            LEFT JOIN features rf_vf ON m.verb_form_id = rf_vf.id
-            LEFT JOIN features rf_asp ON m.aspect_id = rf_asp.id
-            LEFT JOIN features rf_mood ON m.mood_id = rf_mood.id
-            LEFT JOIN features rf_case ON m.case_value_id = rf_case.id
-            LEFT JOIN features rf_dep ON m.dependency_rel_id = rf_dep.id
-            LEFT JOIN features rf_dn ON m.derived_noun_type_id = rf_dn.id
+            JOIN word_morphemes wm ON wm.word_library_id = w.word_library_id
+            JOIN morpheme_library ml ON wm.morpheme_library_id = ml.id
+            LEFT JOIN features rf_root ON ml.root_id = rf_root.id
+            LEFT JOIN features rf_lemma ON ml.lemma_id = rf_lemma.id
+            LEFT JOIN features rf_pos ON ml.pos_id = rf_pos.id
+            LEFT JOIN features rf_vf ON ml.verb_form_id = rf_vf.id
+            LEFT JOIN features rf_asp ON ml.aspect_id = rf_asp.id
+            LEFT JOIN features rf_mood ON ml.mood_id = rf_mood.id
+            LEFT JOIN features rf_case ON ml.case_value_id = rf_case.id
+            LEFT JOIN features rf_dep ON ml.dependency_rel_id = rf_dep.id
+            LEFT JOIN features rf_dn ON ml.derived_noun_type_id = rf_dn.id
             WHERE w.verse_surah = ? AND w.verse_ayah = ?
-            ORDER BY w.word_index ASC""",
+            ORDER BY w.word_index ASC, wm.position ASC""",
             (surah, ayah)
         ).fetchall()
 
         if not words_rows:
             return {"error": f"Verse {surah}:{ayah} not found"}
 
-        # Group rows by word_index (one word may have multiple morphemes)
+        from ..utils.units import compose_word_text
+
+        # Group rows by word_index
         from collections import OrderedDict
         word_groups: OrderedDict[int, list] = OrderedDict()
         for row in words_rows:
             word_groups.setdefault(row['word_index'], []).append(row)
 
-        # Compose verse text using one text per unique word
+        # Compose words and verse text
+        processed_words = []
+        for word_index, group in word_groups.items():
+            first = group[0]
+            word_text = compose_word_text(conn, first['word_library_id'])
+            processed_words.append({
+                "word_text": word_text,
+                "word_index": word_index,
+                "rows": group
+            })
+
         verse = {
             "surah_number": surah,
             "ayah_number": ayah,
-            "text": ' '.join(rows[0]['word_text'] for rows in word_groups.values()),
+            "text": ' '.join(pw['word_text'] for pw in processed_words),
         }
 
         # For each word, find related entries based on feature matching
@@ -131,64 +145,70 @@ def register(server: FastMCP):
         ).fetchall():
             root_feature_ids[r['lookup_key']] = r['id']
 
-        for word_row in words_rows:
+        for pw in processed_words:
+            word_index = pw['word_index']
+            word_text = pw['word_text']
+            
+            # Context is shared for the whole word across its morphemes
             related_entries = []
+            
+            for word_row in pw['rows']:
+                # 1. Feature-anchored entries for this morpheme's root
+                if include_root_entries and word_row['root']:
+                    rf_id = root_feature_ids.get(word_row['root'])
+                    if rf_id:
+                        root_entries = conn.execute(
+                            """SELECT id as entry_id, content as entry_content, phase as entry_phase
+                               FROM entries WHERE feature_id = ?""",
+                            (rf_id,)
+                        ).fetchall()
+                        for e in root_entries:
+                            related_entries.append({
+                                **dict(e),
+                                "matched_feature_type": "root",
+                                "matched_feature_value": word_row['root'],
+                            })
 
-            # 1. Feature-anchored entries for this word's root
-            if include_root_entries and word_row['root']:
-                rf_id = root_feature_ids.get(word_row['root'])
-                if rf_id:
-                    root_entries = conn.execute(
-                        """SELECT id as entry_id, content as entry_content, phase as entry_phase
-                           FROM entries WHERE feature_id = ?""",
-                        (rf_id,)
-                    ).fetchall()
-                    for e in root_entries:
+                # 2. Pattern-scoped entries
+                word_dict = dict(word_row)
+                for pe in pattern_entries:
+                    features = pe['features']
+                    match = True
+                    matched_type = None
+                    matched_value = None
+
+                    for feat_key, feat_val in features.items():
+                        word_val = word_dict.get(feat_key)
+                        if word_val is None or word_val != feat_val:
+                            match = False
+                            break
+                        if matched_type is None:
+                            matched_type = feat_key
+                            matched_value = feat_val
+
+                    if match and matched_type:
+                        has_form = any(k in features for k in ('verb_form', 'aspect', 'mood'))
+                        has_pos = 'pos' in features
+                        if (has_form and not include_form_entries) or (has_pos and not include_pos_entries):
+                            continue
                         related_entries.append({
-                            **dict(e),
-                            "matched_feature_type": "root",
-                            "matched_feature_value": word_row['root'],
+                            "entry_id": pe['entry_id'],
+                            "entry_content": pe['entry_content'],
+                            "entry_phase": pe['entry_phase'],
+                            "matched_feature_type": "pattern",
+                            "matched_feature_value": json.dumps(features, ensure_ascii=False),
                         })
 
-            # 2. Pattern-scoped entries: check if word matches ALL features in the pattern
-            word_dict = dict(word_row)
-            for pe in pattern_entries:
-                features = pe['features']
-                match = True
-                matched_type = None
-                matched_value = None
-
-                for feat_key, feat_val in features.items():
-                    word_val = word_dict.get(feat_key)
-                    if word_val is None or word_val != feat_val:
-                        match = False
-                        break
-                    if matched_type is None:
-                        matched_type = feat_key
-                        matched_value = feat_val
-
-                if match and matched_type:
-                    has_form = any(k in features for k in ('verb_form', 'aspect', 'mood'))
-                    has_pos = 'pos' in features
-                    if (has_form and not include_form_entries) or (has_pos and not include_pos_entries):
-                        continue
-                    related_entries.append({
-                        "entry_id": pe['entry_id'],
-                        "entry_content": pe['entry_content'],
-                        "entry_phase": pe['entry_phase'],
-                        "matched_feature_type": "pattern",
-                        "matched_feature_value": json.dumps(features, ensure_ascii=False),
-                    })
-
-            # Build enriched word dict with human-readable labels
+            # Build enriched word dict (using features from the first morpheme for high-level display)
+            first_row = pw['rows'][0]
             word = {
-                "word_text": word_row['word_text'],
-                "word_index": word_row['word_index'],
-                "root": word_row['root'],
-                "lemma": word_row['lemma'],
-                "pos": word_row['pos'],
-                "verb_form": word_row['verb_form'],
-                "aspect": word_row['aspect'],
+                "word_text": word_text,
+                "word_index": word_index,
+                "root": first_row['root'],
+                "lemma": first_row['lemma'],
+                "pos": first_row['pos'],
+                "verb_form": first_row['verb_form'],
+                "aspect": first_row['aspect'],
                 "related_entries": related_entries,
             }
 
@@ -303,8 +323,8 @@ def register(server: FastMCP):
                 lemma_rows = conn.execute(
                     """SELECT DISTINCT f.id, f.lookup_key, f.label_ar, f.label_en, f.frequency
                        FROM features f
-                       JOIN morphemes m ON m.lemma_id = f.id
-                       WHERE m.root_id = ?""",
+                       JOIN morpheme_library ml ON ml.lemma_id = f.id
+                       WHERE ml.root_id = ?""",
                     (feature_id,)
                 ).fetchall()
                 for lr in lemma_rows:
@@ -323,8 +343,8 @@ def register(server: FastMCP):
                 root_row = conn.execute(
                     """SELECT DISTINCT f.id, f.lookup_key, f.label_ar
                        FROM features f
-                       JOIN morphemes m ON m.root_id = f.id
-                       WHERE m.lemma_id = ?""",
+                       JOIN morpheme_library ml ON ml.root_id = f.id
+                       WHERE ml.lemma_id = ?""",
                     (feature_id,)
                 ).fetchone()
                 if root_row:
@@ -340,8 +360,8 @@ def register(server: FastMCP):
                     sibling_rows = conn.execute(
                         """SELECT DISTINCT f.id, f.lookup_key, f.label_ar, f.frequency
                            FROM features f
-                           JOIN morphemes m ON m.lemma_id = f.id
-                           WHERE m.root_id = ? AND f.id != ?""",
+                           JOIN morpheme_library ml ON ml.lemma_id = f.id
+                           WHERE ml.root_id = ? AND f.id != ?""",
                         (root_row['id'], feature_id)
                     ).fetchall()
                     for sr in sibling_rows:
@@ -387,16 +407,17 @@ def register(server: FastMCP):
             for ev in evidence_rows:
                 entries.append({**dict(ev), "source": "verse_evidence"})
 
-        # Find verses where this feature appears (through morphemes)
+        # Find verses where this feature appears (through morpheme_library)
         verses = []
         if include_verses:
             fk_col = _feature_to_fk_col(feature_type)
             if fk_col:
                 verse_rows = conn.execute(
                     f"""SELECT DISTINCT w.verse_surah as surah, w.verse_ayah as ayah
-                        FROM morphemes m
-                        JOIN words w ON m.word_id = w.id
-                        WHERE m.{fk_col} = ?
+                        FROM morpheme_library ml
+                        JOIN word_morphemes wm ON wm.morpheme_library_id = ml.id
+                        JOIN words w ON w.word_library_id = wm.word_library_id
+                        WHERE ml.{fk_col} = ?
                         ORDER BY w.verse_surah, w.verse_ayah
                         LIMIT ?""",
                     (feature_id, verse_limit)
@@ -453,7 +474,7 @@ def register(server: FastMCP):
 
 
 def _feature_to_fk_col(feature_type: str) -> str | None:
-    """Map a logical feature name to the FK column in morphemes."""
+    """Map a logical feature name to the FK column in morpheme_library."""
     mapping = {
         'root': 'root_id', 'lemma': 'lemma_id', 'pos': 'pos_id',
         'verb_form': 'verb_form_id', 'aspect': 'aspect_id', 'mood': 'mood_id',

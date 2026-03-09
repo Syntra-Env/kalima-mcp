@@ -5,7 +5,7 @@ from mcp.server.fastmcp import FastMCP
 from ..db import get_connection
 from ..utils.arabic import normalize_arabic
 from ..utils.surahs import get_surah_name, list_all_surahs
-from ..utils.units import compose_verse_text, compose_surah_texts
+from ..utils.units import compose_verse_text, compose_surah_texts, compose_word_text
 
 mcp: FastMCP  # injected by server.py
 
@@ -55,15 +55,29 @@ def register(server: FastMCP):
         """
         conn = get_connection()
         normalized_query = normalize_arabic(query)
+
+        # Compose all verse texts through the compositional chain
         rows = conn.execute(
-            """SELECT verse_surah AS surah_number, verse_ayah AS ayah_number,
-                      GROUP_CONCAT(text, ' ') AS text
-               FROM (SELECT verse_surah, verse_ayah, text, normalized_text FROM words
-                     ORDER BY verse_surah, verse_ayah, word_index)
-               GROUP BY verse_surah, verse_ayah
-               HAVING GROUP_CONCAT(normalized_text, ' ') LIKE ?
-               ORDER BY verse_surah ASC, verse_ayah ASC
-               LIMIT ?""",
-            (f"%{normalized_query}%", limit)
+            """SELECT w.verse_surah, w.verse_ayah, w.word_index,
+                      wm.position, ml.uthmani_text
+               FROM words w
+               JOIN word_morphemes wm ON wm.word_library_id = w.word_library_id
+               JOIN morpheme_library ml ON wm.morpheme_library_id = ml.id
+               ORDER BY w.verse_surah, w.verse_ayah, w.word_index, wm.position"""
         ).fetchall()
-        return [dict(r) for r in rows]
+
+        # Group: (surah, ayah) -> word_index -> [morpheme parts]
+        verses: dict[tuple[int, int], dict[int, list[str]]] = {}
+        for r in rows:
+            key = (r['verse_surah'], r['verse_ayah'])
+            word_map = verses.setdefault(key, {})
+            word_map.setdefault(r['word_index'], []).append(r['uthmani_text'] or '')
+
+        results = []
+        for (surah, ayah), word_map in sorted(verses.items()):
+            text = ' '.join(''.join(parts) for _, parts in sorted(word_map.items()))
+            if normalized_query in normalize_arabic(text):
+                results.append({"surah_number": surah, "ayah_number": ayah, "text": text})
+                if len(results) >= limit:
+                    break
+        return results

@@ -149,9 +149,10 @@ def register(server: FastMCP):
             f"""SELECT DISTINCT
                 w.verse_surah AS surah_number,
                 w.verse_ayah AS ayah_number
-            FROM morphemes m
-            JOIN words w ON m.word_id = w.id
-            WHERE {where_clause}
+            FROM morpheme_library ml
+            JOIN word_morphemes wm ON wm.morpheme_library_id = ml.id
+            JOIN words w ON w.word_library_id = wm.word_library_id
+            WHERE {where_clause.replace('m.', 'ml.')}
             ORDER BY w.verse_surah ASC, w.verse_ayah ASC
             LIMIT ?""",
             params
@@ -161,9 +162,10 @@ def register(server: FastMCP):
         count_params = params[:-1]  # exclude the limit param
         total = conn.execute(
             f"""SELECT COUNT(DISTINCT w.verse_surah || ':' || w.verse_ayah)
-            FROM morphemes m
-            JOIN words w ON m.word_id = w.id
-            WHERE {where_clause}""",
+            FROM morpheme_library ml
+            JOIN word_morphemes wm ON wm.morpheme_library_id = ml.id
+            JOIN words w ON w.word_library_id = wm.word_library_id
+            WHERE {where_clause.replace('m.', 'ml.')}""",
             count_params
         ).fetchone()[0]
 
@@ -181,7 +183,7 @@ def register(server: FastMCP):
             v['text'] = verse_text_map.get((v['surah_number'], v['ayah_number']), '')
 
             matching_morphemes = conn.execute(
-                f"""SELECT m.id, m.word_id, m.form,
+                f"""SELECT ml.id, w.id as word_id, ml.uthmani_text as form,
                     rf_root.lookup_key AS root,
                     rf_lemma.lookup_key AS lemma,
                     rf_pos.lookup_key AS pos,
@@ -194,22 +196,23 @@ def register(server: FastMCP):
                     rf_gen.lookup_key AS gender,
                     rf_case.lookup_key AS case_value,
                     rf_dep.lookup_key AS dependency_rel
-                FROM morphemes m
-                JOIN words w ON m.word_id = w.id
-                LEFT JOIN features rf_root ON m.root_id = rf_root.id
-                LEFT JOIN features rf_lemma ON m.lemma_id = rf_lemma.id
-                LEFT JOIN features rf_pos ON m.pos_id = rf_pos.id
-                LEFT JOIN features rf_vf ON m.verb_form_id = rf_vf.id
-                LEFT JOIN features rf_voice ON m.voice_id = rf_voice.id
-                LEFT JOIN features rf_mood ON m.mood_id = rf_mood.id
-                LEFT JOIN features rf_asp ON m.aspect_id = rf_asp.id
-                LEFT JOIN features rf_per ON m.person_id = rf_per.id
-                LEFT JOIN features rf_num ON m.number_id = rf_num.id
-                LEFT JOIN features rf_gen ON m.gender_id = rf_gen.id
-                LEFT JOIN features rf_case ON m.case_value_id = rf_case.id
-                LEFT JOIN features rf_dep ON m.dependency_rel_id = rf_dep.id
+                FROM morpheme_library ml
+                JOIN word_morphemes wm ON wm.morpheme_library_id = ml.id
+                JOIN words w ON w.word_library_id = wm.word_library_id
+                LEFT JOIN features rf_root ON ml.root_id = rf_root.id
+                LEFT JOIN features rf_lemma ON ml.lemma_id = rf_lemma.id
+                LEFT JOIN features rf_pos ON ml.pos_id = rf_pos.id
+                LEFT JOIN features rf_vf ON ml.verb_form_id = rf_vf.id
+                LEFT JOIN features rf_voice ON ml.voice_id = rf_voice.id
+                LEFT JOIN features rf_mood ON ml.mood_id = rf_mood.id
+                LEFT JOIN features rf_asp ON ml.aspect_id = rf_asp.id
+                LEFT JOIN features rf_per ON ml.person_id = rf_per.id
+                LEFT JOIN features rf_num ON ml.number_id = rf_num.id
+                LEFT JOIN features rf_gen ON ml.gender_id = rf_gen.id
+                LEFT JOIN features rf_case ON ml.case_value_id = rf_case.id
+                LEFT JOIN features rf_dep ON ml.dependency_rel_id = rf_dep.id
                 WHERE w.verse_surah = ? AND w.verse_ayah = ?
-                  AND {where_clause}
+                  AND {where_clause.replace('m.', 'ml.')}
                 ORDER BY w.word_index ASC""",
                 [v['surah_number'], v['ayah_number']] + count_params
             ).fetchall()
@@ -250,13 +253,15 @@ def register(server: FastMCP):
         # Find co-occurring verses using FK IDs
         co_rows = conn.execute(
             """SELECT DISTINCT w1.verse_surah AS surah, w1.verse_ayah AS ayah
-            FROM morphemes m1
-            JOIN words w1 ON m1.word_id = w1.id
-            JOIN morphemes m2 ON m2.root_id = ?
-            JOIN words w2 ON m2.word_id = w2.id
+            FROM morpheme_library ml1
+            JOIN word_morphemes wm1 ON wm1.morpheme_library_id = ml1.id
+            JOIN words w1 ON w1.word_library_id = wm1.word_library_id
+            JOIN morpheme_library ml2 ON ml2.root_id = ?
+            JOIN word_morphemes wm2 ON wm2.morpheme_library_id = ml2.id
+            JOIN words w2 ON w2.word_library_id = wm2.word_library_id
                 AND w1.verse_surah = w2.verse_surah
                 AND w1.verse_ayah = w2.verse_ayah
-            WHERE m1.root_id = ?
+            WHERE ml1.root_id = ?
             ORDER BY w1.verse_surah ASC, w1.verse_ayah ASC
             LIMIT ?""",
             (r2_id, r1_id, limit)
@@ -271,33 +276,37 @@ def register(server: FastMCP):
             s, a = row["surah"], row["ayah"]
             # Get the specific words for each root in this verse
             w1 = conn.execute(
-                """SELECT DISTINCT w.text FROM morphemes m
-                   JOIN words w ON m.word_id = w.id
-                   WHERE m.root_id = ? AND w.verse_surah = ? AND w.verse_ayah = ?""",
+                """SELECT DISTINCT w.word_library_id FROM morpheme_library ml
+                   JOIN word_morphemes wm ON wm.morpheme_library_id = ml.id
+                   JOIN words w ON w.word_library_id = wm.word_library_id
+                   WHERE ml.root_id = ? AND w.verse_surah = ? AND w.verse_ayah = ?""",
                 (r1_id, s, a)
             ).fetchall()
             w2 = conn.execute(
-                """SELECT DISTINCT w.text FROM morphemes m
-                   JOIN words w ON m.word_id = w.id
-                   WHERE m.root_id = ? AND w.verse_surah = ? AND w.verse_ayah = ?""",
+                """SELECT DISTINCT w.word_library_id FROM morpheme_library ml
+                   JOIN word_morphemes wm ON wm.morpheme_library_id = ml.id
+                   JOIN words w ON w.word_library_id = wm.word_library_id
+                   WHERE ml.root_id = ? AND w.verse_surah = ? AND w.verse_ayah = ?""",
                 (r2_id, s, a)
             ).fetchall()
             co_occurrences.append({
                 "surah": s, "ayah": a, "text": co_text_map.get((s, a), ''),
-                "root1_words": [r["text"] for r in w1],
-                "root2_words": [r["text"] for r in w2],
+                "root1_words": [compose_word_text(conn, r["word_library_id"]) for r in w1],
+                "root2_words": [compose_word_text(conn, r["word_library_id"]) for r in w2],
             })
 
         # Total count (may exceed limit)
         total = conn.execute(
             """SELECT COUNT(DISTINCT w1.verse_surah || ':' || w1.verse_ayah)
-            FROM morphemes m1
-            JOIN words w1 ON m1.word_id = w1.id
-            JOIN morphemes m2 ON m2.root_id = ?
-            JOIN words w2 ON m2.word_id = w2.id
+            FROM morpheme_library ml1
+            JOIN word_morphemes wm1 ON wm1.morpheme_library_id = ml1.id
+            JOIN words w1 ON w1.word_library_id = wm1.word_library_id
+            JOIN morpheme_library ml2 ON ml2.root_id = ?
+            JOIN word_morphemes wm2 ON wm2.morpheme_library_id = ml2.id
+            JOIN words w2 ON w2.word_library_id = wm2.word_library_id
                 AND w1.verse_surah = w2.verse_surah
                 AND w1.verse_ayah = w2.verse_ayah
-            WHERE m1.root_id = ?""",
+            WHERE ml1.root_id = ?""",
             (r2_id, r1_id)
         ).fetchone()[0]
 
@@ -395,8 +404,8 @@ def register(server: FastMCP):
             return {"success": False, "entry_id": "", "message": f"Failed to create surah theme: {e}"}
 
     @mcp.tool()
-    def update_morpheme(
-        morpheme_id: str,
+    def update_morpheme_library(
+        morpheme_library_id: int,
         verb_form: str | None = None,
         voice: str | None = None,
         mood: str | None = None,
@@ -408,19 +417,18 @@ def register(server: FastMCP):
         dependency_rel: str | None = None,
         role: str | None = None,
     ) -> dict:
-        """Update linguistic features on a morpheme by its id (e.g. "mor-2-282-78-0").
-
-        Only provided (non-None) features are updated; others are left unchanged.
-        Values are resolved against features. Pass the human-readable value
-        (e.g. verb_form="(VI)", mood="MOOD:JUS", voice="PASS").
+        """Update linguistic features on a morpheme library entry.
+        
+        Note: This updates the canonical library unit, affecting all occurrences
+        of this morpheme in the Quran.
         """
         conn = get_connection()
 
-        mor = conn.execute(
-            "SELECT id FROM morphemes WHERE id = ?", (morpheme_id,)
+        ml_entry = conn.execute(
+            "SELECT id FROM morpheme_library WHERE id = ?", (morpheme_library_id,)
         ).fetchone()
-        if not mor:
-            return {"error": f"Morpheme not found: {morpheme_id}"}
+        if not ml_entry:
+            return {"error": f"Morpheme library entry not found: {morpheme_library_id}"}
 
         features = {
             "verb_form": verb_form, "voice": voice, "mood": mood,
@@ -442,13 +450,13 @@ def register(server: FastMCP):
             return {"error": "No features provided to update"}
 
         set_clause = ", ".join(f"{col} = ?" for col in updates)
-        params = list(updates.values()) + [morpheme_id]
-        conn.execute(f"UPDATE morphemes SET {set_clause} WHERE id = ?", params)
+        params = list(updates.values()) + [morpheme_library_id]
+        conn.execute(f"UPDATE morpheme_library SET {set_clause} WHERE id = ?", params)
         save_database()
 
-        # Return the updated morpheme
+        # Return the updated library entry
         updated = conn.execute(
-            """SELECT m.id, m.word_id, m.form,
+            """SELECT ml.id, ml.uthmani_text as form,
                 rf_root.lookup_key AS root,
                 rf_lemma.lookup_key AS lemma,
                 rf_pos.lookup_key AS pos,
@@ -461,24 +469,24 @@ def register(server: FastMCP):
                 rf_gen.lookup_key AS gender,
                 rf_case.lookup_key AS case_value,
                 rf_dep.lookup_key AS dependency_rel
-            FROM morphemes m
-            LEFT JOIN features rf_root ON m.root_id = rf_root.id
-            LEFT JOIN features rf_lemma ON m.lemma_id = rf_lemma.id
-            LEFT JOIN features rf_pos ON m.pos_id = rf_pos.id
-            LEFT JOIN features rf_vf ON m.verb_form_id = rf_vf.id
-            LEFT JOIN features rf_voice ON m.voice_id = rf_voice.id
-            LEFT JOIN features rf_mood ON m.mood_id = rf_mood.id
-            LEFT JOIN features rf_asp ON m.aspect_id = rf_asp.id
-            LEFT JOIN features rf_per ON m.person_id = rf_per.id
-            LEFT JOIN features rf_num ON m.number_id = rf_num.id
-            LEFT JOIN features rf_gen ON m.gender_id = rf_gen.id
-            LEFT JOIN features rf_case ON m.case_value_id = rf_case.id
-            LEFT JOIN features rf_dep ON m.dependency_rel_id = rf_dep.id
-            WHERE m.id = ?""",
-            (morpheme_id,)
+            FROM morpheme_library ml
+            LEFT JOIN features rf_root ON ml.root_id = rf_root.id
+            LEFT JOIN features rf_lemma ON ml.lemma_id = rf_lemma.id
+            LEFT JOIN features rf_pos ON ml.pos_id = rf_pos.id
+            LEFT JOIN features rf_vf ON ml.verb_form_id = rf_vf.id
+            LEFT JOIN features rf_voice ON ml.voice_id = rf_voice.id
+            LEFT JOIN features rf_mood ON ml.mood_id = rf_mood.id
+            LEFT JOIN features rf_asp ON ml.aspect_id = rf_asp.id
+            LEFT JOIN features rf_per ON ml.person_id = rf_per.id
+            LEFT JOIN features rf_num ON ml.number_id = rf_num.id
+            LEFT JOIN features rf_gen ON ml.gender_id = rf_gen.id
+            LEFT JOIN features rf_case ON ml.case_value_id = rf_case.id
+            LEFT JOIN features rf_dep ON ml.dependency_rel_id = rf_dep.id
+            WHERE ml.id = ?""",
+            (morpheme_library_id,)
         ).fetchone()
 
-        return {"success": True, "morpheme": dict(updated)}
+        return {"success": True, "morpheme_library": dict(updated)}
 
     @mcp.tool()
     def add_verse_evidence(

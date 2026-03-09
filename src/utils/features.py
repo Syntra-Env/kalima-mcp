@@ -1,7 +1,7 @@
-"""Feature type mapping between morphemes and features.
+"""Feature type mapping between morpheme_library and features.
 
 Two namespaces exist:
-1. Morpheme FK column names (what the morphemes table stores as *_id integers)
+1. Morpheme FK column names (what the morpheme_library table stores as *_id integers)
 2. features (feature_type, category) pairs
 
 This module centralizes the mapping between them.
@@ -34,7 +34,7 @@ FEATURE_TO_MORPHEME_COL: dict[tuple[str, str | None], str] = {
     v: k for k, v in TERM_TYPE_TO_FEATURE.items()
 }
 
-# Maps logical feature name -> FK column name in morphemes table
+# Maps logical feature name -> FK column name in morpheme_library table
 MORPHEME_FK_COL: dict[str, str] = {
     name: f"{name}_id" for name in TERM_TYPE_TO_FEATURE
 }
@@ -46,7 +46,7 @@ def feature_to_morpheme_col(feature_type: str, category: str | None) -> Optional
 
 
 def fk_col(feature_name: str) -> str:
-    """Get the FK column name in morphemes for a logical feature name.
+    """Get the FK column name in morpheme_library for a logical feature name.
 
     e.g. fk_col('root') -> 'root_id', fk_col('verb_form') -> 'verb_form_id'
     """

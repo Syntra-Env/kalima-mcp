@@ -2,7 +2,8 @@
 
 Provides:
 - entry_locations read/write helpers (many-to-many entry-to-Quranic-location)
-- Verse text composition from the words table
+- Verse text composition through the compositional chain:
+  words → word_library → word_morphemes → morpheme_library.uthmani_text
 """
 
 import sqlite3
@@ -61,31 +62,50 @@ def entries_at_surah(conn: sqlite3.Connection, surah: int) -> list[str]:
     return [r['entry_id'] for r in rows]
 
 
-# --- Verse text composition (uses words table, not units) ---
+# --- Verse text composition (compositional chain) ---
 
 def compose_verse_text(conn: sqlite3.Connection, surah: int, ayah: int) -> Optional[str]:
-    """Compose verse text from words. Returns None if verse not found."""
+    """Compose verse text through: words → word_library → word_morphemes → morpheme_library."""
     rows = conn.execute(
-        "SELECT text FROM words WHERE verse_surah = ? AND verse_ayah = ? ORDER BY word_index",
+        """SELECT w.word_index, wm.position, ml.uthmani_text
+           FROM words w
+           JOIN word_morphemes wm ON wm.word_library_id = w.word_library_id
+           JOIN morpheme_library ml ON wm.morpheme_library_id = ml.id
+           WHERE w.verse_surah = ? AND w.verse_ayah = ?
+           ORDER BY w.word_index, wm.position""",
         (surah, ayah),
     ).fetchall()
     if not rows:
         return None
-    return ' '.join(r['text'] for r in rows)
+    words: dict[int, list[str]] = {}
+    for r in rows:
+        words.setdefault(r['word_index'], []).append(r['uthmani_text'] or '')
+    return ' '.join(''.join(parts) for _, parts in sorted(words.items()))
 
 
 def compose_surah_texts(conn: sqlite3.Connection, surah: int) -> list[dict]:
     """Compose all verse texts for a surah. Returns list of {surah_number, ayah_number, text}."""
     rows = conn.execute(
-        "SELECT verse_surah, verse_ayah, text FROM words WHERE verse_surah = ? ORDER BY verse_ayah, word_index",
+        """SELECT w.verse_ayah, w.word_index, wm.position, ml.uthmani_text
+           FROM words w
+           JOIN word_morphemes wm ON wm.word_library_id = w.word_library_id
+           JOIN morpheme_library ml ON wm.morpheme_library_id = ml.id
+           WHERE w.verse_surah = ?
+           ORDER BY w.verse_ayah, w.word_index, wm.position""",
         (surah,),
     ).fetchall()
-    verses: dict[int, list[str]] = {}
+    # Group by ayah -> word_index -> morpheme parts
+    verses: dict[int, dict[int, list[str]]] = {}
     for r in rows:
-        verses.setdefault(r['verse_ayah'], []).append(r['text'])
+        verse_words = verses.setdefault(r['verse_ayah'], {})
+        verse_words.setdefault(r['word_index'], []).append(r['uthmani_text'] or '')
     return [
-        {"surah_number": surah, "ayah_number": ayah, "text": ' '.join(texts)}
-        for ayah, texts in sorted(verses.items())
+        {
+            "surah_number": surah,
+            "ayah_number": ayah,
+            "text": ' '.join(''.join(parts) for _, parts in sorted(word_map.items())),
+        }
+        for ayah, word_map in sorted(verses.items())
     ]
 
 
@@ -106,10 +126,33 @@ def batch_compose_verse_texts(
         return {}
     placeholders = ','.join(f'({s},{a})' for s, a in verse_keys)
     rows = conn.execute(
-        f"""SELECT verse_surah, verse_ayah, GROUP_CONCAT(text, ' ') AS text
-            FROM (SELECT verse_surah, verse_ayah, text FROM words
-                  WHERE (verse_surah, verse_ayah) IN ({placeholders})
-                  ORDER BY verse_surah, verse_ayah, word_index)
-            GROUP BY verse_surah, verse_ayah"""
+        f"""SELECT w.verse_surah, w.verse_ayah, w.word_index, wm.position, ml.uthmani_text
+            FROM words w
+            JOIN word_morphemes wm ON wm.word_library_id = w.word_library_id
+            JOIN morpheme_library ml ON wm.morpheme_library_id = ml.id
+            WHERE (w.verse_surah, w.verse_ayah) IN ({placeholders})
+            ORDER BY w.verse_surah, w.verse_ayah, w.word_index, wm.position"""
     ).fetchall()
-    return {(r['verse_surah'], r['verse_ayah']): r['text'] for r in rows}
+    # Group by (surah, ayah) -> word_index -> morpheme parts
+    verses: dict[tuple[int, int], dict[int, list[str]]] = {}
+    for r in rows:
+        key = (r['verse_surah'], r['verse_ayah'])
+        word_map = verses.setdefault(key, {})
+        word_map.setdefault(r['word_index'], []).append(r['uthmani_text'] or '')
+    return {
+        key: ' '.join(''.join(parts) for _, parts in sorted(word_map.items()))
+        for key, word_map in verses.items()
+    }
+
+
+def compose_word_text(conn: sqlite3.Connection, word_library_id: int) -> str:
+    """Compose a single word's text from its morpheme library entries."""
+    rows = conn.execute(
+        """SELECT ml.uthmani_text
+           FROM word_morphemes wm
+           JOIN morpheme_library ml ON wm.morpheme_library_id = ml.id
+           WHERE wm.word_library_id = ?
+           ORDER BY wm.position""",
+        (word_library_id,),
+    ).fetchall()
+    return ''.join(r['uthmani_text'] or '' for r in rows)

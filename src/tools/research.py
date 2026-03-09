@@ -136,8 +136,8 @@ def register(server: FastMCP):
                         """SELECT DISTINCT e.id, e.content, e.phase, e.category
                            FROM entries e
                            JOIN features f ON e.feature_id = f.id
-                           JOIN morphemes m ON m.lemma_id = f.id
-                           WHERE m.root_id = ? AND e.id != ?""",
+                           JOIN morpheme_library ml ON ml.lemma_id = f.id
+                           WHERE ml.root_id = ? AND e.id != ?""",
                         (entry['feature_id'], entry_id)
                     ).fetchall()
                     for r in lemma_entries:
@@ -545,8 +545,8 @@ def register(server: FastMCP):
                               f.lookup_key as feature_value
                        FROM entries e
                        JOIN features f ON e.feature_id = f.id
-                       JOIN morphemes m ON m.lemma_id = f.id
-                       WHERE m.root_id = ? AND e.id != ?
+                       JOIN morpheme_library ml ON ml.lemma_id = f.id
+                       WHERE ml.root_id = ? AND e.id != ?
                        ORDER BY e.updated_at DESC LIMIT ?""",
                     (entry['feature_id'], entry_id, limit)
                 ).fetchall()

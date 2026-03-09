@@ -129,15 +129,13 @@ def _initialize_confidence_column(conn: sqlite3.Connection):
 
 
 def _initialize_word_search(conn: sqlite3.Connection):
-    """Add normalized_text column and indexes to words (idempotent)."""
-    try:
-        conn.execute("ALTER TABLE words ADD COLUMN normalized_text TEXT")
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-
+    """Ensure indexes on words and compositional tables (idempotent)."""
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_words_verse ON words(verse_surah, verse_ayah, word_index)"
     )
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_words_normalized ON words(normalized_text)"
+        "CREATE INDEX IF NOT EXISTS idx_words_library ON words(word_library_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_wm_library ON word_morphemes(morpheme_library_id)"
     )
