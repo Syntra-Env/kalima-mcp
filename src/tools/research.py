@@ -6,6 +6,7 @@ from mcp.server.fastmcp import FastMCP
 
 from ..db import get_connection, save_database
 from ..utils.short_id import generate_entry_id
+from ..utils.units import get_entry_locations, add_entry_location, entries_at_verse
 
 mcp: FastMCP
 
@@ -17,11 +18,28 @@ def _now() -> str:
 
 
 def _find_duplicate(conn, content: str) -> str | None:
-    """Return existing entry ID if identical content exists, else None."""
+    """Return existing entry ID if identical cross-cutting content exists.
+
+    Only matches entries with no locations and no feature_id (cross-cutting).
+    Verse-evidence and feature-anchored entries are allowed to share content
+    because they're anchored to different locations.
+    """
     row = conn.execute(
-        "SELECT id FROM entries WHERE TRIM(content) = TRIM(?)", (content,)
+        """SELECT id FROM entries
+           WHERE TRIM(content) = TRIM(?)
+             AND feature_id IS NULL
+             AND NOT EXISTS (SELECT 1 FROM entry_locations el WHERE el.entry_id = entries.id)""",
+        (content,)
     ).fetchone()
     return row["id"] if row else None
+
+
+def _augment_entry_dict(conn, d: dict) -> dict:
+    """Add locations array to entry dict for output."""
+    locations = get_entry_locations(conn, d['id'])
+    if locations:
+        d['locations'] = locations
+    return d
 
 
 def register(server: FastMCP):
@@ -56,14 +74,18 @@ def register(server: FastMCP):
             sql += " AND category = ?"
             params.append(category)
         if scope_type:
-            sql += " AND scope_type = ?"
-            params.append(scope_type)
+            if scope_type == 'verse':
+                sql += " AND EXISTS (SELECT 1 FROM entry_locations el WHERE el.entry_id = entries.id)"
+            elif scope_type in ('root', 'lemma', 'pattern', 'surah'):
+                sql += " AND feature_id IS NOT NULL"
+            else:
+                sql += " AND feature_id IS NULL AND NOT EXISTS (SELECT 1 FROM entry_locations el WHERE el.entry_id = entries.id)"
 
         sql += " ORDER BY updated_at DESC LIMIT ?"
         params.append(limit)
 
         rows = conn.execute(sql, params).fetchall()
-        return [dict(r) for r in rows]
+        return [_augment_entry_dict(conn, dict(r)) for r in rows]
 
     @mcp.tool()
     def get_entry(entry_id: str) -> dict:
@@ -72,60 +94,70 @@ def register(server: FastMCP):
         row = conn.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
         if not row:
             return {"error": f"Entry {entry_id} not found"}
-        return dict(row)
+        return _augment_entry_dict(conn, dict(row))
 
     @mcp.tool()
     def get_entry_evidence(entry_id: str) -> list[dict]:
         """Get all evidence (verse references) supporting a specific research entry."""
         conn = get_connection()
         rows = conn.execute(
-            """SELECT e.id, e.content, e.phase, e.scope_value,
-                      ed.dependency_type, e.created_at
-               FROM entry_dependencies ed
-               JOIN entries e ON e.id = ed.entry_id
-               WHERE ed.depends_on_entry_id = ? AND e.scope_type = 'verse'
-               ORDER BY e.created_at DESC""",
+            """SELECT el.surah, el.ayah_start AS ayah, el.ayah_end,
+                      el.word_start, el.word_end,
+                      el.verification, el.notes
+               FROM entry_locations el
+               WHERE el.entry_id = ?
+                 AND el.verification IS NOT NULL
+               ORDER BY el.surah, el.ayah_start""",
             (entry_id,)
         ).fetchall()
-        results = []
-        for r in rows:
-            parts = r['scope_value'].split(':') if r['scope_value'] else ['0', '0']
-            results.append({
-                "entry_id": r['id'],
-                "surah": int(parts[0]),
-                "ayah": int(parts[1]) if len(parts) > 1 else 0,
-                "verification": r['dependency_type'],
-                "notes": r['content'],
-                "created_at": r['created_at'],
-            })
-        return results
+        return [dict(r) for r in rows]
 
     @mcp.tool()
     def get_entry_dependencies(entry_id: str) -> dict:
-        """Get the dependency tree for an entry."""
+        """Get structurally related entries discovered through shared features and locations."""
         conn = get_connection()
 
         entry_row = conn.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
         if not entry_row:
-            return {"entry": None, "dependencies": []}
+            return {"entry": None, "related": []}
 
-        deps = conn.execute(
-            """SELECT
-                e.id, e.content, e.phase, e.category, e.created_at, e.updated_at,
-                ed.dependency_type as dep_type
-            FROM entry_dependencies ed
-            JOIN entries e ON e.id = ed.depends_on_entry_id
-            WHERE ed.entry_id = ?""",
-            (entry_id,)
-        ).fetchall()
+        entry = dict(entry_row)
+        related = []
 
-        dependencies = []
-        for dep in deps:
-            d = dict(dep)
-            dep_type = d.pop('dep_type')
-            dependencies.append({"entry": d, "type": dep_type})
+        # 1. Entries sharing the same feature_id (same root/lemma/etc.)
+        if entry.get('feature_id'):
+            # Find the feature details
+            feat = conn.execute("SELECT feature_type, lookup_key FROM features WHERE id = ?", (entry['feature_id'],)).fetchone()
+            if feat:
+                # Find other entries whose features are related via morphemes
+                # e.g., if this is a root entry, find lemma entries derived from it
+                if feat['feature_type'] == 'root':
+                    lemma_entries = conn.execute(
+                        """SELECT DISTINCT e.id, e.content, e.phase, e.category
+                           FROM entries e
+                           JOIN features f ON e.feature_id = f.id
+                           JOIN morphemes m ON m.lemma_id = f.id
+                           WHERE m.root_id = ? AND e.id != ?""",
+                        (entry['feature_id'], entry_id)
+                    ).fetchall()
+                    for r in lemma_entries:
+                        related.append({"entry": dict(r), "relation": "derived_lemma"})
 
-        return {"entry": dict(entry_row), "dependencies": dependencies}
+        # 2. Entries sharing locations
+        my_locs = get_entry_locations(conn, entry_id)
+        if my_locs:
+            for loc in my_locs:
+                if loc.get('ayah_start'):
+                    loc_eids = entries_at_verse(conn, loc['surah'], loc['ayah_start'])
+                    for eid in loc_eids:
+                        if eid != entry_id:
+                            r = conn.execute(
+                                "SELECT id, content, phase, category FROM entries WHERE id = ?", (eid,)
+                            ).fetchone()
+                            if r:
+                                related.append({"entry": dict(r), "relation": "shared_location"})
+
+        return {"entry": _augment_entry_dict(conn, entry), "related": related}
 
     @mcp.tool()
     def get_entry_stats() -> dict:
@@ -140,7 +172,7 @@ def register(server: FastMCP):
         by_phase = {r['phase']: r['cnt'] for r in phase_rows}
 
         total_evidence = conn.execute(
-            "SELECT count(*) FROM entries WHERE scope_type = 'verse'"
+            "SELECT count(DISTINCT entry_id) FROM entry_locations"
         ).fetchone()[0]
 
         cat_rows = conn.execute(
@@ -174,35 +206,38 @@ def register(server: FastMCP):
             "avg_confidence": round(conf_row['avg_confidence'], 4) if conf_row['avg_confidence'] is not None else None,
         }
 
-        # Scope distribution
-        scope_rows = conn.execute(
-            "SELECT scope_type, count(*) as cnt FROM entries WHERE scope_type IS NOT NULL GROUP BY scope_type ORDER BY cnt DESC"
-        ).fetchall()
-        by_scope = {r['scope_type']: r['cnt'] for r in scope_rows}
+        # Entry type distribution
+        feature_count = conn.execute(
+            "SELECT count(*) FROM entries WHERE feature_id IS NOT NULL"
+        ).fetchone()[0]
+        verse_count = total_evidence
+        cross_cutting = conn.execute(
+            """SELECT count(*) FROM entries
+               WHERE feature_id IS NULL
+                 AND NOT EXISTS (SELECT 1 FROM entry_locations el WHERE el.entry_id = entries.id)"""
+        ).fetchone()[0]
+
+        by_type = {
+            "feature_anchored": feature_count,
+            "verse_evidence": verse_count,
+            "cross_cutting": cross_cutting,
+        }
 
         # Health metrics
-        orphan_entries = conn.execute(
+        # Unanchored entries: no feature_id AND no locations
+        unanchored = conn.execute(
             """SELECT count(*) FROM entries e
-               WHERE e.id NOT IN (SELECT entry_id FROM entry_dependencies)
-                 AND e.id NOT IN (SELECT depends_on_entry_id FROM entry_dependencies)
-                 AND e.scope_type IS NULL"""
+               WHERE e.feature_id IS NULL
+                 AND NOT EXISTS (SELECT 1 FROM entry_locations el WHERE el.entry_id = e.id)"""
         ).fetchone()[0]
 
-        # Entries without any verse-scoped children (evidence)
+        # Entries without any verse evidence (no locations with verification)
         entries_without_evidence = conn.execute(
-            """SELECT count(*) FROM entries
-               WHERE scope_type != 'verse' OR scope_type IS NULL
-                 AND id NOT IN (
-                     SELECT ed.depends_on_entry_id FROM entry_dependencies ed
-                     JOIN entries e ON e.id = ed.entry_id
-                     WHERE e.scope_type = 'verse'
-                 )"""
-        ).fetchone()[0]
-
-        entries_without_deps = conn.execute(
-            """SELECT count(*) FROM entries
-               WHERE id NOT IN (SELECT entry_id FROM entry_dependencies)
-                 AND id NOT IN (SELECT depends_on_entry_id FROM entry_dependencies)"""
+            """SELECT count(*) FROM entries e
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM entry_locations el
+                   WHERE el.entry_id = e.id AND el.verification IS NOT NULL
+               )"""
         ).fetchone()[0]
 
         stale_questions = conn.execute(
@@ -216,35 +251,36 @@ def register(server: FastMCP):
             "total_entries": total_entries,
             "by_phase": by_phase,
             "by_category": by_category,
-            "by_scope": by_scope,
+            "by_type": by_type,
             "confidence": confidence_distribution,
             "total_evidence": total_evidence,
             "id_range": id_range,
             "health": {
-                "orphan_entries": orphan_entries,
+                "unanchored_entries": unanchored,
                 "entries_without_evidence": entries_without_evidence,
-                "entries_without_dependencies": entries_without_deps,
                 "stale_questions": stale_questions,
             },
         }
 
     @mcp.tool()
     def get_verse_entries(surah: int, ayah: int) -> list[dict]:
-        """Get all entries that reference a specific verse as evidence."""
+        """Get all entries that reference a specific verse."""
         conn = get_connection()
-        scope_value = f"{surah}:{ayah}"
 
-        # Verse-scoped entries (direct evidence) + their parent entries
+        entry_ids = entries_at_verse(conn, surah, ayah)
+        if not entry_ids:
+            return []
+
+        placeholders = ",".join("?" for _ in entry_ids)
         rows = conn.execute(
-            """SELECT e.id as entry_id, e.content as entry_content, e.phase as entry_phase,
-                      ed.dependency_type as verification, e.created_at,
-                      parent.id as parent_id, parent.content as parent_content
+            f"""SELECT e.id as entry_id, e.content as entry_content, e.phase as entry_phase,
+                      e.created_at, el.verification, el.notes as location_notes
                FROM entries e
-               LEFT JOIN entry_dependencies ed ON ed.entry_id = e.id
-               LEFT JOIN entries parent ON parent.id = ed.depends_on_entry_id
-               WHERE e.scope_type = 'verse' AND e.scope_value = ?
+               JOIN entry_locations el ON el.entry_id = e.id
+               WHERE e.id IN ({placeholders})
+                 AND el.surah = ? AND el.ayah_start = ?
                ORDER BY e.created_at DESC""",
-            (scope_value,)
+            entry_ids + [surah, ayah]
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -281,30 +317,29 @@ def register(server: FastMCP):
             entry_id = generate_entry_id(conn)
             now = _now()
 
+            # Resolve feature_id if scope_type is a feature type
+            feature_id = None
+            if scope_type in ('root', 'lemma') and scope_value:
+                from .linguistic import _resolve_feature_id
+                feature_id = _resolve_feature_id(conn, scope_type, scope_value)
+
             conn.execute(
-                """INSERT INTO entries (id, content, phase, category, scope_type, scope_value, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (entry_id, content, phase, category, scope_type, scope_value, now, now)
+                """INSERT INTO entries (id, content, phase, category, feature_id, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (entry_id, content, phase, category, feature_id, now, now)
             )
 
-            # Create verse-scoped child entries for evidence
+            # Add evidence verses as locations with verification
             for ev in evidence_verses:
-                ev_entry_id = generate_entry_id(conn)
-                ev_scope = f"{ev['surah']}:{ev['ayah']}"
-                ev_notes = ev.get('notes') or f"Evidence verse {ev_scope}"
+                ev_notes = ev.get('notes') or f"Evidence verse {ev['surah']}:{ev['ayah']}"
                 conn.execute(
-                    """INSERT INTO entries (id, content, phase, category, scope_type, scope_value, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, 'verse', ?, ?, ?)""",
-                    (ev_entry_id, ev_notes, phase, category, ev_scope, now, now)
-                )
-                conn.execute(
-                    """INSERT INTO entry_dependencies (entry_id, depends_on_entry_id, dependency_type, created_at)
-                       VALUES (?, ?, 'supports', ?)""",
-                    (ev_entry_id, entry_id, now)
+                    """INSERT OR IGNORE INTO entry_locations
+                       (entry_id, surah, ayah_start, verification, notes)
+                       VALUES (?, ?, ?, 'supports', ?)""",
+                    (entry_id, ev['surah'], ev['ayah'], ev_notes)
                 )
 
             save_database()
-
 
             return {
                 "success": True,
@@ -340,18 +375,25 @@ def register(server: FastMCP):
                     continue
 
                 eid = generate_entry_id(conn)
+
+                # Resolve feature_id if scope_type provided
+                feature_id = None
+                scope_type = entry.get('scope_type')
+                scope_value = entry.get('scope_value')
+                if scope_type in ('root', 'lemma') and scope_value:
+                    from .linguistic import _resolve_feature_id
+                    feature_id = _resolve_feature_id(conn, scope_type, scope_value)
+
                 conn.execute(
-                    """INSERT INTO entries (id, content, phase, category, scope_type, scope_value, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    """INSERT INTO entries (id, content, phase, category, feature_id, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (eid, entry['content'], entry.get('phase', 'question'),
                      entry.get('category', 'uncategorized'),
-                     entry.get('scope_type'), entry.get('scope_value'),
-                     now, now)
+                     feature_id, now, now)
                 )
                 created_ids.append(eid)
 
             save_database()
-
 
             all_ids = created_ids + deduped_ids
             msg = f"Saved {len(created_ids)} new entries"
@@ -398,17 +440,18 @@ def register(server: FastMCP):
             if phase is not None:
                 updates.append("phase = ?")
                 params.append(phase)
-            if scope_type is not None:
-                updates.append("scope_type = ?")
-                params.append(scope_type)
-            if scope_value is not None:
-                updates.append("scope_value = ?")
-                params.append(scope_value)
+            if scope_type is not None and scope_value is not None:
+                # Resolve feature_id from scope_type/scope_value
+                if scope_type in ('root', 'lemma'):
+                    from .linguistic import _resolve_feature_id
+                    feature_id = _resolve_feature_id(conn, scope_type, scope_value)
+                    if feature_id is not None:
+                        updates.append("feature_id = ?")
+                        params.append(feature_id)
 
             params.append(entry_id)
             conn.execute(f"UPDATE entries SET {', '.join(updates)} WHERE id = ?", params)
             save_database()
-
 
             return {"success": True, "message": f"Entry {entry_id} updated successfully"}
         except Exception as e:
@@ -416,32 +459,17 @@ def register(server: FastMCP):
 
     @mcp.tool()
     def delete_entry(entry_id: str) -> dict:
-        """Safely delete an entry and its associated evidence from the database."""
+        """Safely delete an entry and its associated locations from the database."""
         conn = get_connection()
         try:
             row = conn.execute("SELECT id FROM entries WHERE id = ?", (entry_id,)).fetchone()
             if not row:
                 return {"success": False, "message": f"Entry {entry_id} not found"}
 
-            # Delete verse-scoped child entries first
-            child_ids = conn.execute(
-                """SELECT ed.entry_id FROM entry_dependencies ed
-                   JOIN entries e ON e.id = ed.entry_id
-                   WHERE ed.depends_on_entry_id = ? AND e.scope_type = 'verse'""",
-                (entry_id,)
-            ).fetchall()
-            for child in child_ids:
-                conn.execute("DELETE FROM entry_dependencies WHERE entry_id = ? OR depends_on_entry_id = ?", (child['entry_id'], child['entry_id']))
-                conn.execute("DELETE FROM entries WHERE id = ?", (child['entry_id'],))
-
-            conn.execute(
-                "DELETE FROM entry_dependencies WHERE entry_id = ? OR depends_on_entry_id = ?",
-                (entry_id, entry_id)
-            )
+            conn.execute("DELETE FROM entry_locations WHERE entry_id = ?", (entry_id,))
             conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
 
             save_database()
-
 
             return {"success": True, "message": f"Entry {entry_id} deleted successfully"}
         except Exception as e:
@@ -461,26 +489,11 @@ def register(server: FastMCP):
                     failed.append(eid)
                     continue
 
-                # Delete verse-scoped child entries first
-                child_ids = conn.execute(
-                    """SELECT ed.entry_id FROM entry_dependencies ed
-                       JOIN entries e ON e.id = ed.entry_id
-                       WHERE ed.depends_on_entry_id = ? AND e.scope_type = 'verse'""",
-                    (eid,)
-                ).fetchall()
-                for child in child_ids:
-                    conn.execute("DELETE FROM entry_dependencies WHERE entry_id = ? OR depends_on_entry_id = ?", (child['entry_id'], child['entry_id']))
-                    conn.execute("DELETE FROM entries WHERE id = ?", (child['entry_id'],))
-
-                conn.execute(
-                    "DELETE FROM entry_dependencies WHERE entry_id = ? OR depends_on_entry_id = ?",
-                    (eid, eid)
-                )
+                conn.execute("DELETE FROM entry_locations WHERE entry_id = ?", (eid,))
                 conn.execute("DELETE FROM entries WHERE id = ?", (eid,))
                 deleted += 1
 
             save_database()
-
 
             msg = f"Deleted {deleted} entries."
             if failed:
@@ -491,163 +504,84 @@ def register(server: FastMCP):
 
     @mcp.tool()
     def find_related_entries(entry_id: str, limit: int = 20) -> dict:
-        """Find entries structurally related to a given entry through shared verse evidence, shared scope, or same-surah evidence."""
+        """Find entries structurally related to a given entry through shared locations, shared features, or same-surah presence."""
         conn = get_connection()
 
         entry_row = conn.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
         if not entry_row:
-            return {"entry": None, "shared_evidence": [], "shared_scope": [], "same_surah_entries": []}
+            return {"entry": None, "shared_locations": [], "shared_feature": [], "same_surah_entries": []}
         entry = dict(entry_row)
 
-        # 1. Entries sharing the same verse scope (both scoped to the same verse)
-        #    Also: entries whose verse-scoped children overlap
+        # Get this entry's locations
+        my_locations = get_entry_locations(conn, entry_id)
+
+        # 1. Entries sharing verse locations
         shared_map: dict[str, dict] = {}
+        if my_locations:
+            for loc in my_locations:
+                loc_entry_ids = entries_at_verse(conn, loc['surah'], loc['ayah_start']) if loc.get('ayah_start') else []
+                for eid in loc_entry_ids:
+                    if eid != entry_id and eid not in shared_map:
+                        r = conn.execute(
+                            "SELECT id, content, phase, category, created_at, updated_at FROM entries WHERE id = ?",
+                            (eid,)
+                        ).fetchone()
+                        if r:
+                            shared_map[eid] = {
+                                "entry": dict(r),
+                                "shared_verses": [{"surah": loc['surah'], "ayah": loc['ayah_start']}],
+                            }
+                    elif eid != entry_id and eid in shared_map:
+                        shared_map[eid]["shared_verses"].append({"surah": loc['surah'], "ayah": loc['ayah_start']})
 
-        if entry['scope_type'] == 'verse':
-            # This entry IS a verse-scoped entry; find siblings (other entries scoped to same verse)
-            siblings = conn.execute(
-                """SELECT e.id, e.content, e.phase, e.category, e.created_at, e.updated_at, e.scope_value
-                   FROM entries e
-                   WHERE e.scope_type = 'verse' AND e.scope_value = ? AND e.id != ?
-                   ORDER BY e.updated_at DESC LIMIT ?""",
-                (entry['scope_value'], entry_id, limit)
-            ).fetchall()
-            for r in siblings:
-                r = dict(r)
-                parts = r['scope_value'].split(':')
-                eid = r['id']
-                if eid not in shared_map:
-                    shared_map[eid] = {
-                        "entry": {k: r[k] for k in ('id', 'content', 'phase', 'category', 'created_at', 'updated_at')},
-                        "shared_verses": [{"surah": int(parts[0]), "ayah": int(parts[1]) if len(parts) > 1 else 0}],
-                    }
-        else:
-            # Find other parent entries whose verse-scoped children overlap with this entry's children
-            my_verses = conn.execute(
-                """SELECT e.scope_value FROM entry_dependencies ed
-                   JOIN entries e ON e.id = ed.entry_id
-                   WHERE ed.depends_on_entry_id = ? AND e.scope_type = 'verse'""",
-                (entry_id,)
-            ).fetchall()
-            my_verse_set = {r['scope_value'] for r in my_verses}
-
-            if my_verse_set:
-                placeholders = ','.join('?' * len(my_verse_set))
-                overlap_rows = conn.execute(
-                    f"""SELECT DISTINCT ed2.depends_on_entry_id as parent_id, e2.scope_value,
-                               p.content, p.phase, p.category, p.created_at, p.updated_at
-                        FROM entries e2
-                        JOIN entry_dependencies ed2 ON ed2.entry_id = e2.id
-                        JOIN entries p ON p.id = ed2.depends_on_entry_id
-                        WHERE e2.scope_type = 'verse' AND e2.scope_value IN ({placeholders})
-                          AND ed2.depends_on_entry_id != ?
-                        ORDER BY p.updated_at DESC LIMIT ?""",
-                    list(my_verse_set) + [entry_id, limit]
+        # 2. Entries sharing related features (e.g., same root -> find lemma entries)
+        feature_related: dict[str, dict] = {}
+        if entry.get('feature_id') is not None:
+            feat = conn.execute("SELECT feature_type, lookup_key FROM features WHERE id = ?", (entry['feature_id'],)).fetchone()
+            if feat and feat['feature_type'] == 'root':
+                # Find entries anchored to lemmas derived from this root
+                rows = conn.execute(
+                    """SELECT DISTINCT e.id, e.content, e.phase, e.category, e.created_at, e.updated_at,
+                              f.lookup_key as feature_value
+                       FROM entries e
+                       JOIN features f ON e.feature_id = f.id
+                       JOIN morphemes m ON m.lemma_id = f.id
+                       WHERE m.root_id = ? AND e.id != ?
+                       ORDER BY e.updated_at DESC LIMIT ?""",
+                    (entry['feature_id'], entry_id, limit)
                 ).fetchall()
-                for r in overlap_rows:
+                for r in rows:
                     r = dict(r)
-                    pid = r['parent_id']
-                    parts = r['scope_value'].split(':')
-                    if pid not in shared_map:
-                        shared_map[pid] = {
-                            "entry": {"id": pid, "content": r['content'], "phase": r['phase'],
-                                      "category": r['category'], "created_at": r['created_at'], "updated_at": r['updated_at']},
-                            "shared_verses": [],
-                        }
-                    shared_map[pid]["shared_verses"].append(
-                        {"surah": int(parts[0]), "ayah": int(parts[1]) if len(parts) > 1 else 0}
-                    )
+                    feature_related[r['id']] = {
+                        "entry": {k: r[k] for k in ('id', 'content', 'phase', 'category', 'created_at', 'updated_at')},
+                        "relationship": "derived_lemma",
+                        "feature_value": r['feature_value'],
+                    }
 
-        # 2. Entries sharing the same scope (same scope_type + scope_value)
-        shared_scope_rows = conn.execute(
-            """SELECT e2.id, e2.content, e2.phase, e2.category, e2.created_at, e2.updated_at,
-                      e2.scope_type, e2.scope_value
-             FROM entries e1
-             JOIN entries e2 ON e1.scope_type = e2.scope_type
-               AND e1.scope_value = e2.scope_value
-               AND e1.id != e2.id
-             WHERE e1.id = ? AND e1.scope_type IS NOT NULL
-             ORDER BY e2.updated_at DESC
-             LIMIT ?""",
-            (entry_id, limit)
-        ).fetchall()
-
-        scope_map: dict[str, dict] = {}
-        for row in shared_scope_rows:
-            r = dict(row)
-            eid = r['id']
-            if eid not in scope_map:
-                scope_map[eid] = {
-                    "entry": {k: r[k] for k in ('id', 'content', 'phase', 'category', 'created_at', 'updated_at')},
-                    "shared_scope": {"type": r['scope_type'], "value": r['scope_value']},
-                }
-
-        # 3. Entries with verse children in the same surah (weaker signal)
+        # 3. Entries in the same surah
         surah_map: dict[str, dict] = {}
-
-        if entry['scope_type'] == 'verse' and entry['scope_value']:
-            my_surah = entry['scope_value'].split(':')[0]
-            surah_rows = conn.execute(
-                """SELECT DISTINCT e.id, e.content, e.phase, e.category, e.created_at, e.updated_at
-                   FROM entries e
-                   WHERE e.scope_type = 'verse' AND e.scope_value LIKE ? AND e.id != ?
-                     AND e.scope_value != ?
-                   ORDER BY e.updated_at DESC LIMIT ?""",
-                (f"{my_surah}:%", entry_id, entry['scope_value'], limit)
-            ).fetchall()
-            for r in surah_rows:
-                r = dict(r)
-                surah_map[r['id']] = {
-                    "entry": {k: r[k] for k in ('id', 'content', 'phase', 'category', 'created_at', 'updated_at')},
-                    "surah": int(my_surah),
-                }
+        if my_locations:
+            my_surahs = {loc['surah'] for loc in my_locations}
+            for s in my_surahs:
+                surah_rows = conn.execute(
+                    """SELECT DISTINCT e.id, e.content, e.phase, e.category, e.created_at, e.updated_at
+                       FROM entries e
+                       JOIN entry_locations el ON el.entry_id = e.id
+                       WHERE el.surah = ? AND e.id != ?
+                       ORDER BY e.updated_at DESC LIMIT ?""",
+                    (s, entry_id, limit)
+                ).fetchall()
+                for r in surah_rows:
+                    r = dict(r)
+                    surah_map[r['id']] = {
+                        "entry": {k: r[k] for k in ('id', 'content', 'phase', 'category', 'created_at', 'updated_at')},
+                        "surah": s,
+                    }
 
         return {
-            "entry": entry,
-            "shared_evidence": list(shared_map.values()),
-            "shared_scope": list(scope_map.values()),
+            "entry": _augment_entry_dict(conn, entry),
+            "shared_locations": list(shared_map.values()),
+            "shared_feature": list(feature_related.values()),
             "same_surah_entries": list(surah_map.values()),
         }
 
-    @mcp.tool()
-    def add_entry_dependency(
-        entry_id: str,
-        depends_on_entry_id: str,
-        dependency_type: str,
-    ) -> dict:
-        """Create a typed relationship between two entries.
-
-        Types: depends_on, supports, contradicts, refines, related.
-        """
-        conn = get_connection()
-        valid_types = ('depends_on', 'supports', 'contradicts', 'refines', 'related')
-        if dependency_type not in valid_types:
-            return {"success": False, "message": f"Invalid dependency_type. Must be one of: {', '.join(valid_types)}"}
-
-        if entry_id == depends_on_entry_id:
-            return {"success": False, "message": "An entry cannot depend on itself"}
-
-        try:
-            if not conn.execute("SELECT id FROM entries WHERE id = ?", (entry_id,)).fetchone():
-                return {"success": False, "message": f"Entry {entry_id} not found"}
-            if not conn.execute("SELECT id FROM entries WHERE id = ?", (depends_on_entry_id,)).fetchone():
-                return {"success": False, "message": f"Entry {depends_on_entry_id} not found"}
-
-            dup = conn.execute(
-                "SELECT entry_id FROM entry_dependencies WHERE entry_id = ? AND depends_on_entry_id = ? AND dependency_type = ?",
-                (entry_id, depends_on_entry_id, dependency_type)
-            ).fetchone()
-            if dup:
-                return {"success": False, "message": f"Dependency already exists: {entry_id} --{dependency_type}--> {depends_on_entry_id}"}
-
-            now = _now()
-            conn.execute(
-                "INSERT INTO entry_dependencies (entry_id, depends_on_entry_id, dependency_type, created_at) VALUES (?, ?, ?, ?)",
-                (entry_id, depends_on_entry_id, dependency_type, now)
-            )
-            save_database()
-
-
-            return {"success": True, "message": f"Dependency created: {entry_id} --{dependency_type}--> {depends_on_entry_id}"}
-        except Exception as e:
-            return {"success": False, "message": f"Failed to add dependency: {e}"}

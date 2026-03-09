@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 from mcp.server.fastmcp import FastMCP
 
 from ..db import get_connection, save_database
-from ..utils.short_id import generate_entry_id
 from ..utils.features import TERM_TYPE_TO_FEATURE
+from ..utils.units import compose_verse_text
 
 mcp: FastMCP
 
@@ -41,42 +41,67 @@ def _compute_confidence(conn, entry_id: str) -> float | None:
     return confidence
 
 
-def compute_verse_universe(conn, scope_type: str, scope_value: str, limit: int = 500) -> list[dict]:
+def compute_verse_universe(conn, entry: dict, limit: int = 500, **kwargs) -> list[dict]:
     """Compute the set of verses an entry's scope covers.
+
+    For feature-anchored entries (feature_id set): queries morphemes for that feature.
+    For cross-cutting entries: uses explicit params (surah, verse_range, features).
 
     Returns list of {surah, ayah} dicts.
     """
-    if scope_type in ('root', 'lemma'):
-        from .linguistic import _resolve_feature_id
-        fk_id = _resolve_feature_id(conn, scope_type, scope_value)
-        if fk_id is None:
+    from .linguistic import _resolve_feature_id, _normalize_feature
+
+    feature_id = entry.get('feature_id')
+
+    if feature_id is not None:
+        # Look up the features row to determine what kind of feature this is
+        ref_row = conn.execute(
+            "SELECT feature_type, category, lookup_key FROM features WHERE id = ?",
+            (feature_id,)
+        ).fetchone()
+        if not ref_row:
             return []
-        fk_col = f"{scope_type}_id"
+
+        ft = ref_row['feature_type']
+        cat = ref_row['category']
+
+        # Map back to morpheme FK column name
+        from ..utils.features import FEATURE_TO_MORPHEME_COL
+        col_name = FEATURE_TO_MORPHEME_COL.get((ft, cat))
+        if not col_name:
+            return []
+
+        fk_col = f"{col_name}_id"
         rows = conn.execute(
-            f"""SELECT DISTINCT t.verse_surah AS surah, t.verse_ayah AS ayah
-                FROM segments s
-                JOIN tokens t ON s.token_id = t.id
-                WHERE s.{fk_col} = ?
-                ORDER BY t.verse_surah, t.verse_ayah
+            f"""SELECT DISTINCT w.verse_surah AS surah, w.verse_ayah AS ayah
+                FROM morphemes m
+                JOIN words w ON m.word_id = w.id
+                WHERE m.{fk_col} = ?
+                ORDER BY w.verse_surah, w.verse_ayah
                 LIMIT ?""",
-            (fk_id, limit)
+            (feature_id, limit)
         ).fetchall()
         return [{"surah": r["surah"], "ayah": r["ayah"]} for r in rows]
 
-    elif scope_type == 'pattern':
-        from .linguistic import _normalize_feature, _resolve_feature_id
+    # Cross-cutting entry — use explicit params
+    surah = kwargs.get('surah')
+    verse_range = kwargs.get('verse_range')
+    features = kwargs.get('features')
 
-        features = json.loads(scope_value) if isinstance(scope_value, str) else scope_value
+    if features:
+        # Multi-feature pattern: features is a dict like {"pos": "V", "aspect": "IMPF"}
+        if isinstance(features, str):
+            features = json.loads(features)
+
         conditions = []
         params: list = []
-
         for key, val in features.items():
             if val is not None:
                 normalized = _normalize_feature(key, str(val))
                 fk_id = _resolve_feature_id(conn, key, normalized)
                 if fk_id is None:
                     return []
-                conditions.append(f"s.{key}_id = ?")
+                conditions.append(f"m.{key}_id = ?")
                 params.append(fk_id)
 
         if not conditions:
@@ -86,41 +111,44 @@ def compute_verse_universe(conn, scope_type: str, scope_value: str, limit: int =
         params.append(limit)
 
         rows = conn.execute(
-            f"""SELECT DISTINCT t.verse_surah AS surah, t.verse_ayah AS ayah
-                FROM segments s
-                JOIN tokens t ON s.token_id = t.id
+            f"""SELECT DISTINCT w.verse_surah AS surah, w.verse_ayah AS ayah
+                FROM morphemes m
+                JOIN words w ON m.word_id = w.id
                 WHERE {where_clause}
-                ORDER BY t.verse_surah, t.verse_ayah
+                ORDER BY w.verse_surah, w.verse_ayah
                 LIMIT ?""",
             params
         ).fetchall()
         return [{"surah": r["surah"], "ayah": r["ayah"]} for r in rows]
 
-    elif scope_type == 'surah':
-        surah_num = int(scope_value)
+    if surah is not None:
+        surah_num = int(surah)
         rows = conn.execute(
-            "SELECT surah_number AS surah, ayah_number AS ayah FROM verse_texts WHERE surah_number = ? ORDER BY ayah_number",
+            """SELECT DISTINCT verse_surah AS surah, verse_ayah AS ayah
+               FROM words WHERE verse_surah = ?
+               ORDER BY verse_ayah""",
             (surah_num,)
         ).fetchall()
         return [{"surah": r["surah"], "ayah": r["ayah"]} for r in rows]
 
-    elif scope_type == 'verse_range':
-        # scope_value format: "surah:start-end" e.g. "2:1-10"
-        parts = scope_value.split(":")
+    if verse_range is not None:
+        # Format: "surah:start-end" e.g. "2:1-10"
+        parts = verse_range.split(":")
         surah_num = int(parts[0])
         ayah_range = parts[1].split("-")
         start_ayah = int(ayah_range[0])
         end_ayah = int(ayah_range[1])
 
         rows = conn.execute(
-            "SELECT surah_number AS surah, ayah_number AS ayah FROM verse_texts WHERE surah_number = ? AND ayah_number BETWEEN ? AND ? ORDER BY ayah_number",
+            """SELECT DISTINCT verse_surah AS surah, verse_ayah AS ayah
+               FROM words WHERE verse_surah = ?
+                 AND verse_ayah BETWEEN ? AND ?
+               ORDER BY verse_ayah""",
             (surah_num, start_ayah, end_ayah)
         ).fetchall()
         return [{"surah": r["surah"], "ayah": r["ayah"]} for r in rows]
 
-    else:
-        # character, stylistic, etc. — manual verification only
-        return []
+    return []
 
 
 def register(server: FastMCP):
@@ -138,21 +166,23 @@ def register(server: FastMCP):
 
         try:
             entry = conn.execute(
-                "SELECT id, scope_type, scope_value, verse_queue, verse_current_index FROM entries WHERE id = ?",
+                "SELECT * FROM entries WHERE id = ?",
                 (entry_id,)
             ).fetchone()
 
             if not entry:
                 return {"success": False, "message": f"Entry {entry_id} not found"}
 
-            if not entry['scope_type'] or not entry['scope_value']:
-                return {"success": False, "message": f"Entry {entry_id} has no scope set. Set scope_type and scope_value first."}
+            entry_dict = dict(entry)
+
+            if entry_dict['feature_id'] is None and not entry_dict.get('verse_queue'):
+                return {"success": False, "message": f"Entry {entry_id} has no feature_id. For cross-cutting entries, use explicit surah/verse_range/features params."}
 
             # Compute verse universe
-            queue = compute_verse_universe(conn, entry['scope_type'], entry['scope_value'], limit)
+            queue = compute_verse_universe(conn, entry_dict, limit)
 
             if not queue:
-                return {"success": False, "message": f"No verses found for scope {entry['scope_type']}={entry['scope_value']}"}
+                return {"success": False, "message": f"No verses found for entry {entry_id}"}
 
             now = _now()
             queue_json = json.dumps(queue)
@@ -170,10 +200,7 @@ def register(server: FastMCP):
             save_database()
 
             first = queue[0]
-            verse_text = conn.execute(
-                "SELECT text FROM verse_texts WHERE surah_number = ? AND ayah_number = ?",
-                (first['surah'], first['ayah'])
-            ).fetchone()
+            verse_text_str = compose_verse_text(conn, first['surah'], first['ayah'])
 
             return {
                 "success": True,
@@ -182,7 +209,7 @@ def register(server: FastMCP):
                 "first_verse": {
                     "surah": first['surah'],
                     "ayah": first['ayah'],
-                    "text": verse_text['text'] if verse_text else "",
+                    "text": verse_text_str or "",
                 },
             }
         except Exception as e:
@@ -222,10 +249,7 @@ def register(server: FastMCP):
                 }
 
             verse = queue[current_index]
-            verse_text = conn.execute(
-                "SELECT text FROM verse_texts WHERE surah_number = ? AND ayah_number = ?",
-                (verse['surah'], verse['ayah'])
-            ).fetchone()
+            verse_text_str = compose_verse_text(conn, verse['surah'], verse['ayah'])
 
             percentage = round((current_index / total) * 100)
 
@@ -235,7 +259,7 @@ def register(server: FastMCP):
                 "verse": {
                     "surah": verse['surah'],
                     "ayah": verse['ayah'],
-                    "text": verse_text['text'] if verse_text else "",
+                    "text": verse_text_str or "",
                 },
                 "progress": {"current": current_index + 1, "total": total, "percentage": percentage},
                 "completed": False,
@@ -275,24 +299,17 @@ def register(server: FastMCP):
             current_verse = queue[current_index]
             now = _now()
 
-            # Map verification to dependency type
-            dep_type_map = {'supports': 'supports', 'contradicts': 'contradicts', 'unclear': 'related'}
-            dep_type = dep_type_map.get(verification, 'related')
+            valid_verifications = ('supports', 'contradicts', 'unclear')
+            if verification not in valid_verifications:
+                return {"success": False, "message": f"Invalid verification. Must be one of: {', '.join(valid_verifications)}"}
 
-            # Save evidence as verse-scoped child entry
-            eid = generate_entry_id(conn)
-            scope_value = f"{current_verse['surah']}:{current_verse['ayah']}"
-            parent_row = conn.execute("SELECT phase, category FROM entries WHERE id = ?", (entry_id,)).fetchone()
+            # Add location with verification directly on the entry
             conn.execute(
-                """INSERT INTO entries (id, content, phase, category, scope_type, scope_value, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, 'verse', ?, ?, ?)""",
-                (eid, notes or f"Verification: {verification}", parent_row['phase'], parent_row['category'],
-                 scope_value, now, now)
-            )
-            conn.execute(
-                """INSERT INTO entry_dependencies (entry_id, depends_on_entry_id, dependency_type, created_at)
-                   VALUES (?, ?, ?, ?)""",
-                (eid, entry_id, dep_type, now)
+                """INSERT OR IGNORE INTO entry_locations
+                   (entry_id, surah, ayah_start, verification, notes)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (entry_id, current_verse['surah'], current_verse['ayah'],
+                 verification, notes or f"Verification: {verification}")
             )
 
             # Update inline counters
@@ -316,7 +333,6 @@ def register(server: FastMCP):
 
             save_database()
 
-
             total = entry['verse_total'] or len(queue)
 
             # Check if done
@@ -326,7 +342,7 @@ def register(server: FastMCP):
                 return {
                     "success": True,
                     "message": "Verification saved. All verses complete!",
-                    "entry_id": eid,
+                    "entry_id": entry_id,
                     "progress": {"current": total, "total": total, "percentage": 100},
                     "completed": True,
                     "confidence": confidence,
@@ -334,21 +350,18 @@ def register(server: FastMCP):
 
             # Return next verse
             next_verse = queue[next_index]
-            verse_text = conn.execute(
-                "SELECT text FROM verse_texts WHERE surah_number = ? AND ayah_number = ?",
-                (next_verse['surah'], next_verse['ayah'])
-            ).fetchone()
+            verse_text_str = compose_verse_text(conn, next_verse['surah'], next_verse['ayah'])
 
             percentage = round((next_index / total) * 100)
 
             return {
                 "success": True,
                 "message": f"Verification saved. Moving to verse {next_index + 1} of {total}",
-                "entry_id": eid,
+                "entry_id": entry_id,
                 "next_verse": {
                     "surah": next_verse['surah'],
                     "ayah": next_verse['ayah'],
-                    "text": verse_text['text'] if verse_text else "",
+                    "text": verse_text_str or "",
                 },
                 "progress": {"current": next_index + 1, "total": total, "percentage": percentage},
                 "completed": False,
@@ -364,7 +377,7 @@ def register(server: FastMCP):
         try:
             entry = conn.execute(
                 """SELECT verse_total, verse_verified, verse_supports, verse_contradicts,
-                          verse_unclear, verse_current_index, scope_type, scope_value,
+                          verse_unclear, verse_current_index, feature_id,
                           verification_started_at, verification_updated_at, confidence
                    FROM entries WHERE id = ?""",
                 (entry_id,)
@@ -383,8 +396,7 @@ def register(server: FastMCP):
                 "success": True,
                 "message": "Verification statistics retrieved",
                 "stats": {
-                    "scope_type": entry['scope_type'],
-                    "scope_value": entry['scope_value'],
+                    "feature_id": entry['feature_id'],
                     "total_verses": total,
                     "verified": verified,
                     "remaining": remaining,
@@ -443,7 +455,6 @@ def register(server: FastMCP):
             if new_phase and new_phase != current_phase:
                 conn.execute("UPDATE entries SET phase = ? WHERE id = ?", (new_phase, entry_id))
                 save_database()
-    
 
                 confidence = _compute_confidence(conn, entry_id)
                 if confidence is not None:

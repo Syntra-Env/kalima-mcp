@@ -48,16 +48,24 @@ This project is an MCP (Model Context Protocol) server built with Python/FastMCP
 ### Database schema
 - `entries` — All research data lives here. Each has:
   - `id` (entry_N), `content`, `phase`, `category`, `confidence`, timestamps
-  - Scope: `scope_type` (root, lemma, pattern, surah, verse_range, verse, character, stylistic), `scope_value`
-  - Verse evidence entries use `scope_type='verse'`, `scope_value='surah:ayah'` and link to parent via `entry_dependencies`
+  - `feature_id` (INTEGER, UNIQUE, nullable) — FK to `features`. When set, this entry is the canonical interpretation for that linguistic feature. UNIQUE constraint enforces one interpretation per feature.
   - Inline verification: `verse_total`, `verse_verified`, `verse_supports`, `verse_contradicts`, `verse_unclear`, `verse_current_index`, `verse_queue` (JSON), `verification_started_at`, `verification_updated_at`
-- `ref_features` — Unified linguistic reference table (roots, lemmas, POS, morph features, dependency relations). Each has `feature_type`, `category`, `lookup_key`, labels, frequency. Serves as FK target for normalized `segments` columns
-- `segments` — Morphological segments of Quranic tokens. Feature columns are normalized as integer FKs to `ref_features` (e.g. `root_id`, `lemma_id`, `pos_id`, `verb_form_id`, etc.). Non-feature columns: `id`, `token_id`, `form`
-- `entry_dependencies` — Typed relationships between entries (entry_id, depends_on_entry_id, dependency_type: depends_on, supports, contradicts, refines, related)
+- `entry_locations` — Many-to-many mapping of entries to Quranic locations, including verse evidence.
+  - `id` (INTEGER PK), `entry_id` (TEXT FK -> entries), `surah` (INTEGER), `ayah_start` (INTEGER, nullable), `ayah_end` (INTEGER, nullable), `word_start` (INTEGER, nullable), `word_end` (INTEGER, nullable), `verification` (TEXT, nullable: supports/contradicts/unclear), `notes` (TEXT, nullable)
+  - Whole surah: `(surah=N, rest NULL)`. Single verse: `(surah=N, ayah_start=M)`. Verse range: `(surah=N, ayah_start=M, ayah_end=K)`. Word range: add `word_start`/`word_end`.
+  - Verse evidence is stored as locations with `verification` and `notes` set (no separate child entries needed).
+- `words` — Quranic words. Each has `id`, `text`, `word_index`, `verse_surah`, `verse_ayah`, `normalized_text`. Verse text is composed by space-joining words ordered by `word_index`. Covering index: `idx_words_verse(verse_surah, verse_ayah, word_index)`
+- `features` — Unified linguistic reference table (roots, lemmas, POS, morph features, dependency relations). Each has `feature_type`, `category`, `lookup_key`, `label_ar`, `label_en`, `frequency`. Serves as FK target for normalized `morphemes` columns and `entries.feature_id`
+- `morphemes` — Morphological components of Quranic words. `word_id` FK -> `words(id)`. Feature columns are normalized as integer FKs to `features` (e.g. `root_id`, `lemma_id`, `pos_id`, `verb_form_id`, etc.). Non-feature columns: `id` (PK, mor-S-A-W-M format), `word_id`, `form`, `uthmani_form` (full Uthmani orthography including diacritics/tajweed marks — words can be reconstructed by concatenating `uthmani_form` of ordered morphemes)
+- Surah names are stored as a Python constant in `src/utils/surahs.py` (not in a database table)
+- **No `dependencies` table** — relationships between entries are discovered structurally through shared features (via `feature_id` → morphemes → words → verses) and shared locations (via `entry_locations`). This eliminates manual dependency wiring.
 
-Entry categories: `quranic_research`, `root_analysis`, `ncu`, `methodology`, `historical`, `design`, `essay`, `personal`, `session`, `question`, `uncategorized`
+Entry categories: `quranic_research`, `ncu`, `methodology`, `historical`, `design`, `essay`, `personal`, `session`
 
-Scope types: `root`, `lemma`, `pattern`, `surah`, `verse_range`, `verse`, `character`, `stylistic`
+Entry types:
+- **Feature-anchored**: Has `feature_id` — canonical interpretation for a root, lemma, verb form, etc.
+- **Location-anchored**: Has rows in `entry_locations` — verse-level evidence with optional `verification` status
+- **Cross-cutting**: Neither `feature_id` nor locations — surah themes, multi-feature patterns, etc. Related entries discovered at query time through shared features and overlapping verse locations.
 
 ### Install
 ```
@@ -67,6 +75,6 @@ pip install -e .
 ### Key directories
 - `src/` — Python package (importable as `src`)
 - `src/tools/` — Tool implementations (quran, research, linguistic, workflow, context)
-- `src/utils/` — Shared helpers (arabic, short_id, features)
+- `src/utils/` — Shared helpers (arabic, short_id, features, units, surahs)
 - `src/db.py` — SQLite connection manager (WAL mode, native sqlite3)
 - `src/server.py` — FastMCP server entry point

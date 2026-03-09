@@ -6,8 +6,9 @@ from datetime import datetime, timezone
 from mcp.server.fastmcp import FastMCP
 
 from ..db import get_connection, save_database
-from ..utils.short_id import generate_entry_id
 from ..utils.features import TERM_TYPE_TO_FEATURE
+from ..utils.short_id import generate_entry_id
+from ..utils.units import verse_exists, batch_compose_verse_texts
 from .research import _find_duplicate
 from .workflow import _compute_confidence
 
@@ -46,16 +47,16 @@ def _normalize_feature(key: str, value: str) -> str:
 
 
 def _resolve_feature_id(conn, feature_name: str, value: str) -> int | None:
-    """Resolve a feature name + value to a ref_features.id."""
+    """Resolve a feature name + value to a features.id."""
     ft, cat = TERM_TYPE_TO_FEATURE[feature_name]
     if cat:
         row = conn.execute(
-            "SELECT id FROM ref_features WHERE feature_type = ? AND category = ? AND lookup_key = ?",
+            "SELECT id FROM features WHERE feature_type = ? AND category = ? AND lookup_key = ?",
             (ft, cat, value)
         ).fetchone()
     else:
         row = conn.execute(
-            "SELECT id FROM ref_features WHERE feature_type = ? AND category IS NULL AND lookup_key = ?",
+            "SELECT id FROM features WHERE feature_type = ? AND category IS NULL AND lookup_key = ?",
             (ft, value)
         ).fetchone()
     return row['id'] if row else None
@@ -107,11 +108,11 @@ def register(server: FastMCP):
                 fk_id = _resolve_feature_id(conn, key, normalized)
                 if fk_id is None:
                     return {"error": f"Feature value not found: {key}={normalized}"}
-                conditions.append(f"s.{key}_id = ?")
+                conditions.append(f"m.{key}_id = ?")
                 params.append(fk_id)
 
         if surah is not None:
-            conditions.append("t.verse_surah = ?")
+            conditions.append("w.verse_surah = ?")
             params.append(surah)
 
         if not conditions:
@@ -120,12 +121,12 @@ def register(server: FastMCP):
         where_clause = " AND ".join(conditions)
         params.append(limit)
 
-        # Build query_info from ref_features
+        # Build query_info from features
         query_info: dict = {}
         if root is not None:
             normalized_root = _normalize_feature("root", root)
             ref_row = conn.execute(
-                "SELECT lookup_key, frequency FROM ref_features WHERE feature_type = 'root' AND lookup_key = ?",
+                "SELECT lookup_key, frequency FROM features WHERE feature_type = 'root' AND lookup_key = ?",
                 (normalized_root,)
             ).fetchone()
             query_info["root"] = normalized_root
@@ -135,7 +136,7 @@ def register(server: FastMCP):
         if lemma is not None:
             normalized_lemma = _normalize_feature("lemma", lemma)
             ref_row = conn.execute(
-                "SELECT lookup_key, frequency FROM ref_features WHERE feature_type = 'lemma' AND lookup_key = ?",
+                "SELECT lookup_key, frequency FROM features WHERE feature_type = 'lemma' AND lookup_key = ?",
                 (normalized_lemma,)
             ).fetchone()
             query_info["lemma"] = normalized_lemma
@@ -146,34 +147,41 @@ def register(server: FastMCP):
         # Get matching verses
         verse_rows = conn.execute(
             f"""SELECT DISTINCT
-                t.verse_surah AS surah_number,
-                t.verse_ayah AS ayah_number,
-                vt.text
-            FROM segments s
-            JOIN tokens t ON s.token_id = t.id
-            JOIN verse_texts vt ON t.verse_surah = vt.surah_number AND t.verse_ayah = vt.ayah_number
+                w.verse_surah AS surah_number,
+                w.verse_ayah AS ayah_number
+            FROM morphemes m
+            JOIN words w ON m.word_id = w.id
             WHERE {where_clause}
-            ORDER BY t.verse_surah ASC, t.verse_ayah ASC
+            ORDER BY w.verse_surah ASC, w.verse_ayah ASC
             LIMIT ?""",
             params
         ).fetchall()
 
+        # Total count (before limit)
+        count_params = params[:-1]  # exclude the limit param
+        total = conn.execute(
+            f"""SELECT COUNT(DISTINCT w.verse_surah || ':' || w.verse_ayah)
+            FROM morphemes m
+            JOIN words w ON m.word_id = w.id
+            WHERE {where_clause}""",
+            count_params
+        ).fetchone()[0]
+
+        query_info["total_verses"] = total
         query_info["verses_returned"] = len(verse_rows)
 
-        # For each verse, fetch tokens and resolved segments
+        # Batch-compose verse texts
+        verse_keys = [(r['surah_number'], r['ayah_number']) for r in verse_rows]
+        verse_text_map = batch_compose_verse_texts(conn, verse_keys)
+
+        # For each verse, fetch only the matching morphemes (not every morpheme in the verse)
         results = []
         for verse in verse_rows:
             v = dict(verse)
+            v['text'] = verse_text_map.get((v['surah_number'], v['ayah_number']), '')
 
-            tokens = conn.execute(
-                "SELECT * FROM tokens WHERE verse_surah = ? AND verse_ayah = ? ORDER BY token_index ASC",
-                (v['surah_number'], v['ayah_number'])
-            ).fetchall()
-
-            # Resolve FK columns back to text via ref_features JOINs
-            segments = conn.execute(
-                """SELECT s.id, s.token_id, s.form,
-                    rf_type.lookup_key AS type,
+            matching_morphemes = conn.execute(
+                f"""SELECT m.id, m.word_id, m.form,
                     rf_root.lookup_key AS root,
                     rf_lemma.lookup_key AS lemma,
                     rf_pos.lookup_key AS pos,
@@ -185,35 +193,28 @@ def register(server: FastMCP):
                     rf_num.lookup_key AS number,
                     rf_gen.lookup_key AS gender,
                     rf_case.lookup_key AS case_value,
-                    rf_dep.lookup_key AS dependency_rel,
-                    rf_dn.lookup_key AS derived_noun_type,
-                    rf_st.lookup_key AS state,
-                    rf_role.lookup_key AS role
-                FROM segments s
-                JOIN tokens t ON s.token_id = t.id
-                LEFT JOIN ref_features rf_type ON s.type_id = rf_type.id
-                LEFT JOIN ref_features rf_root ON s.root_id = rf_root.id
-                LEFT JOIN ref_features rf_lemma ON s.lemma_id = rf_lemma.id
-                LEFT JOIN ref_features rf_pos ON s.pos_id = rf_pos.id
-                LEFT JOIN ref_features rf_vf ON s.verb_form_id = rf_vf.id
-                LEFT JOIN ref_features rf_voice ON s.voice_id = rf_voice.id
-                LEFT JOIN ref_features rf_mood ON s.mood_id = rf_mood.id
-                LEFT JOIN ref_features rf_asp ON s.aspect_id = rf_asp.id
-                LEFT JOIN ref_features rf_per ON s.person_id = rf_per.id
-                LEFT JOIN ref_features rf_num ON s.number_id = rf_num.id
-                LEFT JOIN ref_features rf_gen ON s.gender_id = rf_gen.id
-                LEFT JOIN ref_features rf_case ON s.case_value_id = rf_case.id
-                LEFT JOIN ref_features rf_dep ON s.dependency_rel_id = rf_dep.id
-                LEFT JOIN ref_features rf_dn ON s.derived_noun_type_id = rf_dn.id
-                LEFT JOIN ref_features rf_st ON s.state_id = rf_st.id
-                LEFT JOIN ref_features rf_role ON s.role_id = rf_role.id
-                WHERE t.verse_surah = ? AND t.verse_ayah = ?
-                ORDER BY t.token_index ASC""",
-                (v['surah_number'], v['ayah_number'])
+                    rf_dep.lookup_key AS dependency_rel
+                FROM morphemes m
+                JOIN words w ON m.word_id = w.id
+                LEFT JOIN features rf_root ON m.root_id = rf_root.id
+                LEFT JOIN features rf_lemma ON m.lemma_id = rf_lemma.id
+                LEFT JOIN features rf_pos ON m.pos_id = rf_pos.id
+                LEFT JOIN features rf_vf ON m.verb_form_id = rf_vf.id
+                LEFT JOIN features rf_voice ON m.voice_id = rf_voice.id
+                LEFT JOIN features rf_mood ON m.mood_id = rf_mood.id
+                LEFT JOIN features rf_asp ON m.aspect_id = rf_asp.id
+                LEFT JOIN features rf_per ON m.person_id = rf_per.id
+                LEFT JOIN features rf_num ON m.number_id = rf_num.id
+                LEFT JOIN features rf_gen ON m.gender_id = rf_gen.id
+                LEFT JOIN features rf_case ON m.case_value_id = rf_case.id
+                LEFT JOIN features rf_dep ON m.dependency_rel_id = rf_dep.id
+                WHERE w.verse_surah = ? AND w.verse_ayah = ?
+                  AND {where_clause}
+                ORDER BY w.word_index ASC""",
+                [v['surah_number'], v['ayah_number']] + count_params
             ).fetchall()
 
-            v['tokens'] = [dict(t) for t in tokens]
-            v['segments'] = [dict(s) for s in segments]
+            v['matching_morphemes'] = [dict(m) for m in matching_morphemes]
             results.append(v)
 
         return {"query_info": query_info, "result": results}
@@ -239,7 +240,7 @@ def register(server: FastMCP):
         def _root_info(r: str) -> dict:
             info: dict = {"root": r}
             row = conn.execute(
-                "SELECT lookup_key, frequency FROM ref_features WHERE feature_type = 'root' AND lookup_key = ?", (r,)
+                "SELECT lookup_key, frequency FROM features WHERE feature_type = 'root' AND lookup_key = ?", (r,)
             ).fetchone()
             if row:
                 info["root_ar"] = row["lookup_key"]
@@ -248,52 +249,55 @@ def register(server: FastMCP):
 
         # Find co-occurring verses using FK IDs
         co_rows = conn.execute(
-            """SELECT DISTINCT t1.verse_surah AS surah, t1.verse_ayah AS ayah, vt.text
-            FROM segments s1
-            JOIN tokens t1 ON s1.token_id = t1.id
-            JOIN segments s2 ON s2.root_id = ?
-            JOIN tokens t2 ON s2.token_id = t2.id
-                AND t1.verse_surah = t2.verse_surah
-                AND t1.verse_ayah = t2.verse_ayah
-            JOIN verse_texts vt ON t1.verse_surah = vt.surah_number AND t1.verse_ayah = vt.ayah_number
-            WHERE s1.root_id = ?
-            ORDER BY t1.verse_surah ASC, t1.verse_ayah ASC
+            """SELECT DISTINCT w1.verse_surah AS surah, w1.verse_ayah AS ayah
+            FROM morphemes m1
+            JOIN words w1 ON m1.word_id = w1.id
+            JOIN morphemes m2 ON m2.root_id = ?
+            JOIN words w2 ON m2.word_id = w2.id
+                AND w1.verse_surah = w2.verse_surah
+                AND w1.verse_ayah = w2.verse_ayah
+            WHERE m1.root_id = ?
+            ORDER BY w1.verse_surah ASC, w1.verse_ayah ASC
             LIMIT ?""",
             (r2_id, r1_id, limit)
         ).fetchall()
+
+        # Batch-compose verse texts
+        co_keys = [(r['surah'], r['ayah']) for r in co_rows]
+        co_text_map = batch_compose_verse_texts(conn, co_keys)
 
         co_occurrences = []
         for row in co_rows:
             s, a = row["surah"], row["ayah"]
             # Get the specific words for each root in this verse
             w1 = conn.execute(
-                """SELECT DISTINCT t.text FROM segments s
-                   JOIN tokens t ON s.token_id = t.id
-                   WHERE s.root_id = ? AND t.verse_surah = ? AND t.verse_ayah = ?""",
+                """SELECT DISTINCT w.text FROM morphemes m
+                   JOIN words w ON m.word_id = w.id
+                   WHERE m.root_id = ? AND w.verse_surah = ? AND w.verse_ayah = ?""",
                 (r1_id, s, a)
             ).fetchall()
             w2 = conn.execute(
-                """SELECT DISTINCT t.text FROM segments s
-                   JOIN tokens t ON s.token_id = t.id
-                   WHERE s.root_id = ? AND t.verse_surah = ? AND t.verse_ayah = ?""",
+                """SELECT DISTINCT w.text FROM morphemes m
+                   JOIN words w ON m.word_id = w.id
+                   WHERE m.root_id = ? AND w.verse_surah = ? AND w.verse_ayah = ?""",
                 (r2_id, s, a)
             ).fetchall()
             co_occurrences.append({
-                "surah": s, "ayah": a, "text": row["text"],
+                "surah": s, "ayah": a, "text": co_text_map.get((s, a), ''),
                 "root1_words": [r["text"] for r in w1],
                 "root2_words": [r["text"] for r in w2],
             })
 
         # Total count (may exceed limit)
         total = conn.execute(
-            """SELECT COUNT(DISTINCT t1.verse_surah || ':' || t1.verse_ayah)
-            FROM segments s1
-            JOIN tokens t1 ON s1.token_id = t1.id
-            JOIN segments s2 ON s2.root_id = ?
-            JOIN tokens t2 ON s2.token_id = t2.id
-                AND t1.verse_surah = t2.verse_surah
-                AND t1.verse_ayah = t2.verse_ayah
-            WHERE s1.root_id = ?""",
+            """SELECT COUNT(DISTINCT w1.verse_surah || ':' || w1.verse_ayah)
+            FROM morphemes m1
+            JOIN words w1 ON m1.word_id = w1.id
+            JOIN morphemes m2 ON m2.root_id = ?
+            JOIN words w2 ON m2.word_id = w2.id
+                AND w1.verse_surah = w2.verse_surah
+                AND w1.verse_ayah = w2.verse_ayah
+            WHERE m1.root_id = ?""",
             (r2_id, r1_id)
         ).fetchone()[0]
 
@@ -332,21 +336,19 @@ def register(server: FastMCP):
                 eid = existing_id
             else:
                 eid = generate_entry_id(conn)
-                # Auto-set scope to pattern
-                scope_value = json.dumps(linguistic_features) if linguistic_features else None
+                # Cross-cutting entry (no feature_id) — patterns span multiple features
                 conn.execute(
-                    """INSERT INTO entries (id, content, phase, category, scope_type, scope_value, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (eid, entry_content, phase, "quranic_research", "pattern", scope_value, now, now)
+                    """INSERT INTO entries (id, content, phase, category, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (eid, entry_content, phase, "quranic_research", now, now)
                 )
 
             save_database()
 
-
             return {
                 "success": True,
                 "entry_id": eid,
-                "message": f"Entry created: {eid} with scope_type='pattern'",
+                "message": f"Pattern entry created: {eid}",
             }
         except Exception as e:
             return {"success": False, "entry_id": "", "message": f"Failed to create pattern interpretation: {e}"}
@@ -361,8 +363,8 @@ def register(server: FastMCP):
         """Create a thematic interpretation for an entire surah."""
         conn = get_connection()
         try:
-            surah_row = conn.execute("SELECT name FROM surahs WHERE number = ?", (surah,)).fetchone()
-            surah_name = surah_row['name'] if surah_row else f"Surah {surah}"
+            from ..utils.surahs import get_surah_name
+            surah_name = get_surah_name(surah) or f"Surah {surah}"
 
             now = _now()
 
@@ -375,15 +377,14 @@ def register(server: FastMCP):
                 eid = existing_id
             else:
                 eid = generate_entry_id(conn)
-                # Auto-set scope to surah
+                # Cross-cutting entry (no feature_id) — surah themes span the whole surah
                 conn.execute(
-                    """INSERT INTO entries (id, content, phase, category, scope_type, scope_value, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (eid, entry_content, phase, "quranic_research", "surah", str(surah), now, now)
+                    """INSERT INTO entries (id, content, phase, category, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (eid, entry_content, phase, "quranic_research", now, now)
                 )
 
             save_database()
-
 
             return {
                 "success": True,
@@ -392,6 +393,92 @@ def register(server: FastMCP):
             }
         except Exception as e:
             return {"success": False, "entry_id": "", "message": f"Failed to create surah theme: {e}"}
+
+    @mcp.tool()
+    def update_morpheme(
+        morpheme_id: str,
+        verb_form: str | None = None,
+        voice: str | None = None,
+        mood: str | None = None,
+        aspect: str | None = None,
+        person: str | None = None,
+        number: str | None = None,
+        gender: str | None = None,
+        case_value: str | None = None,
+        dependency_rel: str | None = None,
+        role: str | None = None,
+    ) -> dict:
+        """Update linguistic features on a morpheme by its id (e.g. "mor-2-282-78-0").
+
+        Only provided (non-None) features are updated; others are left unchanged.
+        Values are resolved against features. Pass the human-readable value
+        (e.g. verb_form="(VI)", mood="MOOD:JUS", voice="PASS").
+        """
+        conn = get_connection()
+
+        mor = conn.execute(
+            "SELECT id FROM morphemes WHERE id = ?", (morpheme_id,)
+        ).fetchone()
+        if not mor:
+            return {"error": f"Morpheme not found: {morpheme_id}"}
+
+        features = {
+            "verb_form": verb_form, "voice": voice, "mood": mood,
+            "aspect": aspect, "person": person, "number": number,
+            "gender": gender, "case_value": case_value,
+            "dependency_rel": dependency_rel, "role": role,
+        }
+
+        updates = {}
+        for key, val in features.items():
+            if val is not None:
+                normalized = _normalize_feature(key, val)
+                fk_id = _resolve_feature_id(conn, key, normalized)
+                if fk_id is None:
+                    return {"error": f"Feature value not found: {key}={normalized}"}
+                updates[f"{key}_id"] = fk_id
+
+        if not updates:
+            return {"error": "No features provided to update"}
+
+        set_clause = ", ".join(f"{col} = ?" for col in updates)
+        params = list(updates.values()) + [morpheme_id]
+        conn.execute(f"UPDATE morphemes SET {set_clause} WHERE id = ?", params)
+        save_database()
+
+        # Return the updated morpheme
+        updated = conn.execute(
+            """SELECT m.id, m.word_id, m.form,
+                rf_root.lookup_key AS root,
+                rf_lemma.lookup_key AS lemma,
+                rf_pos.lookup_key AS pos,
+                rf_vf.lookup_key AS verb_form,
+                rf_voice.lookup_key AS voice,
+                rf_mood.lookup_key AS mood,
+                rf_asp.lookup_key AS aspect,
+                rf_per.lookup_key AS person,
+                rf_num.lookup_key AS number,
+                rf_gen.lookup_key AS gender,
+                rf_case.lookup_key AS case_value,
+                rf_dep.lookup_key AS dependency_rel
+            FROM morphemes m
+            LEFT JOIN features rf_root ON m.root_id = rf_root.id
+            LEFT JOIN features rf_lemma ON m.lemma_id = rf_lemma.id
+            LEFT JOIN features rf_pos ON m.pos_id = rf_pos.id
+            LEFT JOIN features rf_vf ON m.verb_form_id = rf_vf.id
+            LEFT JOIN features rf_voice ON m.voice_id = rf_voice.id
+            LEFT JOIN features rf_mood ON m.mood_id = rf_mood.id
+            LEFT JOIN features rf_asp ON m.aspect_id = rf_asp.id
+            LEFT JOIN features rf_per ON m.person_id = rf_per.id
+            LEFT JOIN features rf_num ON m.number_id = rf_num.id
+            LEFT JOIN features rf_gen ON m.gender_id = rf_gen.id
+            LEFT JOIN features rf_case ON m.case_value_id = rf_case.id
+            LEFT JOIN features rf_dep ON m.dependency_rel_id = rf_dep.id
+            WHERE m.id = ?""",
+            (morpheme_id,)
+        ).fetchone()
+
+        return {"success": True, "morpheme": dict(updated)}
 
     @mcp.tool()
     def add_verse_evidence(
@@ -404,55 +491,48 @@ def register(server: FastMCP):
         """Add a verse as evidence for an entry with verification status.
 
         Verification: supports, contradicts, or unclear.
+        Adds a location directly on the entry with verification and notes.
         """
         conn = get_connection()
         try:
-            parent = conn.execute("SELECT id, phase, category FROM entries WHERE id = ?", (entry_id,)).fetchone()
+            parent = conn.execute("SELECT id FROM entries WHERE id = ?", (entry_id,)).fetchone()
             if not parent:
-                return {"success": False, "entry_id": "", "message": f"Entry {entry_id} not found"}
+                return {"success": False, "message": f"Entry {entry_id} not found"}
 
-            if not conn.execute("SELECT * FROM verse_texts WHERE surah_number = ? AND ayah_number = ?", (surah, ayah)).fetchone():
-                return {"success": False, "entry_id": "", "message": f"Verse {surah}:{ayah} not found"}
+            if not verse_exists(conn, surah, ayah):
+                return {"success": False, "message": f"Verse {surah}:{ayah} not found"}
 
-            # Map verification to dependency type
-            dep_type_map = {'supports': 'supports', 'contradicts': 'contradicts', 'unclear': 'related'}
-            dep_type = dep_type_map.get(verification, 'related')
+            valid_verifications = ('supports', 'contradicts', 'unclear')
+            if verification not in valid_verifications:
+                return {"success": False, "message": f"Invalid verification. Must be one of: {', '.join(valid_verifications)}"}
 
-            eid = generate_entry_id(conn)
             now = _now()
-            scope_value = f"{surah}:{ayah}"
 
+            # Add location with verification directly on the entry
             conn.execute(
-                """INSERT INTO entries (id, content, phase, category, scope_type, scope_value, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, 'verse', ?, ?, ?)""",
-                (eid, notes or f"Evidence: {verification} for {surah}:{ayah}",
-                 parent['phase'], parent['category'], scope_value, now, now)
-            )
-            conn.execute(
-                """INSERT INTO entry_dependencies (entry_id, depends_on_entry_id, dependency_type, created_at)
-                   VALUES (?, ?, ?, ?)""",
-                (eid, entry_id, dep_type, now)
+                """INSERT OR IGNORE INTO entry_locations
+                   (entry_id, surah, ayah_start, verification, notes)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (entry_id, surah, ayah, verification,
+                 notes or f"Evidence: {verification} for {surah}:{ayah}")
             )
 
             # Update inline counters on parent entry
-            if verification in ('supports', 'contradicts', 'unclear'):
-                counter_col = f"verse_{verification}"
-                conn.execute(
-                    f"UPDATE entries SET {counter_col} = COALESCE({counter_col}, 0) + 1, "
-                    f"verse_verified = COALESCE(verse_verified, 0) + 1, "
-                    f"verification_updated_at = ? WHERE id = ?",
-                    (now, entry_id)
-                )
+            counter_col = f"verse_{verification}"
+            conn.execute(
+                f"UPDATE entries SET {counter_col} = COALESCE({counter_col}, 0) + 1, "
+                f"verse_verified = COALESCE(verse_verified, 0) + 1, "
+                f"verification_updated_at = ? WHERE id = ?",
+                (now, entry_id)
+            )
 
             confidence = _compute_confidence(conn, entry_id)
             save_database()
 
-
             return {
                 "success": True,
-                "entry_id": eid,
                 "message": f"Evidence added: Verse {surah}:{ayah} {verification} entry {entry_id}",
                 "confidence": confidence,
             }
         except Exception as e:
-            return {"success": False, "entry_id": "", "message": f"Failed to add evidence: {e}"}
+            return {"success": False, "message": f"Failed to add evidence: {e}"}

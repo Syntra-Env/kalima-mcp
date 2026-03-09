@@ -4,6 +4,8 @@ from mcp.server.fastmcp import FastMCP
 
 from ..db import get_connection
 from ..utils.arabic import normalize_arabic
+from ..utils.surahs import get_surah_name, list_all_surahs
+from ..utils.units import compose_verse_text, compose_surah_texts
 
 mcp: FastMCP  # injected by server.py
 
@@ -20,50 +22,30 @@ def register(server: FastMCP):
         Only show interpretations if they exist in the database.
         """
         conn = get_connection()
-        row = conn.execute(
-            """SELECT v.surah_number, v.ayah_number, vt.text
-               FROM verses v
-               JOIN verse_texts vt ON v.surah_number = vt.surah_number AND v.ayah_number = vt.ayah_number
-               WHERE v.surah_number = ? AND v.ayah_number = ?""",
-            (surah, ayah)
-        ).fetchone()
-        if not row:
+        text = compose_verse_text(conn, surah, ayah)
+        if text is None:
             return {"error": f"Verse {surah}:{ayah} not found"}
-        return dict(row)
+        return {"surah_number": surah, "ayah_number": ayah, "text": text}
 
     @mcp.tool()
     def get_surah(surah: int) -> dict:
         """Retrieve an entire surah (chapter) with all its verses."""
         conn = get_connection()
-        surah_row = conn.execute(
-            "SELECT number, name FROM surahs WHERE number = ?",
-            (surah,)
-        ).fetchone()
-        if not surah_row:
+        name = get_surah_name(surah)
+        if not name:
             return {"error": f"Surah {surah} not found"}
 
-        verses = conn.execute(
-            """SELECT v.surah_number, v.ayah_number, vt.text
-               FROM verses v
-               JOIN verse_texts vt ON v.surah_number = vt.surah_number AND v.ayah_number = vt.ayah_number
-               WHERE v.surah_number = ?
-               ORDER BY v.ayah_number ASC""",
-            (surah,)
-        ).fetchall()
+        verses = compose_surah_texts(conn, surah)
 
         return {
-            "surah": dict(surah_row),
-            "verses": [dict(v) for v in verses]
+            "surah": {"number": surah, "name": name},
+            "verses": verses
         }
 
     @mcp.tool()
     def list_surahs() -> list[dict]:
         """Get a list of all 114 surahs with their Arabic names and verse counts."""
-        conn = get_connection()
-        rows = conn.execute(
-            "SELECT number, name FROM surahs ORDER BY number ASC"
-        ).fetchall()
-        return [dict(r) for r in rows]
+        return list_all_surahs()
 
     @mcp.tool()
     def search_verses(query: str, limit: int = 20) -> list[dict]:
@@ -74,10 +56,13 @@ def register(server: FastMCP):
         conn = get_connection()
         normalized_query = normalize_arabic(query)
         rows = conn.execute(
-            """SELECT surah_number, ayah_number, text
-               FROM verse_texts
-               WHERE normalized_text LIKE ?
-               ORDER BY surah_number ASC, ayah_number ASC
+            """SELECT verse_surah AS surah_number, verse_ayah AS ayah_number,
+                      GROUP_CONCAT(text, ' ') AS text
+               FROM (SELECT verse_surah, verse_ayah, text, normalized_text FROM words
+                     ORDER BY verse_surah, verse_ayah, word_index)
+               GROUP BY verse_surah, verse_ayah
+               HAVING GROUP_CONCAT(normalized_text, ' ') LIKE ?
+               ORDER BY verse_surah ASC, verse_ayah ASC
                LIMIT ?""",
             (f"%{normalized_query}%", limit)
         ).fetchall()
