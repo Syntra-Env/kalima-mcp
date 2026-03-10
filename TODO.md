@@ -2,7 +2,15 @@
 
 ## New Tasks
 
+### UOR & HUFD (Universal Object Reference & Holonomic Unified Field Dynamics)
+- [ ] **Resonance Search:** Add tool to find verses/entries sharing identical "holonomic" addresses at the morpheme level but differing in features (gauge state).
+- [ ] **Linguistic Curvature Metric:** Implement a tool to calculate the "curvature" of a research entry relative to the Quranic composition chain.
+- [ ] **Lattice Navigator:** Create a tool to navigate the Quran via the UOR content-addressed lattice (nodes as atoms/morphemes, edges as features).
+- [x] **Holonomic Deduplication:** Identify and merge research entries with identical content addresses (SHA-256 of content + anchors).
+- [ ] **Cross-Corpus Alignment:** Use UOR addresses as a "Gold Standard Reference Field" to measure the alignment (zero curvature) of different translations or classical commentaries.
+
 ### MCP Server
+- [x] Add get_content_address and find_by_content_address tools
 - [ ] Add kalima_save_bulk_entries as primary save tool
 
 ### Surah 15 Verification

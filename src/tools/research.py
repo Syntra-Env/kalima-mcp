@@ -1,7 +1,11 @@
-"""Research tools: entries CRUD, evidence, relationships."""
+"""Research tools: entries CRUD, evidence, relationships.
+
+Transitions to Holonomic Manifold Model (Content Addressing as Primary Identity).
+"""
 
 import json
 import sqlite3
+import hashlib
 from datetime import datetime, timezone
 
 from mcp.server.fastmcp import FastMCP
@@ -21,10 +25,7 @@ def _now() -> str:
 
 
 def _augment_entry_dict(conn, d: dict, full: bool = False) -> dict:
-    """Resolve unified anchor_ids into human-readable strings.
-
-    full=True includes verification stats (used for get_entry, not search).
-    """
+    """Resolve unified anchor_ids into human-readable strings."""
     from ..utils.units import compose_word_text
 
     if not d.get('anchor_type') or not d.get('anchor_ids'):
@@ -59,16 +60,16 @@ def _augment_entry_dict(conn, d: dict, full: bool = False) -> dict:
 
     d['anchor_resolved'] = resolved
 
-    # Verification stats only for full single-entry lookups
-    if full and d.get('content') and d.get('id'):
+    # Verification stats
+    if full and d.get('content') and d.get('address'):
         row = conn.execute(
             """SELECT
                 COUNT(CASE WHEN verification = 'supports' THEN 1 END) as supports,
                 COUNT(CASE WHEN verification = 'contradicts' THEN 1 END) as contradicts,
                 COUNT(CASE WHEN verification = 'unclear' THEN 1 END) as unclear,
-                COUNT(id) as total
-               FROM entries WHERE content = ? AND id != ?""",
-            (d['content'], d['id'])
+                COUNT(address) as total
+               FROM holonomic_entries WHERE content = ? AND address != ?""",
+            (d['content'], d['address'])
         ).fetchone()
 
         if row and row['total'] > 0:
@@ -96,7 +97,7 @@ def register(server: FastMCP):
     ) -> list[dict]:
         """Search research entries by keyword, phase, or category."""
         conn = get_connection()
-        sql = "SELECT id, content, phase, category, anchor_type, anchor_ids FROM entries WHERE 1=1"
+        sql = "SELECT address, content, phase, category, anchor_type, anchor_ids FROM holonomic_entries WHERE 1=1"
         params: list = []
 
         if query:
@@ -123,7 +124,6 @@ def register(server: FastMCP):
         results = []
         for r in rows:
             d = dict(r)
-            # Truncate long content in search results
             if d.get('content') and len(d['content']) > 200:
                 d['content'] = d['content'][:200] + '...'
             _augment_entry_dict(conn, d)
@@ -132,43 +132,56 @@ def register(server: FastMCP):
 
     @mcp.tool()
     def get_entry(entry_id: str) -> dict:
-        """Get a single entry by its ID."""
+        """Get a single entry by its address or legacy short_id."""
         conn = get_connection()
-        row = conn.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
+        # 1. Try address
+        row = conn.execute("SELECT * FROM holonomic_entries WHERE address = ?", (entry_id,)).fetchone()
+        
+        # 2. Try legacy short_id
+        if not row:
+            row = conn.execute(
+                """SELECT h.* FROM holonomic_entries h
+                   JOIN content_addresses ca ON ca.address = h.address
+                   WHERE ca.entity_id = ? AND ca.entity_type = 'entry'""",
+                (entry_id,)
+            ).fetchone()
+            
         if not row:
             return {"error": f"Entry {entry_id} not found"}
         return _augment_entry_dict(conn, dict(row), full=True)
 
     @mcp.tool()
     def get_content_address(entity_type: str, entity_id: str) -> dict:
-        \"\"\"Get the UOR content address for any entity (verse, word_type, entry, etc).\"\"\"
+        """Get the UOR content address for any entity (verse, word_type, entry, etc)."""
         conn = get_connection()
         addr = get_address(conn, entity_type, entity_id)
-        return {\"entity_type\": entity_type, \"entity_id\": entity_id, \"address\": addr}
+        return {"entity_type": entity_type, "entity_id": entity_id, "address": addr}
 
     @mcp.tool()
     def find_by_content_address(address: str) -> list[dict]:
-        \"\"\"Find all entities (including research entries) matching a UOR address.\"\"\"
+        """Find all entities (including research entries) matching a UOR address."""
         conn = get_connection()
         hits = find_by_address(conn, address)
         results = []
         for h in hits:
             if h['entity_type'] == 'entry':
-                row = conn.execute(\"SELECT * FROM entries WHERE id = ?\", (h['entity_id'],)).fetchone()
+                row = conn.execute("SELECT * FROM holonomic_entries WHERE address = ?", (h['address'],)).fetchone()
+                if not row: # Try by entity_id link
+                     row = conn.execute("SELECT * FROM holonomic_entries WHERE address = ?", (address,)).fetchone()
                 if row:
-                    results.append({\"type\": \"entry\", \"data\": _augment_entry_dict(conn, dict(row))})
+                    results.append({"type": "entry", "data": _augment_entry_dict(conn, dict(row))})
             else:
-                results.append({\"type\": h['entity_type'], \"id\": h['entity_id']})
+                results.append({"type": h['entity_type'], "id": h['entity_id']})
         return results
 
     @mcp.tool()
     def get_entry_stats() -> dict:
         """Get database statistics."""
         conn = get_connection()
-        total = conn.execute("SELECT count(*) FROM entries").fetchone()[0]
-        rows = conn.execute("SELECT phase, count(*) as cnt FROM entries GROUP BY phase").fetchall()
+        total = conn.execute("SELECT count(*) FROM holonomic_entries").fetchone()[0]
+        rows = conn.execute("SELECT phase, count(*) as cnt FROM holonomic_entries GROUP BY phase").fetchall()
         by_phase = {r['phase']: r['cnt'] for r in rows}
-        rows = conn.execute("SELECT category, count(*) as cnt FROM entries GROUP BY category").fetchall()
+        rows = conn.execute("SELECT category, count(*) as cnt FROM holonomic_entries GROUP BY category").fetchall()
         by_category = {r['category'] or 'uncategorized': r['cnt'] for r in rows}
 
         return {
@@ -176,7 +189,7 @@ def register(server: FastMCP):
             "by_phase": by_phase,
             "by_category": by_category,
             "anchoring": [dict(r) for r in conn.execute(
-                "SELECT anchor_type, count(*) as cnt FROM entries WHERE anchor_type IS NOT NULL GROUP BY anchor_type"
+                "SELECT anchor_type, count(*) as cnt FROM holonomic_entries WHERE anchor_type IS NOT NULL GROUP BY anchor_type"
             ).fetchall()]
         }
 
@@ -184,18 +197,7 @@ def register(server: FastMCP):
 
     @mcp.tool()
     def save_bulk_entries(entries: list[dict]) -> dict:
-        """Save one or more research entries in bulk.
-        
-        Each entry dict should have:
-        - content: str (required)
-        - phase: str (optional, default: "question")
-        - category: str (optional, default: "uncategorized")
-        - anchor_type: str (optional)
-        - anchor_ids: str (optional)
-        - notes: str (optional)
-        
-        Returns list of created entry IDs.
-        """
+        """Save research entries using UOR content addresses as primary identity."""
         conn = get_connection()
         created = []
         errors = []
@@ -207,18 +209,25 @@ def register(server: FastMCP):
                 continue
             
             try:
-                entry_id = generate_entry_id(conn)
                 content = entry.get('content', '')
                 a_type = entry.get('anchor_type')
                 a_ids = entry.get('anchor_ids')
                 
+                # Compute UOR address
+                canonical = b'|'.join([
+                    (content or '').encode('utf-8'),
+                    (a_type or '').encode('ascii'),
+                    (a_ids or '').encode('ascii')
+                ])
+                address = hashlib.sha256(canonical).hexdigest()
+
                 conn.execute(
-                    """INSERT INTO entries (
-                        id, content, phase, category, anchor_type, anchor_ids, notes, last_activity
+                    """INSERT OR REPLACE INTO holonomic_entries (
+                        address, content, phase, category, anchor_type, anchor_ids, notes, last_activity
                        )
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
-                        entry_id,
+                        address,
                         content,
                         phase,
                         entry.get('category', 'uncategorized'),
@@ -229,10 +238,14 @@ def register(server: FastMCP):
                     )
                 )
                 
-                # Compute and store UOR content address
-                update_entry_address(conn, entry_id, content, a_type, a_ids)
+                # Maintain legacy mapping link
+                entry_id = generate_entry_id(conn)
+                conn.execute(
+                    "INSERT OR REPLACE INTO content_addresses (entity_type, entity_id, address) VALUES (?, ?, ?)",
+                    ('entry', entry_id, address)
+                )
                 
-                created.append(entry_id)
+                created.append(address)
             except Exception as e:
                 errors.append({"index": i, "error": str(e)})
         
@@ -242,7 +255,7 @@ def register(server: FastMCP):
         return {
             "success": len(created) > 0,
             "created_count": len(created),
-            "created_ids": created,
+            "addresses": created,
             "error_count": len(errors),
             "errors": errors if errors else None
         }
@@ -257,37 +270,73 @@ def register(server: FastMCP):
         category: str | None = None,
         notes: str | None = None,
     ) -> dict:
-        """Update an existing entry's content, phase, or anchors."""
+        """Update an existing entry. Identity shift (content/anchor change) creates new address."""
         conn = get_connection()
         try:
-            updates = ["last_activity = ?"]
-            params = [_now()]
-
-            if content: updates.append("content = ?"); params.append(content)
-            if phase: updates.append("phase = ?"); params.append(phase)
-            if category: updates.append("category = ?"); params.append(category)
-            if anchor_type: updates.append("anchor_type = ?"); params.append(anchor_type)
-            if anchor_ids: updates.append("anchor_ids = ?"); params.append(anchor_ids)
-            if notes: updates.append("notes = ?"); params.append(notes)
-
-            params.append(entry_id)
-            conn.execute(f"UPDATE entries SET {', '.join(updates)} WHERE id = ?", params)
+            # 1. Find existing
+            row = conn.execute("SELECT * FROM holonomic_entries WHERE address = ?", (entry_id,)).fetchone()
+            if not row:
+                row = conn.execute(
+                    """SELECT h.* FROM holonomic_entries h 
+                       JOIN content_addresses ca ON ca.address = h.address 
+                       WHERE ca.entity_id = ?""", (entry_id,)
+                ).fetchone()
             
-            # If identity changed, update content address
-            if content is not None or anchor_type is not None or anchor_ids is not None:
-                row = conn.execute("SELECT content, anchor_type, anchor_ids FROM entries WHERE id = ?", (entry_id,)).fetchone()
-                if row:
-                    update_entry_address(conn, entry_id, row['content'], row['anchor_type'], row['anchor_ids'])
-
+            if not row:
+                return {"success": False, "message": "Entry not found"}
+            
+            old_address = row['address']
+            
+            # 2. Prepare new values
+            new_content = content if content is not None else row['content']
+            new_a_type = anchor_type if anchor_type is not None else row['anchor_type']
+            new_a_ids = anchor_ids if anchor_ids is not None else row['anchor_ids']
+            
+            # 3. Compute new address
+            canonical = b'|'.join([
+                (new_content or '').encode('utf-8'),
+                (new_a_type or '').encode('ascii'),
+                (new_a_ids or '').encode('ascii')
+            ])
+            new_address = hashlib.sha256(canonical).hexdigest()
+            
+            # 4. If identity changed, delete old
+            if new_address != old_address:
+                conn.execute("DELETE FROM holonomic_entries WHERE address = ?", (old_address,))
+            
+            # 5. Insert/Update
+            conn.execute(
+                """INSERT OR REPLACE INTO holonomic_entries (
+                    address, content, phase, category, anchor_type, anchor_ids, notes, last_activity
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    new_address,
+                    new_content,
+                    phase if phase is not None else row['phase'],
+                    category if category is not None else row['category'],
+                    new_a_type,
+                    new_a_ids,
+                    notes if notes is not None else row['notes'],
+                    _now()
+                )
+            )
+            
             save_database()
-            return {"success": True}
+            return {"success": True, "new_address": new_address}
         except Exception as e:
             return {"success": False, "message": str(e)}
 
     @mcp.tool()
     def delete_entry(entry_id: str) -> dict:
-        """Delete an entry."""
+        """Delete an entry by address or legacy ID."""
         conn = get_connection()
-        conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
+        # Try address
+        res = conn.execute("DELETE FROM holonomic_entries WHERE address = ?", (entry_id,))
+        if res.rowcount == 0:
+            # Try legacy link
+            row = conn.execute("SELECT address FROM content_addresses WHERE entity_id = ? AND entity_type = 'entry'", (entry_id,)).fetchone()
+            if row:
+                conn.execute("DELETE FROM holonomic_entries WHERE address = ?", (row['address'],))
+        
         save_database()
         return {"success": True}
