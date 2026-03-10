@@ -9,6 +9,7 @@ from mcp.server.fastmcp import FastMCP
 from ..db import get_connection, save_database
 from ..utils.short_id import generate_entry_id
 from ..utils.units import get_entry_anchor, entries_at_verse
+from ..utils.addressing import update_entry_address, find_by_address, get_address
 
 mcp: FastMCP
 
@@ -139,6 +140,28 @@ def register(server: FastMCP):
         return _augment_entry_dict(conn, dict(row), full=True)
 
     @mcp.tool()
+    def get_content_address(entity_type: str, entity_id: str) -> dict:
+        \"\"\"Get the UOR content address for any entity (verse, word_type, entry, etc).\"\"\"
+        conn = get_connection()
+        addr = get_address(conn, entity_type, entity_id)
+        return {\"entity_type\": entity_type, \"entity_id\": entity_id, \"address\": addr}
+
+    @mcp.tool()
+    def find_by_content_address(address: str) -> list[dict]:
+        \"\"\"Find all entities (including research entries) matching a UOR address.\"\"\"
+        conn = get_connection()
+        hits = find_by_address(conn, address)
+        results = []
+        for h in hits:
+            if h['entity_type'] == 'entry':
+                row = conn.execute(\"SELECT * FROM entries WHERE id = ?\", (h['entity_id'],)).fetchone()
+                if row:
+                    results.append({\"type\": \"entry\", \"data\": _augment_entry_dict(conn, dict(row))})
+            else:
+                results.append({\"type\": h['entity_type'], \"id\": h['entity_id']})
+        return results
+
+    @mcp.tool()
     def get_entry_stats() -> dict:
         """Get database statistics."""
         conn = get_connection()
@@ -185,6 +208,10 @@ def register(server: FastMCP):
             
             try:
                 entry_id = generate_entry_id(conn)
+                content = entry.get('content', '')
+                a_type = entry.get('anchor_type')
+                a_ids = entry.get('anchor_ids')
+                
                 conn.execute(
                     """INSERT INTO entries (
                         id, content, phase, category, anchor_type, anchor_ids, notes, last_activity
@@ -192,15 +219,19 @@ def register(server: FastMCP):
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         entry_id,
-                        entry.get('content', ''),
+                        content,
                         phase,
                         entry.get('category', 'uncategorized'),
-                        entry.get('anchor_type'),
-                        entry.get('anchor_ids'),
+                        a_type,
+                        a_ids,
                         entry.get('notes'),
                         _now()
                     )
                 )
+                
+                # Compute and store UOR content address
+                update_entry_address(conn, entry_id, content, a_type, a_ids)
+                
                 created.append(entry_id)
             except Exception as e:
                 errors.append({"index": i, "error": str(e)})
@@ -241,6 +272,13 @@ def register(server: FastMCP):
 
             params.append(entry_id)
             conn.execute(f"UPDATE entries SET {', '.join(updates)} WHERE id = ?", params)
+            
+            # If identity changed, update content address
+            if content is not None or anchor_type is not None or anchor_ids is not None:
+                row = conn.execute("SELECT content, anchor_type, anchor_ids FROM entries WHERE id = ?", (entry_id,)).fetchone()
+                if row:
+                    update_entry_address(conn, entry_id, row['content'], row['anchor_type'], row['anchor_ids'])
+
             save_database()
             return {"success": True}
         except Exception as e:

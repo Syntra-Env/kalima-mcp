@@ -50,11 +50,7 @@ def initialize_address_table(conn: sqlite3.Connection):
 # --- Address computation per level ---
 
 def address_atoms(conn: sqlite3.Connection) -> dict[int, str]:
-    """Compute addresses for all morpheme_atoms. Returns {atom_id: address}.
-
-    Atoms are the irreducibles — UOR dihedral normalization applies here
-    at the byte level before hashing.
-    """
+    """Compute addresses for all morpheme_atoms. Returns {atom_id: address}."""
     rows = conn.execute(
         "SELECT id, base_letter, diacritics FROM morpheme_atoms ORDER BY id"
     ).fetchall()
@@ -66,12 +62,7 @@ def address_atoms(conn: sqlite3.Connection) -> dict[int, str]:
 
 
 def address_morpheme_types(conn: sqlite3.Connection, atom_addrs: dict[int, str]) -> dict[int, str]:
-    """Compute addresses for all morpheme_types from atoms + feature IDs.
-
-    Two morpheme types with identical text but different features (e.g.,
-    same word form as REL vs NEG) get different addresses because the
-    feature IDs are part of the canonical form.
-    """
+    """Compute addresses for all morpheme_types from atoms + feature IDs."""
     # Atom content per morpheme type
     atom_rows = conn.execute(
         "SELECT morpheme_type_id, id FROM morpheme_atoms ORDER BY morpheme_type_id, position"
@@ -90,7 +81,6 @@ def address_morpheme_types(conn: sqlite3.Connection, atom_addrs: dict[int, str])
 
     mt_features: dict[int, str] = {}
     for r in feat_rows:
-        # Build a stable feature fingerprint: "col=val|col=val|..."
         parts = []
         for col in feature_cols:
             v = r[col]
@@ -138,14 +128,14 @@ def address_word_instances(conn: sqlite3.Connection, wt_addrs: dict[int, str]) -
 
 
 def address_verses(conn: sqlite3.Connection, wi_addrs: dict[str, str]) -> dict[str, str]:
-    \"\"\"Compute addresses for all verses: hash of ordered word instance addresses.\"\"\"
+    """Compute addresses for all verses: hash of ordered word instance addresses."""
     rows = conn.execute(
-        \"SELECT id, verse_surah, verse_ayah, word_index FROM word_instances ORDER BY verse_surah, verse_ayah, word_index\"
+        "SELECT id, verse_surah, verse_ayah, word_index FROM word_instances ORDER BY verse_surah, verse_ayah, word_index"
     ).fetchall()
 
     verse_instances: dict[str, list[str]] = {}
     for r in rows:
-        key = f\"{r['verse_surah']}:{r['verse_ayah']}\"
+        key = f"{r['verse_surah']}:{r['verse_ayah']}"
         verse_instances.setdefault(key, []).append(wi_addrs[r['id']])
 
     addresses = {}
@@ -155,29 +145,28 @@ def address_verses(conn: sqlite3.Connection, wi_addrs: dict[str, str]) -> dict[s
 
 
 def address_entries(conn: sqlite3.Connection) -> dict[str, str]:
-    \"\"\"Compute addresses for all research entries.
+    """Compute addresses for all research entries.
 
     Address = hash(content | anchor_type | anchor_ids).
     This captures the core identity of the claim/research.
-    \"\"\"
+    """
     rows = conn.execute(
-        \"SELECT id, content, anchor_type, anchor_ids FROM entries\"
+        "SELECT id, content, anchor_type, anchor_ids FROM entries"
     ).fetchall()
-
+    
     addresses = {}
     for r in rows:
         # Canonical form for an entry statement
         content_part = (r['content'] or '').encode('utf-8')
         anchor_type = (r['anchor_type'] or '').encode('ascii')
         anchor_ids = (r['anchor_ids'] or '').encode('ascii')
-
+        
         canonical = b'|'.join([content_part, anchor_type, anchor_ids])
         addresses[r['id']] = _sha256(canonical)
     return addresses
 
 
 # --- Bulk store ---
-
 
 def store_addresses(conn: sqlite3.Connection, entity_type: str, addresses: dict):
     """Bulk-insert addresses into content_addresses table."""
@@ -191,10 +180,7 @@ def store_addresses(conn: sqlite3.Connection, entity_type: str, addresses: dict)
 # --- Full pipeline ---
 
 def compute_all_addresses(conn: sqlite3.Connection) -> dict[str, int]:
-    """Compute and store content addresses for the entire Quranic text.
-
-    Returns counts per level.
-    """
+    """Compute and store content addresses for the entire Quranic text + entries."""
     initialize_address_table(conn)
 
     # Bottom-up
@@ -240,26 +226,25 @@ def get_address(conn: sqlite3.Connection, entity_type: str, entity_id: str) -> s
 
 
 def find_by_address(conn: sqlite3.Connection, address: str) -> list[dict]:
-    \"\"\"Find all entities with a given content address.\"\"\"
+    """Find all entities with a given content address."""
     rows = conn.execute(
-        \"SELECT entity_type, entity_id FROM content_addresses WHERE address = ?\",
+        "SELECT entity_type, entity_id FROM content_addresses WHERE address = ?",
         (address,)
     ).fetchall()
     return [dict(r) for r in rows]
 
 
 def update_entry_address(conn: sqlite3.Connection, entry_id: str, content: str, anchor_type: str | None, anchor_ids: str | None) -> str:
-    \"\"\"Compute and store address for a single research entry.\"\"\"
+    """Compute and store address for a single research entry."""
     content_part = (content or '').encode('utf-8')
     a_type = (anchor_type or '').encode('ascii')
     a_ids = (anchor_ids or '').encode('ascii')
-
+    
     canonical = b'|'.join([content_part, a_type, a_ids])
     address = _sha256(canonical)
-
+    
     conn.execute(
-        \"INSERT OR REPLACE INTO content_addresses (entity_type, entity_id, address) VALUES (?, ?, ?)\",
+        "INSERT OR REPLACE INTO content_addresses (entity_type, entity_id, address) VALUES (?, ?, ?)",
         ('entry', str(entry_id), address)
     )
     return address
-
