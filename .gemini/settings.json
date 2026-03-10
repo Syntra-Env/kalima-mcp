@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "kalima": {
+      "command": "python",
+      "args": [
+        "-X",
+        "utf8",
+        "-m",
+        "src.server"
+      ]
+    }
+  }
+}

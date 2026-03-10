@@ -17,7 +17,7 @@
 ### Falsification-Based Validation
 - Claims gain credibility through **survived falsification attempts**, not accumulation of confirming instances
 - A single clear contradiction can invalidate a hypothesis
-- Research phases: question → hypothesis → validation → active_verification → passive_verification
+- Research phases: question → hypothesis → validation → verified / rejected
 - Every claim requires Quranic textual evidence
 
 ### Concordance Verification
@@ -46,26 +46,34 @@
 This project is an MCP (Model Context Protocol) server built with Python/FastMCP. The database is at `data/kalima.db` (or path in `KALIMA_DB_PATH` env var).
 
 ### Database schema
-- `entries` — All research data lives here. Each has:
-  - `id` (entry_N), `content`, `phase`, `category`, `confidence`, timestamps
-  - `feature_id` (INTEGER, UNIQUE, nullable) — FK to `features`. When set, this entry is the canonical interpretation for that linguistic feature. UNIQUE constraint enforces one interpretation per feature.
-  - Inline verification: `verse_total`, `verse_verified`, `verse_supports`, `verse_contradicts`, `verse_unclear`, `verse_current_index`, `verse_queue` (JSON), `verification_started_at`, `verification_updated_at`
-- `entry_locations` — Many-to-many mapping of entries to Quranic locations, including verse evidence.
-  - `id` (INTEGER PK), `entry_id` (TEXT FK -> entries), `surah` (INTEGER), `ayah_start` (INTEGER, nullable), `ayah_end` (INTEGER, nullable), `word_start` (INTEGER, nullable), `word_end` (INTEGER, nullable), `verification` (TEXT, nullable: supports/contradicts/unclear), `notes` (TEXT, nullable)
-  - Whole surah: `(surah=N, rest NULL)`. Single verse: `(surah=N, ayah_start=M)`. Verse range: `(surah=N, ayah_start=M, ayah_end=K)`. Word range: add `word_start`/`word_end`.
-  - Verse evidence is stored as locations with `verification` and `notes` set (no separate child entries needed).
-- `words` — Quranic words. Each has `id`, `text`, `word_index`, `verse_surah`, `verse_ayah`, `normalized_text`. Verse text is composed by space-joining words ordered by `word_index`. Covering index: `idx_words_verse(verse_surah, verse_ayah, word_index)`
-- `features` — Unified linguistic reference table (roots, lemmas, POS, morph features, dependency relations). Each has `feature_type`, `category`, `lookup_key`, `label_ar`, `label_en`, `frequency`. Serves as FK target for normalized `morphemes` columns and `entries.feature_id`
-- `morphemes` — Morphological components of Quranic words. `word_id` FK -> `words(id)`. Feature columns are normalized as integer FKs to `features` (e.g. `root_id`, `lemma_id`, `pos_id`, `verb_form_id`, etc.). Non-feature columns: `id` (PK, mor-S-A-W-M format), `word_id`, `form`, `uthmani_form` (full Uthmani orthography including diacritics/tajweed marks — words can be reconstructed by concatenating `uthmani_form` of ordered morphemes)
+
+#### Compositional Quranic text (read-only reference)
+- `word_instances` — Every word occurrence in the Quran (77,429 rows). Columns: `id`, `verse_surah`, `verse_ayah`, `word_index`, `word_type_id` (FK → word_types), `normalized_text`, `global_index`
+- `word_types` — Unique word forms / "DNA" (28,725 rows). Columns: `id`. Text is reconstructed from atoms via `compose_word_text()`
+- `word_type_morphemes` — Maps word types to their morpheme components. Columns: `word_type_id`, `morpheme_type_id` (FK → morpheme_types), `position`
+- `morpheme_types` — Unique morpheme forms (25,705 rows). Feature columns are integer FKs to `features`: `root_id`, `lemma_id`, `pos_id`, `verb_form_id`, `voice_id`, `mood_id`, `aspect_id`, `person_id`, `number_id`, `gender_id`, `case_value_id`. Also: `id`, `uthmani_text`
+- `morpheme_atoms` — Character-level decomposition of morphemes. Columns: `morpheme_type_id`, `position`, `base_letter`, `diacritics`. Words are reconstructed by joining atoms in order
+- `features` — Unified linguistic reference table (31,118 rows). Columns: `id`, `feature_type`, `category`, `lookup_key`, `label_ar`, `label_en`, `frequency`. FK target for all morpheme feature columns
+- `gold_standard` — Reference verse texts for validation (6,236 rows)
 - Surah names are stored as a Python constant in `src/utils/surahs.py` (not in a database table)
-- **No `dependencies` table** — relationships between entries are discovered structurally through shared features (via `feature_id` → morphemes → words → verses) and shared locations (via `entry_locations`). This eliminates manual dependency wiring.
+
+**Text reconstruction chain**: word_instances → word_types → word_type_morphemes → morpheme_types → morpheme_atoms. Verse text = space-joined words, each word = concatenated `base_letter + diacritics` of its atoms in order.
+
+#### Research entries
+- `entries` — All research data. Columns:
+  - `id` (TEXT PK, entry_N format), `content` (TEXT), `phase`, `category`, `confidence` (REAL)
+  - **Unified anchoring**: `anchor_type` (root/lemma/morpheme/word_type/word_instance/surah/pos/segment_type), `anchor_ids` (single ID, comma-separated IDs, or surah:ayah pattern)
+  - `verification` (supports/contradicts/unclear), `notes`
+  - **Verification workflow**: `verse_queue` (JSON array), `verse_current_index` (INTEGER)
+  - `last_activity` (ISO timestamp)
+- **No `entry_locations` or `feature_id`** — replaced by unified anchoring. Relationships between entries are discovered structurally through shared features and overlapping verse locations.
 
 Entry categories: `quranic_research`, `ncu`, `methodology`, `historical`, `design`, `essay`, `personal`, `session`
 
-Entry types:
-- **Feature-anchored**: Has `feature_id` — canonical interpretation for a root, lemma, verb form, etc.
-- **Location-anchored**: Has rows in `entry_locations` — verse-level evidence with optional `verification` status
-- **Cross-cutting**: Neither `feature_id` nor locations — surah themes, multi-feature patterns, etc. Related entries discovered at query time through shared features and overlapping verse locations.
+Entry anchoring types:
+- **Feature-anchored**: `anchor_type` is root/lemma/pos/etc, `anchor_ids` points to feature IDs
+- **Word-anchored**: `anchor_type` is word_type or word_instance, `anchor_ids` points to type IDs or surah:ayah patterns
+- **Cross-cutting**: No anchors — surah themes, multi-feature patterns, etc.
 
 ### Install
 ```
