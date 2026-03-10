@@ -138,14 +138,14 @@ def address_word_instances(conn: sqlite3.Connection, wt_addrs: dict[int, str]) -
 
 
 def address_verses(conn: sqlite3.Connection, wi_addrs: dict[str, str]) -> dict[str, str]:
-    """Compute addresses for all verses: hash of ordered word instance addresses."""
+    \"\"\"Compute addresses for all verses: hash of ordered word instance addresses.\"\"\"
     rows = conn.execute(
-        "SELECT id, verse_surah, verse_ayah, word_index FROM word_instances ORDER BY verse_surah, verse_ayah, word_index"
+        \"SELECT id, verse_surah, verse_ayah, word_index FROM word_instances ORDER BY verse_surah, verse_ayah, word_index\"
     ).fetchall()
 
     verse_instances: dict[str, list[str]] = {}
     for r in rows:
-        key = f"{r['verse_surah']}:{r['verse_ayah']}"
+        key = f\"{r['verse_surah']}:{r['verse_ayah']}\"
         verse_instances.setdefault(key, []).append(wi_addrs[r['id']])
 
     addresses = {}
@@ -154,7 +154,30 @@ def address_verses(conn: sqlite3.Connection, wi_addrs: dict[str, str]) -> dict[s
     return addresses
 
 
+def address_entries(conn: sqlite3.Connection) -> dict[str, str]:
+    \"\"\"Compute addresses for all research entries.
+
+    Address = hash(content | anchor_type | anchor_ids).
+    This captures the core identity of the claim/research.
+    \"\"\"
+    rows = conn.execute(
+        \"SELECT id, content, anchor_type, anchor_ids FROM entries\"
+    ).fetchall()
+
+    addresses = {}
+    for r in rows:
+        # Canonical form for an entry statement
+        content_part = (r['content'] or '').encode('utf-8')
+        anchor_type = (r['anchor_type'] or '').encode('ascii')
+        anchor_ids = (r['anchor_ids'] or '').encode('ascii')
+
+        canonical = b'|'.join([content_part, anchor_type, anchor_ids])
+        addresses[r['id']] = _sha256(canonical)
+    return addresses
+
+
 # --- Bulk store ---
+
 
 def store_addresses(conn: sqlite3.Connection, entity_type: str, addresses: dict):
     """Bulk-insert addresses into content_addresses table."""
@@ -190,6 +213,9 @@ def compute_all_addresses(conn: sqlite3.Connection) -> dict[str, int]:
     verse_addrs = address_verses(conn, wi_addrs)
     store_addresses(conn, 'verse', verse_addrs)
 
+    entry_addrs = address_entries(conn)
+    store_addresses(conn, 'entry', entry_addrs)
+
     conn.commit()
 
     return {
@@ -198,6 +224,7 @@ def compute_all_addresses(conn: sqlite3.Connection) -> dict[str, int]:
         'word_types': len(wt_addrs),
         'word_instances': len(wi_addrs),
         'verses': len(verse_addrs),
+        'entries': len(entry_addrs),
     }
 
 
@@ -213,9 +240,26 @@ def get_address(conn: sqlite3.Connection, entity_type: str, entity_id: str) -> s
 
 
 def find_by_address(conn: sqlite3.Connection, address: str) -> list[dict]:
-    """Find all entities with a given content address."""
+    \"\"\"Find all entities with a given content address.\"\"\"
     rows = conn.execute(
-        "SELECT entity_type, entity_id FROM content_addresses WHERE address = ?",
+        \"SELECT entity_type, entity_id FROM content_addresses WHERE address = ?\",
         (address,)
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def update_entry_address(conn: sqlite3.Connection, entry_id: str, content: str, anchor_type: str | None, anchor_ids: str | None) -> str:
+    \"\"\"Compute and store address for a single research entry.\"\"\"
+    content_part = (content or '').encode('utf-8')
+    a_type = (anchor_type or '').encode('ascii')
+    a_ids = (anchor_ids or '').encode('ascii')
+
+    canonical = b'|'.join([content_part, a_type, a_ids])
+    address = _sha256(canonical)
+
+    conn.execute(
+        \"INSERT OR REPLACE INTO content_addresses (entity_type, entity_id, address) VALUES (?, ?, ?)\",
+        ('entry', str(entry_id), address)
+    )
+    return address
+
