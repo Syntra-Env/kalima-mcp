@@ -8,6 +8,7 @@ import sqlite3
 from mcp.server.fastmcp import FastMCP
 from ..db import get_connection
 from ..utils.addressing import get_address, find_by_address
+from ..utils.uor_ring import hex_to_int, decompose_fibers as uor_decompose, get_stratum
 
 mcp: FastMCP
 
@@ -16,7 +17,53 @@ def register(server: FastMCP):
     mcp = server
 
     @mcp.tool()
-    def resolve_address(address: str) -> dict:
+    def decompose_fibers(address: str) -> dict:
+        \"\"\"Decompose a UOR address into its binary fibers and stratum (P3.3).\"\"\"
+        x = hex_to_int(address)
+        fibers = uor_decompose(x)
+        stratum = get_stratum(x)
+        return {
+            "address": address,
+            "stratum": stratum,
+            "fibers_hex": hex(x),
+            "active_fibers_count": bin(x).count('1')
+        }
+
+        @mcp.tool()
+        def classify_uor_partition(address: str) -> dict:
+        \"\"\"Classify a UOR element into its ontological partition (P3.7).
+
+        Partitions:
+        - Irreducible: Roots (Semantic Primes)
+        - Reducible: Word Types (Compound Forms)
+        - Unit: Particles (Grammatically invertible units)
+        - Exterior: Unanchored research or context
+        \"\"\"
+        conn = get_connection()
+        hits = find_by_address(conn, address)
+        if not hits:
+            return {\"partition\": \"Exterior\", \"note\": \"Address not found in physical manifold.\"}
+
+        e_type = hits[0]['entity_type']
+
+        if e_type == 'root':
+            return {\"partition\": \"Irreducible\", \"type\": e_type, \"note\": \"Semantic basis vector.\"}
+        elif e_type in ('word_type', 'morpheme_type'):
+            # Check if it's a particle
+            row = conn.execute(\"\"\"
+                SELECT f.lookup_key FROM features f
+                JOIN morpheme_types mt ON mt.pos_id = f.id
+                WHERE mt.id = ? AND f.lookup_key IN ('P', 'PREP', 'CONJ', 'PRON')
+            \"\"\", (hits[0]['entity_id'],)).fetchone()
+            if row:
+                return {\"partition\": \"Unit\", \"type\": \"Particle\", \"note\": \"Invertible functional unit.\"}
+            return {\"partition\": \"Reducible\", \"type\": e_type, \"note\": \"Compound linguistic manifestation.\"}
+        else:
+            return {\"partition\": \"Exterior\", \"type\": e_type}
+
+        @mcp.tool()
+        def resolve_address(address: str) -> dict:
+
         """The 'Universal Key'. Resolve any UOR address into its type and data."""
         conn = get_connection()
         
@@ -34,7 +81,10 @@ def register(server: FastMCP):
             data = {"type": e_type, "id": e_id}
             
             if e_type == 'holonomic_entry':
-                row = conn.execute("SELECT * FROM holonomic_entries WHERE address = ?", (address,)).fetchone()
+                # Try holonomic_entries first, fall back to entries
+                row = conn.execute("SELECT * FROM holonomic_entries WHERE address = ?", (e_id,)).fetchone()
+                if not row:
+                    row = conn.execute("SELECT * FROM entries WHERE id = ?", (e_id,)).fetchone()
                 if row: data.update(dict(row))
                 
             elif e_type == 'word_type':
@@ -50,8 +100,9 @@ def register(server: FastMCP):
             elif e_type == 'verse':
                 # e_id is 'surah:ayah'
                 s, a = e_id.split(':')
-                row = conn.execute("SELECT text FROM verses WHERE surah = ? AND ayah = ?", (s, a)).fetchone()
-                if row: data['text'] = row['text']
+                from ..utils.units import compose_verse_text
+                text = compose_verse_text(conn, int(s), int(a))
+                if text: data['text'] = text
 
             results.append(data)
             

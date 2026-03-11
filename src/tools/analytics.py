@@ -9,44 +9,33 @@ import numpy as np
 from mcp.server.fastmcp import FastMCP
 from src.db import get_connection
 from src.utils.addressing import get_holonomic_vector, get_address
-from src.utils.hufd_math import get_h_matrix, get_discrete_curvature, get_field_tension
+from src.utils.hufd_math import get_h_matrix, get_discrete_curvature, get_field_tension, features_to_h_components
 
 mcp: FastMCP
 
-def _features_to_h_components(feat_row: dict) -> list[float]:
-    """Project linguistic features onto 3 real su(2) components.
-    
-    Axis 1 (x): Morphological Form (Verb Form, Aspect)
-    Axis 2 (y): Person/Gender/Number (The 'State' Charge)
-    Axis 3 (z): Syntactic Role (POS, Case)
-    """
-    x = (feat_row.get('verb_form_id', 0) or 0) * 0.1 + (feat_row.get('aspect_id', 0) or 0) * 0.05
-    y = (feat_row.get('person_id', 0) or 0) * 0.2 + (feat_row.get('gender_id', 0) or 0) * 0.1
-    z = (feat_row.get('pos_id', 0) or 0) * 0.05 + (feat_row.get('case_value_id', 0) or 0) * 0.1
-    
-    vec = np.array([x, y, z])
-    norm = np.linalg.norm(vec)
-    return (vec / norm).tolist() if norm > 0 else [0.0, 0.0, 0.0]
-
 def get_word_h_matrix(conn: sqlite3.Connection, word_instance_id: str) -> np.ndarray:
-    """Get the su(2) Field Connection H_mu for a specific word."""
+    """Get the high-resolution su(2) Field Connection H_mu."""
     feat_cols = [
-        'pos_id', 'verb_form_id', 'voice_id', 'mood_id', 'aspect_id', 
+        'root_id', 'pos_id', 'verb_form_id', 'voice_id', 'mood_id', 'aspect_id', 
         'person_id', 'number_id', 'gender_id', 'case_value_id'
     ]
     row = conn.execute(f"""
-        SELECT {', '.join(feat_cols)} FROM morpheme_types 
-        WHERE id = (SELECT morpheme_type_id FROM word_type_morphemes 
-                    WHERE word_type_id = (SELECT word_type_id FROM word_instances WHERE id=?))
+        SELECT {', '.join(feat_cols)}, mt.id as mt_id FROM morpheme_types mt
+        JOIN word_type_morphemes wtm ON wtm.morpheme_type_id = mt.id
+        JOIN word_instances wi ON wi.word_type_id = wtm.word_type_id
+        WHERE wi.id = ?
     """, (word_instance_id,)).fetchone()
     
     if not row: return np.zeros((2,2), dtype=complex)
     
-    components = _features_to_h_components(dict(row))
+    # Fetch root UOR address for coupling
+    root_addr = get_address(conn, 'root', str(row['root_id']))
+    
+    components = features_to_h_components(conn, dict(row), root_addr)
     return get_h_matrix(components)
 
 def measure_manifold_curvature(word_instance_id: str) -> dict:
-    """HUFD R_uv implementation: Curvature as Path-Ordered Divergence."""
+    """HUFD R_uv implementation: Curvature as Field Tension."""
     conn = get_connection()
     h_current = get_word_h_matrix(conn, word_instance_id)
     tension = get_field_tension(h_current)
@@ -54,11 +43,11 @@ def measure_manifold_curvature(word_instance_id: str) -> dict:
     return {
         "instance_id": word_instance_id,
         "curvature": round(tension, 4),
-        "stability": "stable" if tension < 0.5 else "singularity"
+        "stability": "stable" if tension < 5.0 else "singularity"
     }
 
 def get_surah_topology(surah_id: int) -> dict:
-    """Formal Topological Map using Path-Ordered Holonomy."""
+    """High-Fidelity Topological Map."""
     conn = get_connection()
     words = conn.execute("""
         SELECT id, verse_ayah, word_index, normalized_text 
@@ -68,22 +57,45 @@ def get_surah_topology(surah_id: int) -> dict:
     
     topology = []
     h_sequence = []
+    prev_curvature = 0.0
+    
     for w in words:
         h_mat = get_word_h_matrix(conn, w['id'])
         h_sequence.append(h_mat)
         
-        # Local Curvature: Path-Ordered Holonomy HF
+        # Holonomy across window of 3 words
         kappa = get_discrete_curvature(h_sequence[-3:])
         
         topology.append({
             "loc": f"{w['verse_ayah']}:{w['word_index']}",
             "text": w['normalized_text'],
             "curvature": kappa,
-            "lucidity_flux": 0.0
+            "lucidity_flux": round(prev_curvature - kappa, 4)
         })
+        prev_curvature = kappa
         
     return {"surah": surah_id, "topology": topology}
 
 def register(server: FastMCP):
     server.tool()(measure_manifold_curvature)
     server.tool()(get_surah_topology)
+
+    @server.tool()
+    def compute_topology(addresses: list[str]) -> dict:
+        """Compute topological Betti numbers for a set of UOR addresses (P3.5)."""
+        from src.utils.topology import get_constraints_topology
+        from src.db import get_connection
+        conn = get_connection()
+        return get_constraints_topology(conn, addresses)
+
+    @server.tool()
+    def compute_uor_index(addresses: list[str]) -> dict:
+        \"\"\"Compute UOR Index Theorem metrics for a set of UOR addresses (P3.6).
+
+        Determines the 'Completeness' of a research resolution.
+        \"\"\"
+        from src.utils.topology import compute_uor_index as uor_index
+        from src.db import get_connection
+        conn = get_connection()
+        return uor_index(conn, addresses)
+

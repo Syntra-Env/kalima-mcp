@@ -40,6 +40,9 @@ def get_connection() -> sqlite3.Connection:
     _initialize_features(conn)
     _initialize_entries(conn)
     _initialize_word_search(conn)
+    _initialize_traditional(conn)
+    _initialize_holonomic_indexes(conn)
+    _initialize_root_structures(conn)
 
     _conn = conn
     return conn
@@ -60,6 +63,36 @@ def close_database():
 
 
 # --- Initialization functions ---
+
+def _initialize_root_structures(conn: sqlite3.Connection):
+    """Create tables for root lattice and co-occurrence (P1.1, P1.5)."""
+    # Root Lattice: persistent caching of root relationships
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS root_lattice (
+            root_a_id INTEGER NOT NULL REFERENCES features(id),
+            root_b_id INTEGER NOT NULL REFERENCES features(id),
+            relationship_type TEXT NOT NULL, -- 'shared_radical', 'semantic_bridge'
+            strength REAL DEFAULT 0.0,
+            metadata TEXT,
+            PRIMARY KEY (root_a_id, root_b_id, relationship_type)
+        )
+    """)
+    
+    # Root Co-occurrence Matrix
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS root_cooccurrence (
+            root_a_id INTEGER NOT NULL REFERENCES features(id),
+            root_b_id INTEGER NOT NULL REFERENCES features(id),
+            cooccurrence_count INTEGER DEFAULT 0,
+            geodesic_distance REAL,
+            PRIMARY KEY (root_a_id, root_b_id)
+        )
+    """)
+    
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rl_root_a ON root_lattice(root_a_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rc_root_a ON root_cooccurrence(root_a_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rc_distance ON root_cooccurrence(geodesic_distance)")
+
 
 def _initialize_features(conn: sqlite3.Connection):
     conn.execute("""
@@ -120,4 +153,41 @@ def _initialize_word_search(conn: sqlite3.Connection):
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_wm_type ON word_type_morphemes(morpheme_type_id)"
+    )
+
+
+def _initialize_traditional(conn: sqlite3.Connection):
+    """Create table for traditional interpretations (comparison baseline)."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS traditional_interpretations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            surah INTEGER NOT NULL,
+            ayah INTEGER NOT NULL,
+            source TEXT NOT NULL,
+            interpretation TEXT NOT NULL,
+            language TEXT DEFAULT 'en',
+            UNIQUE(surah, ayah, source)
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_trad_verse ON traditional_interpretations(surah, ayah)"
+    )
+
+
+def _initialize_holonomic_indexes(conn: sqlite3.Connection):
+    """Ensure indexes on holonomic_entries for common query patterns."""
+    # Check if holonomic_entries exists before indexing
+    exists = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='holonomic_entries'"
+    ).fetchone()
+    if not exists:
+        return
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_he_anchor ON holonomic_entries(anchor_type, anchor_ids)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_he_activity ON holonomic_entries(last_activity)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_he_category ON holonomic_entries(category)"
     )

@@ -266,13 +266,5 @@ The Kalima database implements this methodology through:
 
 ---
 
-## Related Documentation
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System design and future geometric architectures
-- [NCU Framework and Interpretation.md](NCU%20Framework%20and%20Interpretation.md) - Full NCU framework exposition
-- [Historical Context of Quranic Interpretation.md](Historical%20Context%20of%20Quranic%20Interpretation.md) - Why methodology matters
-- [The Compatiblity of NCUs.md](The%20Compatiblity%20of%20NCUs.md) - Unresolved philosophical tensions
-
----
-
 *Last Updated: 2026-02-08*
 *This methodology is actively evolving as research progresses*

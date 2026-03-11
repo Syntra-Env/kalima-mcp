@@ -27,7 +27,7 @@ def register(server: FastMCP):
     def start_verification(entry_id: str, limit: int = 500) -> dict:
         """Start a new verification workflow for an entry."""
         conn = get_connection()
-        row = conn.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
+        row = conn.execute("SELECT * FROM holonomic_entries WHERE address = ?", (entry_id,)).fetchone()
         if not row: return {"success": False, "message": "Entry not found"}
 
         entry = dict(row)
@@ -58,7 +58,7 @@ def register(server: FastMCP):
         if not universe: return {"success": False, "message": "No universe found"}
 
         conn.execute(
-            "UPDATE entries SET verse_queue=?, verse_current_index=0, last_activity=? WHERE id=?",
+            "UPDATE holonomic_entries SET verse_queue=?, verse_current_index=0, last_activity=? WHERE address=?",
             (json.dumps(universe), _now(), entry_id)
         )
         save_database()
@@ -69,7 +69,7 @@ def register(server: FastMCP):
     def continue_verification(entry_id: str) -> dict:
         """Continue verification, returning current verse."""
         conn = get_connection()
-        row = conn.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
+        row = conn.execute("SELECT * FROM holonomic_entries WHERE address = ?", (entry_id,)).fetchone()
         if not row or not row['verse_queue']: return {"error": "No active verification"}
 
         queue = json.loads(row['verse_queue'])
@@ -85,7 +85,7 @@ def register(server: FastMCP):
     def submit_verification(entry_id: str, verification: str, notes: str | None = None) -> dict:
         """Submit verification result."""
         conn = get_connection()
-        row = conn.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
+        row = conn.execute("SELECT * FROM holonomic_entries WHERE address = ?", (entry_id,)).fetchone()
         if not row or not row['verse_queue']: return {"error": "No active verification"}
 
         queue = json.loads(row['verse_queue'])
@@ -94,23 +94,25 @@ def register(server: FastMCP):
 
         curr = queue[idx]
         now = _now()
-        from ..utils.short_id import generate_entry_id
-        new_eid = generate_entry_id(conn)
-        
-        p_dict = dict(row)
-        for k in ('id', 'verse_current_index', 'verse_queue', 'confidence', 'last_activity'):
-            p_dict.pop(k, None)
-        
-        p_dict.update({
-            'id': new_eid, 'anchor_type': 'word_instance', 'anchor_ids': f"{curr['surah']}:{curr['ayah']}",
-            'verification': verification, 'notes': notes or f"Verified instance of {entry_id}",
-            'phase': 'validation', 'last_activity': now
-        })
 
-        cols = ', '.join(p_dict.keys())
-        vals = ', '.join(['?'] * len(p_dict))
-        conn.execute(f"INSERT INTO entries ({cols}) VALUES ({vals})", list(p_dict.values()))
+        # Create verification sub-entry in holonomic_entries
+        import hashlib
+        parent_content = row['content'] or ''
+        anchor_str = f"{curr['surah']}:{curr['ayah']}"
+        new_addr = hashlib.sha256(
+            (parent_content + '|' + anchor_str + '|' + verification).encode('utf-8')
+        ).hexdigest()
 
-        conn.execute("UPDATE entries SET verse_current_index=verse_current_index+1, last_activity=? WHERE id=?", (now, entry_id))
+        conn.execute(
+            """INSERT OR REPLACE INTO holonomic_entries
+               (address, content, phase, category, anchor_type, anchor_ids,
+                verification, notes, last_activity)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (new_addr, parent_content, 'validation', row['category'],
+             'word_instance', anchor_str, verification,
+             notes or f"Verified instance of {entry_id}", now)
+        )
+
+        conn.execute("UPDATE holonomic_entries SET verse_current_index=verse_current_index+1, last_activity=? WHERE address=?", (now, entry_id))
         save_database()
         return {"success": True, "next": idx + 1 < len(queue)}

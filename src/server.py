@@ -6,11 +6,17 @@ Standardized on UOR Content Addressing and HUFD Field Dynamics.
 import signal
 import sys
 from mcp.server.fastmcp import FastMCP
-from .db import close_database
-from .tools import manifold, navigation, research, analytics, context, workflow
+from .db import get_connection, close_database
+from .tools import manifold, navigation, research, analytics, context, workflow, dynamics, gauge
+from .utils.hufd_math import compute_information_geometric_metric
 
 # Create FastMCP server
 mcp = FastMCP("kalima-holonomic-server")
+
+# Initialize mathematical metric
+with mcp:
+    conn = get_connection()
+    compute_information_geometric_metric(conn)
 
 # Register the clean research toolset
 manifold.register(mcp)
@@ -19,6 +25,8 @@ research.register(mcp)
 analytics.register(mcp)
 context.register(mcp)
 workflow.register(mcp)
+dynamics.register(mcp)
+gauge.register(mcp)
 
 def _cleanup(signum=None, frame=None):
     close_database()

@@ -71,7 +71,7 @@ def register(server: FastMCP):
         conn = get_connection()
         
         # 1. Get the verse address
-        verse_addr = get_address(conn, 'verse', f"{surah}:{ayah}")
+        verse_addr = get_address(conn, 'verse', str(surah) + ':' + str(ayah))
         
         # 2. Get the word instances
         rows = conn.execute(

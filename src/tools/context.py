@@ -71,7 +71,7 @@ def register(server: FastMCP):
 
         # Fetch direct entries (compact)
         direct = conn.execute(
-            "SELECT id, content, phase, anchor_type, anchor_ids FROM entries WHERE anchor_type='word_instance' AND anchor_ids LIKE ?",
+            "SELECT id, content, phase, anchor_type, anchor_ids FROM holonomic_entries WHERE anchor_type='word_instance' AND anchor_ids LIKE ?",
             (f"{surah}:{ayah}%",)
         ).fetchall()
 
@@ -97,13 +97,13 @@ def register(server: FastMCP):
 
         # 1. Direct entries (anchored to this feature)
         direct = conn.execute(
-            "SELECT id, content, phase, category FROM entries WHERE anchor_type=? AND anchor_ids LIKE ?",
+            "SELECT address as id, content, phase, category FROM holonomic_entries WHERE anchor_type=? AND anchor_ids LIKE ?",
             (feature_type, f"%{fid}%")
         ).fetchall()
 
         # 2. Compositional entries (bubbles up from words using this feature)
         comp = conn.execute(
-            f"""SELECT DISTINCT e.id, e.content, e.phase, e.category FROM entries e
+            f"""SELECT DISTINCT e.address as id, e.content, e.phase, e.category FROM holonomic_entries e
                JOIN word_type_morphemes wtm ON e.anchor_ids = CAST(wtm.word_type_id AS TEXT)
                JOIN morpheme_types mt ON wtm.morpheme_type_id = mt.id
                WHERE e.anchor_type='word_type' AND mt.{fk_col} = ?""",
