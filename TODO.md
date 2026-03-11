@@ -3,28 +3,29 @@
 ## New Tasks
 
 ### UOR & HUFD (Universal Object Reference & Holonomic Unified Field Dynamics)
-- [ ] **Resonance Search:** Add tool to find verses/entries sharing identical "holonomic" addresses at the morpheme level but differing in features (gauge state).
-- [ ] **Linguistic Curvature Metric:** Implement a tool to calculate the "curvature" of a research entry relative to the Quranic composition chain.
+- [x] **Resonance Search:** Add tool to find verses/entries sharing identical "holonomic" addresses at the morpheme level but differing in features (gauge state).
+- [x] **Linguistic Curvature Metric:** Implement a tool to calculate the "curvature" of a research entry relative to the Quranic composition chain.
 - [ ] **Lattice Navigator:** Create a tool to navigate the Quran via the UOR content-addressed lattice (nodes as atoms/morphemes, edges as features).
 - [x] **Holonomic Deduplication:** Identify and merge research entries with identical content addresses (SHA-256 of content + anchors).
 - [ ] **Cross-Corpus Alignment:** Use UOR addresses as a "Gold Standard Reference Field" to measure the alignment (zero curvature) of different translations or classical commentaries.
 
 ### MCP Server
 - [x] Add get_content_address and find_by_content_address tools
+- [x] Add get_resonance_map and compare_interpretations tools
 - [ ] Add kalima_save_bulk_entries as primary save tool
 
 ### Surah 15 Verification
-- [ ] Continue verification from verse 15:19
-- [ ] Analyze سُكِّرَتْ (15:15) - blocking/intoxication of perception
-- [ ] Analyze مَّسْحُورُونَ (15:15) - bewitched/enchanted
-- [ ] Analyze بُرُوج (15:16) - constellations/fortresses
-- [ ] Connect to knowledge concealment meta-narrative
+- [x] Establish meta-narrative: knowledge concealment & respite period
+- [x] Verification completed through 15:31 (Bashar creation & Iblis refusal)
+- [ ] Continue verification from verse 15:32
+- [ ] Analyze Iblis argument for refusal (15:33)
+
 
 ### Research
-- [ ] Add verse evidence to new entries (entry_1773097196, entry_1773097197, entry_1773097198)
-- [ ] Verify root س-ك-ر concordance across Quran
-- [ ] Verify root س-h-r concordance across Quran
-- [ ] Explore بُرُوج semantic field
+- [x] Add verse evidence to new entries (entry_1773097196, entry_1773097197, entry_1773097198)
+- [x] Verify root س-ك-ر concordance across Quran
+- [x] Verify root س-h-r concordance across Quran
+- [x] Explore بُرُوج semantic field
 
 ---
 
