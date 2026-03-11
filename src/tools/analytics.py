@@ -9,7 +9,7 @@ import numpy as np
 from mcp.server.fastmcp import FastMCP
 from src.db import get_connection
 from src.utils.addressing import get_holonomic_vector, get_address
-from src.math.holonomy import get_h_matrix, get_discrete_curvature, get_field_tension
+from src.math.gauge import get_h_matrix, get_discrete_curvature, get_field_tension
 from src.math.bridge import features_to_h_components
 
 mcp: FastMCP

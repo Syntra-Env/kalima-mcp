@@ -8,14 +8,14 @@ import sys
 from mcp.server.fastmcp import FastMCP
 from .db import get_connection, close_database
 from .tools import manifold, navigation, research, analytics, context, workflow, dynamics, gauge
-from .utils.hufd_math import compute_information_geometric_metric
+# from .utils.hufd_math import compute_information_geometric_metric
 
 # Create FastMCP server
 mcp = FastMCP("kalima-holonomic-server")
 
 # Initialize mathematical metric
-conn = get_connection()
-compute_information_geometric_metric(conn)
+# conn = get_connection()
+# compute_information_geometric_metric(conn)
 
 # Register the clean research toolset
 manifold.register(mcp)

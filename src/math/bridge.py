@@ -8,7 +8,9 @@ The rest of src/math/ stays DB-free and independently importable.
 """
 
 import math
-from .holonomy import get_h_matrix, SIGMAS
+import sqlite3
+from .gauge import get_h_matrix, SIGMAS
+from .root_space import RootVector, build_root_vector
 
 _surprisal_cache: dict[int, float] = {}
 
