@@ -1,1 +1,3 @@
 mcp>=1.1.0
+openai-whisper
+setuptools-rust

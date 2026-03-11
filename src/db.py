@@ -27,10 +27,15 @@ def get_connection() -> sqlite3.Connection:
         db_path = default_path
 
     if not Path(db_path).exists():
-        raise FileNotFoundError(
-            f"Database not found at {db_path}. "
-            f"Set KALIMA_DB_PATH environment variable to the correct path."
-        )
+        # Fallback to current directory for relative lookups
+        alt_path = Path("data/kalima.db")
+        if alt_path.exists():
+            db_path = str(alt_path.absolute())
+        else:
+            raise FileNotFoundError(
+                f"Database not found at {db_path}. "
+                f"Set KALIMA_DB_PATH environment variable to the correct path."
+            )
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -38,11 +43,10 @@ def get_connection() -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode = WAL")
 
     _initialize_features(conn)
-    _initialize_entries(conn)
+    _initialize_holonomic_entries(conn)
+    _initialize_content_addresses(conn)
     _initialize_word_search(conn)
     _initialize_traditional(conn)
-    _initialize_holonomic_indexes(conn)
-    _initialize_root_structures(conn)
 
     _conn = conn
     return conn
@@ -64,36 +68,6 @@ def close_database():
 
 # --- Initialization functions ---
 
-def _initialize_root_structures(conn: sqlite3.Connection):
-    """Create tables for root lattice and co-occurrence (P1.1, P1.5)."""
-    # Root Lattice: persistent caching of root relationships
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS root_lattice (
-            root_a_id INTEGER NOT NULL REFERENCES features(id),
-            root_b_id INTEGER NOT NULL REFERENCES features(id),
-            relationship_type TEXT NOT NULL, -- 'shared_radical', 'semantic_bridge'
-            strength REAL DEFAULT 0.0,
-            metadata TEXT,
-            PRIMARY KEY (root_a_id, root_b_id, relationship_type)
-        )
-    """)
-    
-    # Root Co-occurrence Matrix
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS root_cooccurrence (
-            root_a_id INTEGER NOT NULL REFERENCES features(id),
-            root_b_id INTEGER NOT NULL REFERENCES features(id),
-            cooccurrence_count INTEGER DEFAULT 0,
-            geodesic_distance REAL,
-            PRIMARY KEY (root_a_id, root_b_id)
-        )
-    """)
-    
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_rl_root_a ON root_lattice(root_a_id)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_rc_root_a ON root_cooccurrence(root_a_id)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_rc_distance ON root_cooccurrence(geodesic_distance)")
-
-
 def _initialize_features(conn: sqlite3.Connection):
     conn.execute("""
         CREATE TABLE IF NOT EXISTS features (
@@ -111,33 +85,47 @@ def _initialize_features(conn: sqlite3.Connection):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_features_lookup ON features(feature_type, lookup_key)")
 
 
-def _initialize_entries(conn: sqlite3.Connection):
-    """Create entries table with unified anchoring."""
+def _initialize_holonomic_entries(conn: sqlite3.Connection):
+    """Create the primary holonomic_entries table."""
     conn.execute(
-        """CREATE TABLE IF NOT EXISTS entries (
-            id TEXT PRIMARY KEY,
+        """CREATE TABLE IF NOT EXISTS holonomic_entries (
+            address TEXT PRIMARY KEY, -- SHA-256 UOR address
             content TEXT NOT NULL,
-            phase TEXT DEFAULT 'question',
-            category TEXT,
-            confidence REAL,
+            phase TEXT DEFAULT 'question', -- 'question', 'hypothesis', 'validation', 'verified'
+            category TEXT, -- 'linguistic', 'ncu', 'methodology', etc.
+            confidence REAL DEFAULT 0.0,
             
             -- Unified Anchoring
             anchor_type TEXT, -- 'root', 'lemma', 'morpheme', 'word_type', 'word_instance', 'surah'
-            anchor_ids TEXT,  -- Single ID or 'start, end' range
+            anchor_ids TEXT,  -- ID or 'start, end' range or surah:ayah
             
-            verification TEXT,
+            verification TEXT, -- 'supports', 'contradicts', 'unclear'
             notes TEXT,
 
-            -- Verification state
-            verse_queue TEXT,
+            -- Verification workflow
+            verse_queue TEXT, -- JSON array of references
             verse_current_index INTEGER DEFAULT 0,
             
             -- Activity tracking
-            last_activity TEXT
+            last_activity TEXT -- ISO 8601 timestamp
         )"""
     )
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_entries_anchor ON entries(anchor_type, anchor_ids)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_entries_activity ON entries(last_activity)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_he_anchor ON holonomic_entries(anchor_type, anchor_ids)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_he_activity ON holonomic_entries(last_activity)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_he_category ON holonomic_entries(category)")
+
+
+def _initialize_content_addresses(conn: sqlite3.Connection):
+    """Create the mapping table for UOR addresses."""
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS content_addresses (
+            entity_type TEXT NOT NULL, -- 'verse', 'root', 'word_type', 'holonomic_entry'
+            entity_id TEXT NOT NULL,   -- e.g., '12:31' or feature_id
+            address TEXT NOT NULL,      -- SHA-256
+            PRIMARY KEY (entity_type, entity_id)
+        )"""
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ca_address ON content_addresses(address)")
 
 
 def _initialize_word_search(conn: sqlite3.Connection):
@@ -171,23 +159,4 @@ def _initialize_traditional(conn: sqlite3.Connection):
     """)
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_trad_verse ON traditional_interpretations(surah, ayah)"
-    )
-
-
-def _initialize_holonomic_indexes(conn: sqlite3.Connection):
-    """Ensure indexes on holonomic_entries for common query patterns."""
-    # Check if holonomic_entries exists before indexing
-    exists = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='holonomic_entries'"
-    ).fetchone()
-    if not exists:
-        return
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_he_anchor ON holonomic_entries(anchor_type, anchor_ids)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_he_activity ON holonomic_entries(last_activity)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_he_category ON holonomic_entries(category)"
     )

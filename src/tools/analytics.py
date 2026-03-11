@@ -9,7 +9,8 @@ import numpy as np
 from mcp.server.fastmcp import FastMCP
 from src.db import get_connection
 from src.utils.addressing import get_holonomic_vector, get_address
-from src.utils.hufd_math import get_h_matrix, get_discrete_curvature, get_field_tension, features_to_h_components
+from src.math.holonomy import get_h_matrix, get_discrete_curvature, get_field_tension
+from src.math.bridge import features_to_h_components
 
 mcp: FastMCP
 
@@ -63,7 +64,6 @@ def get_surah_topology(surah_id: int) -> dict:
         h_mat = get_word_h_matrix(conn, w['id'])
         h_sequence.append(h_mat)
         
-        # Holonomy across window of 3 words
         kappa = get_discrete_curvature(h_sequence[-3:])
         
         topology.append({
@@ -76,26 +76,22 @@ def get_surah_topology(surah_id: int) -> dict:
         
     return {"surah": surah_id, "topology": topology}
 
+def compute_topology(addresses: list[str]) -> dict:
+    """Compute topological Betti numbers for a set of UOR addresses."""
+    from src.utils.topology import get_constraints_topology
+    from src.db import get_connection
+    conn = get_connection()
+    return get_constraints_topology(conn, addresses)
+
+def compute_uor_index(addresses: list[str]) -> dict:
+    """Compute UOR Index Theorem metrics for a set of UOR addresses."""
+    from src.utils.topology import compute_uor_index as uor_index
+    from src.db import get_connection
+    conn = get_connection()
+    return uor_index(conn, addresses)
+
 def register(server: FastMCP):
     server.tool()(measure_manifold_curvature)
     server.tool()(get_surah_topology)
-
-    @server.tool()
-    def compute_topology(addresses: list[str]) -> dict:
-        """Compute topological Betti numbers for a set of UOR addresses (P3.5)."""
-        from src.utils.topology import get_constraints_topology
-        from src.db import get_connection
-        conn = get_connection()
-        return get_constraints_topology(conn, addresses)
-
-    @server.tool()
-    def compute_uor_index(addresses: list[str]) -> dict:
-        \"\"\"Compute UOR Index Theorem metrics for a set of UOR addresses (P3.6).
-
-        Determines the 'Completeness' of a research resolution.
-        \"\"\"
-        from src.utils.topology import compute_uor_index as uor_index
-        from src.db import get_connection
-        conn = get_connection()
-        return uor_index(conn, addresses)
-
+    server.tool()(compute_topology)
+    server.tool()(compute_uor_index)

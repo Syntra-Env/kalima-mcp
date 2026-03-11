@@ -1,51 +1,31 @@
 # TODO.md
+```
+Move completed tasks to DONE.md
+Next number: 98
+```
 
-## P0 — Fix Math Foundation [COMPLETED]
-- [x] Replace Arbitrary Feature Scaling with Information-Geometric Metrics
-- [x] Implement Full Curvature Tensor (with background term)
-- [x] Implement Phase-Lock Index Φ
-- [x] Implement Drift Energy E_d
-- [x] Implement Semantic Lyapunov Functional L_semantic
-- [x] Implement HUFD Action Functional S_HUFD
+## Math Framework Redesign
+93. Still TODO for `root_space.py`: add co-occurrence fingerprint (which roots appear in the same verses) to the root vector. Currently only has morphological profile.
+94. Fix cross-verse awareness: curvature of a word should know how that root behaves across ALL its Quranic instances, not just locally. The Lyapunov functional already tries this (deviation from root baseline) — extend it to use the full distributional vector.
+95. Refactor tools layer: `src/tools/` becomes thin wrappers — query DB, pass clean data to `src/math/`, return results. No math in tools.
+96. Make `src/math/` independently importable — anyone can `from src.math import root_space` without needing MCP server or database.
+97. Validate against known results: phase-lock 15:28→29 boundary, root resonance كتب, verse emphasis 15:28. New math must reproduce these or explain why they change.
 
-## P1 — Build the Abjadic Gauge Field [COMPLETED]
-- [x] Root Lattice Structure (persistent tables & network tool)
-- [x] Root Resonance (Holonomic Closure Test)
-- [x] Diacritic Gauge Analysis
-- [x] Morphological Pattern (Wazn) Fibers (`get_pattern_fiber` tool)
-- [x] Root Co-occurrence Metric & Geodesic Distances
+## DB Schema Cleanup
+90. Drop dead tables from DB and `db.py`: `entries` (0 rows, replaced by `holonomic_entries`), `root_cooccurrence` (0 rows), `root_lattice` (0 rows)
 
-## P2 — Interpretation Support Tools [COMPLETED]
-- [x] Verse Emphasis Analysis
-- [x] Boundary Detection
-- [x] Cross-Verse Context Analysis
-- [x] Traditional Interpretation Comparison
-- [x] Root Concordance Verification Tool
-- [ ] NCU Perspective Tracer (Future Enhancement)
+## Cleanup
+82. Remove `add_traditional_interpretation` tool — Sahih International is fully loaded (6,236 verses) and static. Traditional translations don't change; only our living research entries evolve.
 
-## P3 — UOR Integration [COMPLETED]
-- [x] Ring Substrate Implementation
-- [x] Dihedral Group Operations
-- [x] Fiber Decomposition (Z/2Z fibration)
-- [x] Constraint Resolution Pipeline (φ-maps)
-- [x] Topological Pipeline (ψ-maps) for Betti numbers
-- [x] UOR Index Theorem Implementation (Completeness Resolution)
-- [x] Partition Classification of Quranic Elements
-- [x] Spectral Convergence for Verification Workflows
-- [x] Monodromy Classification (FlatType vs TwistedType)
+## compare_with_traditional improvements
+85. The current tool shows the HUFD emphasis profile + both readings side by side. This works. But auto-scoring entries against the verse ("root coverage") fails because entries use English/transliteration while roots are Arabic labels. Two options:
+   - **Option A — Anchor-based scoring**: If an entry is anchored (via `anchor_type='root'`) to a root ID that's mathematically active in the verse, that's a direct structural match. No text matching needed.
+   - **Option B — Just show the math**: Show the fingerprint (active roots ranked by curvature energy, emphasis profile, hot words) and let the researcher judge which reading respects it. Don't try to auto-score.
+86. Decide which option to pursue
 
-## P4 — System & Infrastructure [COMPLETED]
-- [x] High-resolution Lexical Coupling
-- [x] Unified on holonomic_entries table
-- [x] Database Indexes & Performance
-- [x] Repository cleanup (pristine research state)
+## NCU
+87. NCU Perspective Tracer (P2.6) — trace a Quranic narrative from one nafs's perspective
 
 ## Ongoing Research
-### Surah 15 Verification
-- [x] Verification completed through 15:31 (Bashar creation & Iblis refusal)
-- [ ] Continue verification from verse 15:32
-- [ ] Analyze Iblis argument for refusal (15:33)
-
-### Visualization
-- [x] 3D Manifold Visualizer
-- [x] 2D Field Topology Map
+88. Continue Surah 15 verification from verse 15:32
+89. Analyze Iblis argument for refusal (15:33)

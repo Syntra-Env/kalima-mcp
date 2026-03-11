@@ -1,0 +1,7 @@
+To maximize token and tool efficiency, adopt a Map-Based Context Architecture centered on a single, high-level read-only file (e.g., CLAUDE.md, AGENTS.md, or .cursorrules) at the project root that defines the directory structure, key architectural patterns, and strictly enforced coding conventions. 
+
+Do not log raw changes or git history in the context, as this pollutes the window with outdated logic; instead, maintain a concise Current State summary in your map file that overwrites previous descriptions. 
+
+For documentation extensibility, prefer self-documenting code with small, modular files (under 250 lines) and use progressive loading where the agent accesses a high-level API overview first and only retrieves deep documentation via tools if blocked. 
+
+Compactification is best handled by skeletonizing resources—using scripts (like repomix) to strip whitespace, comments, and non-essential assets from the context window, presenting the agent with a dense, syntax-only view of the project tree that expands only upon request.

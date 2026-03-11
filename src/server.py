@@ -14,9 +14,8 @@ from .utils.hufd_math import compute_information_geometric_metric
 mcp = FastMCP("kalima-holonomic-server")
 
 # Initialize mathematical metric
-with mcp:
-    conn = get_connection()
-    compute_information_geometric_metric(conn)
+conn = get_connection()
+compute_information_geometric_metric(conn)
 
 # Register the clean research toolset
 manifold.register(mcp)
