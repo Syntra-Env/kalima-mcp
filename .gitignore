@@ -56,3 +56,4 @@ nul
 .vscode/
 .idea/
 *.iml
+.env
