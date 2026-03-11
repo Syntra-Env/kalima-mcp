@@ -19,8 +19,7 @@ data/
 *.mp3
 
 # Documents
-docs/**/*.pdf
-docs/*.pdf
+docs/
 
 # Local config
 .env
