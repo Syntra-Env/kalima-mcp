@@ -47,6 +47,7 @@ def get_connection() -> sqlite3.Connection:
     _initialize_content_addresses(conn)
     _initialize_word_search(conn)
     _initialize_traditional(conn)
+    _initialize_root_vectors(conn)
 
     _conn = conn
     return conn
@@ -160,3 +161,16 @@ def _initialize_traditional(conn: sqlite3.Connection):
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_trad_verse ON traditional_interpretations(surah, ayah)"
     )
+
+def _initialize_root_vectors(conn: sqlite3.Connection):
+    """Create the root_vectors cache table."""
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS root_vectors (
+            root_id INTEGER PRIMARY KEY,
+            profile BLOB NOT NULL, -- Compressed numpy array
+            distributional_weight REAL,
+            last_updated TEXT,
+            FOREIGN KEY (root_id) REFERENCES features(id)
+        )"""
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rv_weight ON root_vectors(distributional_weight)")
