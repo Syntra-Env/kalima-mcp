@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<title>Kalima Mathematical Framework</title>
+<script>
+/* MathJax for equation rendering */
+window.MathJax = {
+  tex: { inlineMath: [['$','$']], displayMath: [['$$','$$']] }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+<style>
+  @page {
+    size: A4;
+    margin: 1in;
+  }
+  /* Page breaks between major sections */
+  .page-break { page-break-before: always; }
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 11pt;
+    line-height: 1.55;
+    color: #1a1a1a;
+    max-width: 7.5in;
+    margin: 0 auto;
+    padding: 0.75in 0;
+  }
+  h1 {
+    font-size: 22pt;
+    text-align: center;
+    margin-bottom: 0.2em;
+    border: none;
+  }
+  .abstract {
+    max-width: 5.8in;
+    margin: 1.2em auto 2em;
+    font-style: italic;
+    color: #333;
+    text-align: center;
+    line-height: 1.5;
+  }
+  /* Table of contents */
+  .toc {
+    max-width: 5in;
+    margin: 0 auto 1em;
+  }
+  .toc h2 { font-size: 14pt; margin-bottom: 0.4em; }
+  .toc ol { padding-left: 1.4em; }
+  .toc li { margin: 0.25em 0; }
+  .toc a { text-decoration: none; color: #2a5db0; }
+  .toc a:hover { text-decoration: underline; }
+
+  h2 {
+    font-size: 16pt;
+    border-bottom: 2px solid #ccc;
+    padding-bottom: 0.2em;
+    margin-top: 1.5em;
+  }
+  h3 {
+    font-size: 13pt;
+    margin-top: 1.2em;
+    color: #2a2a2a;
+  }
+  p { margin: 0.6em 0; }
+
+  /* Equations */
+  .eq {
+    display: block;
+    text-align: center;
+    margin: 1em 0;
+    overflow-x: auto;
+  }
+
+  /* Tables */
+  table {
+    border-collapse: collapse;
+    margin: 1em auto;
+    font-size: 10.5pt;
+  }
+  th, td {
+    padding: 0.35em 0.9em;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+  }
+  th {
+    border-bottom: 2px solid #888;
+    font-weight: 600;
+  }
+  caption {
+    caption-side: bottom;
+    font-size: 9.5pt;
+    color: #555;
+    margin-top: 0.4em;
+    font-style: italic;
+  }
+  /* Lists */
+  ul, ol { margin: 0.5em 0; padding-left: 1.6em; }
+  li { margin: 0.2em 0; }
+
+  /* Arabic text */
+  .ar {
+    font-family: "Segoe UI", "Traditional Arabic", "Amiri", serif;
+    direction: rtl;
+    unicode-bidi: isolate;
+    font-size: 1.1em;
+  }
+
+  /* Code / monospace */
+  code, .mono {
+    font-family: "Cascadia Code", "Consolas", monospace;
+    font-size: 0.92em;
+    background: #f4f4f4;
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+  }
+
+  /* Print tweaks */
+  @media print {
+    body { padding: 0; max-width: none; }
+    .page-break { page-break-before: always; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Kalima Mathematical Framework</h1>
+
+<div class="abstract">
+Kalima uses three mathematical frameworks to analyze the Quran computationally:
+a <em>distributional root space</em> for measuring how Arabic roots behave across the text,
+an <em>su(2) gauge field</em> for detecting structural tension and meaning shifts,
+and a <em>UOR ring substrate</em> that provides content-addressed identity for all textual units.
+All math lives in <code>src/math/</code> as pure functions with no side effects.
+</div>
+
+<nav class="toc">
+<h2>Contents</h2>
+<ol>
+  <li><a href="#root-space">Root Space (Distributional Vectors)</a></li>
+  <li><a href="#verse-dynamics">Verse Dynamics</a></li>
+  <li><a href="#gauge">su(2) Gauge Field</a></li>
+  <li><a href="#uor">UOR Ring Substrate</a></li>
+  <li><a href="#integration">Integration</a></li>
+</ol>
+</nav>
+
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<h2 id="root-space">1. Root Space (Distributional Vectors)</h2>
+<!-- ============================================================ -->
+
+<p>Every Arabic root receives a <strong>127-dimensional distributional fingerprint</strong>
+built from its grammatical usage across the entire Quran.</p>
+
+<h3>1.1 Feature Vocabulary</h3>
+
+<table>
+  <thead><tr><th>Category</th><th>Dims</th><th>What it captures</th></tr></thead>
+  <tbody>
+    <tr><td>POS tags</td><td>44</td><td>Noun, verb, particle, &hellip;</td></tr>
+    <tr><td>Verb forms</td><td>12</td><td>Form I&ndash;X + derived patterns</td></tr>
+    <tr><td>Aspect</td><td>3</td><td>Perfect, imperfect, imperative</td></tr>
+    <tr><td>Person</td><td>3</td><td>1st, 2nd, 3rd</td></tr>
+    <tr><td>Number</td><td>3</td><td>Singular, dual, plural</td></tr>
+    <tr><td>Gender</td><td>2</td><td>Masculine, feminine</td></tr>
+    <tr><td>Case</td><td>3</td><td>Nominative, accusative, genitive</td></tr>
+    <tr style="border-top:2px solid #888"><td><strong>Total</strong></td><td><strong>127</strong></td><td></td></tr>
+  </tbody>
+  <caption>Table 1. Feature dimensions of the root profile space.</caption>
+</table>
+
+<p>The profile is a normalized probability distribution: for each root, count how often
+it appears in each feature slot, then normalize so the entries sum to 1.</p>
+
+<h3>1.2 Distributional Weight</h3>
+
+<p>Measures the structural importance of a root:</p>
+
+<div class="eq">$$w = 0.6\;\frac{|\text{surahs}|}{114} + 0.4\;\frac{|\text{morpheme types}|}{|\text{instances}|} \tag{1}$$</div>
+
+<p>where the first term is <em>surah spread</em> and the second is <em>form diversity</em>.</p>
+
+<h3>1.3 Instance Anomaly</h3>
+
+<p>Scores how unusual a specific usage of a root is (0 = typical, 1 = never-before-seen form):</p>
+
+<div class="eq">$$a_i = 1 - p[f_i] \tag{2}$$</div>
+
+<p>where $p$ is the root's profile distribution and $f_i$ is the feature index
+of the instance. A root that usually appears as a noun but occurs as a verb
+scores high anomaly on that instance.</p>
+
+<h3>1.4 Concordance Distance</h3>
+
+<p>The distance between two roots $A$ and $B$ is the Jensen&ndash;Shannon divergence of their profiles:</p>
+
+<div class="eq">$$D_{\text{JS}}(A \| B)
+  = \frac{1}{2}\,D_{\text{KL}}\!\left(p_A \,\Big\|\, \frac{p_A + p_B}{2}\right)
+  + \frac{1}{2}\,D_{\text{KL}}\!\left(p_B \,\Big\|\, \frac{p_A + p_B}{2}\right) \tag{3}$$</div>
+
+<p>This measures how differently two roots behave grammatically.</p>
+
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<h2 id="verse-dynamics">2. Verse Dynamics</h2>
+<!-- ============================================================ -->
+
+<p>Verse analysis computes four signals per word, then aggregates them into
+an emphasis profile for the verse.</p>
+
+<h3>2.1 Per-Word Signals</h3>
+
+<table>
+  <thead><tr><th>Signal</th><th>Symbol</th><th>Computation</th></tr></thead>
+  <tbody>
+    <tr><td>Weight</td><td>$w_i$</td><td>Distributional weight of the word's root (Eq.&nbsp;1)</td></tr>
+    <tr><td>Anomaly</td><td>$a_i$</td><td>Instance anomaly score (Eq.&nbsp;2)</td></tr>
+    <tr><td>Drift</td><td>$\delta_i$</td><td>Profile distance between consecutive root vectors</td></tr>
+    <tr><td>Coherence</td><td>$c_i$</td><td>Profile cosine similarity with the next root-bearing word</td></tr>
+  </tbody>
+  <caption>Table 2. Four signals computed for each word in a verse.</caption>
+</table>
+
+<h3>2.2 Emphasis Profile</h3>
+
+<p>The four per-word signals aggregate into a verse-level emphasis breakdown:</p>
+
+<ul>
+  <li><strong>Root emphasis</strong> &mdash; dominated by high-weight words (structurally important roots)</li>
+  <li><strong>Morpheme emphasis</strong> &mdash; dominated by high-anomaly words (unusual grammatical forms)</li>
+  <li><strong>Position emphasis</strong> &mdash; dominated by high-drift words (meaning shifts at specific positions)</li>
+  <li><strong>Boundary signal</strong> &mdash; inverse of minimum coherence (low coherence &rArr; boundary)</li>
+</ul>
+
+<p>The dominant emphasis type tells you <em>what kind of meaning</em> the verse carries:
+structural (root), exceptional (morpheme), positional (drift), or transitional (boundary).</p>
+
+<h3>2.3 Verse Coherence (Phase-Lock)</h3>
+
+<p>Measures whether two verses &ldquo;belong together&rdquo;&mdash;a value in $[0,1]$:</p>
+
+<div class="eq">$$\Phi = \frac{1}{3}\bigl(\text{instance\_agreement} + \text{root\_drift} + \text{topic\_overlap}\bigr) \tag{4}$$</div>
+
+<ul>
+  <li><strong>Instance agreement</strong>: average cosine similarity of shared roots' instance profiles</li>
+  <li><strong>Root drift</strong>: shift in the distributional landscape between verses</li>
+  <li><strong>Topic overlap</strong>: Jaccard overlap of active roots</li>
+</ul>
+
+<p>Thresholds: $\Phi > 0.5$ = continuation, $0.25 < \Phi < 0.5$ = transition,
+$\Phi < 0.25$ = hard boundary.</p>
+
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<h2 id="gauge">3. su(2) Gauge Field</h2>
+<!-- ============================================================ -->
+
+<p>The <strong>abjadic gauge field</strong> maps Quranic morphological features onto
+the $\mathfrak{su}(2)$ Lie algebra&mdash;the same algebra that describes
+spin-$\tfrac{1}{2}$ particles in physics. The mathematical structure
+(non-commutative gauge connections, holonomy, curvature) is used literally,
+not as metaphor.</p>
+
+<h3>3.1 Pauli Basis</h3>
+
+<p>The $\mathfrak{su}(2)$ generators are the Pauli matrices:</p>
+
+<div class="eq">$$\sigma_1 = \begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix},\quad
+\sigma_2 = \begin{pmatrix} 0 & -i \\ i & 0 \end{pmatrix},\quad
+\sigma_3 = \begin{pmatrix} 1 & 0 \\ 0 & -1 \end{pmatrix} \tag{5}$$</div>
+
+<h3>3.2 Feature-to-su(2) Mapping</h3>
+
+<p>Each morpheme instance maps to a point in $\mathfrak{su}(2)$ via three components:</p>
+
+<div class="eq">$$H = x\,\sigma_1 + y\,\sigma_2 + z\,\sigma_3 \tag{6}$$</div>
+
+<table>
+  <thead><tr><th>Component</th><th>Axis</th><th>Features mapped</th></tr></thead>
+  <tbody>
+    <tr><td>$x$</td><td>Semantic Identity</td><td>Root surprisal + lemma surprisal + UOR coupling</td></tr>
+    <tr><td>$y$</td><td>Morphological Action</td><td>Verb form, aspect, person, gender, number surprisals</td></tr>
+    <tr><td>$z$</td><td>Syntactic Position</td><td>POS, case, voice, mood surprisals</td></tr>
+  </tbody>
+  <caption>Table 3. Mapping of linguistic features to $\mathfrak{su}(2)$ axes.</caption>
+</table>
+
+<p><strong>Surprisal</strong> is the information-theoretic content of a feature:</p>
+
+<div class="eq">$$s(f) = \log\!\left(\frac{N}{n_f}\right) \tag{7}$$</div>
+
+<p>where $N = 128{,}000$ (corpus scale) and $n_f$ is the feature's frequency.
+Rare features contribute more signal. The resulting vector $(x,y,z)$ is
+normalized to the unit sphere before constructing $H$.</p>
+
+<h3>3.3 Curvature Tensor</h3>
+
+<p>For two connections $H_\mu$ and $H_\nu$, the curvature is the Lie bracket:</p>
+
+<div class="eq">$$R_{\mu\nu} = [H_\mu,\, H_\nu] = H_\mu H_\nu - H_\nu H_\mu \tag{8}$$</div>
+
+<p>Non-zero curvature means the order of traversal matters&mdash;the gauge field
+has genuine structure. The scalar field tension is:</p>
+
+<div class="eq">$$\mathcal{T} = \operatorname{Tr}(R_{\mu\nu}^\dagger\, R_{\mu\nu}) \tag{9}$$</div>
+
+<h3>3.4 Discrete Holonomy</h3>
+
+<p>For a sequence of connections $(H_1, H_2, \ldots, H_n)$&mdash;e.g. all instances
+of a root&mdash;compute the path-ordered product:</p>
+
+<div class="eq">$$U = H_n \cdot H_{n-1} \cdots H_1 \tag{10}$$</div>
+
+<p>The holonomy angle is extracted via:</p>
+
+<div class="eq">$$\kappa = 2\,\arccos\!\left(\left|\frac{\operatorname{Tr}(U)}{2}\right|\right) \tag{11}$$</div>
+
+<p>This is the total &ldquo;rotation&rdquo; accumulated by traversing all instances of a root.</p>
+
+<h3>3.5 Root Resonance</h3>
+
+<p>The holonomy angle $\kappa$ applied across all instances of a root
+characterizes its semantic behaviour:</p>
+
+<ul>
+  <li>$\kappa \to 0$: meaning is <em>conserved</em> (consistent usage everywhere)</li>
+  <li>$\kappa \to \pi$: meaning <em>evolves</em> (highly context-dependent)</li>
+</ul>
+
+<p>Validated examples:</p>
+<ul>
+  <li><span class="ar">كتب</span> (k-t-b): $\kappa = 2.35$ &mdash; context-dependent</li>
+  <li><span class="ar">ربب</span> (r-b-b): $\kappa = 1.06$ &mdash; moderately consistent</li>
+</ul>
+
+<h3>3.6 Lyapunov Deviation</h3>
+
+<p>Measures how far a specific instance deviates from the root's average gauge state:</p>
+
+<div class="eq">$$L = \left\|H - H^*\right\|_F^2 = \operatorname{Tr}\!\bigl((H - H^*)^\dagger (H - H^*)\bigr) \tag{12}$$</div>
+
+<p>where $H^* = \frac{1}{n}\sum_{i=1}^n H_i$ is the mean connection matrix.
+High-deviation instances are potential falsifiers&mdash;places where a proposed
+meaning for the root might not hold.</p>
+
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<h2 id="uor">4. UOR Ring Substrate</h2>
+<!-- ============================================================ -->
+
+<p>The Universal Object Reference (UOR) provides content-addressed identity
+for every textual unit. All arithmetic happens in the ring
+$\mathbb{Z}/2^{256}\mathbb{Z}$.</p>
+
+<h3>4.1 Content Addressing</h3>
+
+<p>Every atom, morpheme, word, and verse receives a SHA-256 hash as its address.
+Addressing is compositional and bottom-up:</p>
+
+<div class="eq">$$\text{atoms} \;\longrightarrow\; \text{morphemes}
+  \;\longrightarrow\; \text{words}
+  \;\longrightarrow\; \text{verses}$$</div>
+
+<p>A word's address is determined entirely by its constituent atoms, making
+identity intrinsic to content.</p>
+
+<h3>4.2 Dihedral Group Structure</h3>
+
+<p>The ring carries a dihedral group $D_{2^{256}}$ generated by two involutions:</p>
+
+<div class="eq">$$\operatorname{bnot}(a) = 2^{256} - 1 - a \qquad\text{(bitwise NOT, reflection)}$$</div>
+<div class="eq">$$\operatorname{neg}(a) = 2^{256} - a \qquad\text{(arithmetic negation, rotation)}$$</div>
+
+<p>Every address belongs to a 4-element orbit:
+$\{a,\;\operatorname{bnot}(a),\;\operatorname{neg}(a),\;\operatorname{bnot}(\operatorname{neg}(a))\}$.</p>
+
+<h3>4.3 Metrics</h3>
+
+<table>
+  <thead><tr><th>Metric</th><th>Definition</th><th>Measures</th></tr></thead>
+  <tbody>
+    <tr><td>Ring distance</td><td>$\min(|a-b|,\; 2^{256} - |a-b|)$</td><td>Algebraic proximity</td></tr>
+    <tr><td>Hamming distance</td><td>Bit differences in hex</td><td>Structural similarity</td></tr>
+    <tr><td>Incompatibility</td><td>$\operatorname{hamming}(a,\operatorname{bnot}(b))$</td><td>Complementarity</td></tr>
+  </tbody>
+  <caption>Table 4. UOR distance metrics.</caption>
+</table>
+
+<h3>4.4 Fiber Decomposition</h3>
+
+<p>The <strong>2-adic valuation</strong> $v_2(a)$ (number of trailing zero bits) assigns
+each address to a stratum. This creates a natural fibration:
+stratum 0 (odd addresses) is the generic fiber, and higher strata are
+increasingly structured.</p>
+
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<h2 id="integration">5. Integration</h2>
+<!-- ============================================================ -->
+
+<p>The three frameworks serve different analytical purposes:</p>
+
+<ol>
+  <li><strong>Root Space</strong> answers: <em>What does this root do across the Quran?
+      Is this usage normal or exceptional?</em></li>
+  <li><strong>su(2) Gauge Field</strong> answers: <em>Is this root's meaning conserved
+      or evolving? Where are the tension points?</em></li>
+  <li><strong>UOR</strong> answers: <em>What is the intrinsic identity of this textual
+      unit? How do units relate compositionally?</em></li>
+</ol>
+
+<p>A typical analysis flow:</p>
+<ol>
+  <li>Build root vectors for a passage <span style="float:right;color:#888">(root space)</span></li>
+  <li>Compute per-word dynamics: weight, anomaly, drift, coherence <span style="float:right;color:#888">(verse dynamics)</span></li>
+  <li>Detect boundaries and emphasis patterns <span style="float:right;color:#888">(verse dynamics)</span></li>
+  <li>For roots of interest, compute holonomic resonance <span style="float:right;color:#888">(gauge field)</span></li>
+  <li>Identify high-deviation instances as falsification targets <span style="float:right;color:#888">(Lyapunov)</span></li>
+  <li>Track compositional identity through the text hierarchy <span style="float:right;color:#888">(UOR)</span></li>
+</ol>
+
+<h3>5.1 Tool Mapping</h3>
+
+<table>
+  <thead><tr><th>Tool</th><th>Math used</th></tr></thead>
+  <tbody>
+    <tr><td><code>analyze_verse_emphasis</code></td><td>Root space + verse dynamics</td></tr>
+    <tr><td><code>detect_boundaries</code></td><td>Verse coherence (phase-lock)</td></tr>
+    <tr><td><code>measure_phase_lock</code></td><td>Verse coherence between two verses</td></tr>
+    <tr><td><code>compute_passage_drift</code></td><td>Per-word drift energy</td></tr>
+    <tr><td><code>compute_root_resonance</code></td><td>$\mathfrak{su}(2)$ holonomy</td></tr>
+    <tr><td><code>verify_root_concordance</code></td><td>Lyapunov deviation</td></tr>
+    <tr><td><code>root_distance</code></td><td>Jensen&ndash;Shannon divergence</td></tr>
+    <tr><td><code>compare_with_traditional</code></td><td>Verse dynamics emphasis profile</td></tr>
+  </tbody>
+  <caption>Table 5. Mapping of MCP tools to mathematical frameworks.</caption>
+</table>
+
+</body>
+</html>
