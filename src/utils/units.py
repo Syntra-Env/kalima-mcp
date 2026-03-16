@@ -15,7 +15,7 @@ from typing import Optional, List, Dict
 def get_entry_anchor(conn: sqlite3.Connection, entry_id: str) -> Optional[dict]:
     """Get anchor info for an entry."""
     row = conn.execute(
-        "SELECT anchor_type, anchor_ids, verification, notes FROM entries WHERE id = ?",
+        "SELECT anchor_type, anchor_ids, verification, notes FROM holonomic_entries WHERE address = ?",
         (entry_id,)
     ).fetchone()
     return dict(row) if row else None
@@ -25,20 +25,20 @@ def entries_at_verse(conn: sqlite3.Connection, surah: int, ayah: int) -> list[st
     """Find entries anchored to this specific verse."""
     pattern = f"{surah}:{ayah}%"
     rows = conn.execute(
-        "SELECT id FROM entries WHERE anchor_type = 'word_instance' AND anchor_ids LIKE ?",
+        "SELECT address FROM holonomic_entries WHERE anchor_type = 'word_instance' AND anchor_ids LIKE ?",
         (pattern,),
     ).fetchall()
-    return [r['id'] for r in rows]
+    return [r['address'] for r in rows]
 
 
 def entries_at_surah(conn: sqlite3.Connection, surah: int) -> list[str]:
     """Find all entry_ids that have any location in this surah."""
     pattern = f"{surah}:%"
     rows = conn.execute(
-        "SELECT id FROM entries WHERE (anchor_type = 'word_instance' AND anchor_ids LIKE ?) OR (anchor_type = 'surah' AND anchor_ids = ?)",
+        "SELECT address FROM holonomic_entries WHERE (anchor_type = 'word_instance' AND anchor_ids LIKE ?) OR (anchor_type = 'surah' AND anchor_ids = ?)",
         (pattern, str(surah)),
     ).fetchall()
-    return [r['id'] for r in rows]
+    return [r['address'] for r in rows]
 
 
 # --- Word text composition (Atomic) ---
