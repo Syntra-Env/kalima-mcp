@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kalima: Root Manifold Visualizer</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #1a1c1e;
+            color: #e0e2e6;
+            overflow: hidden;
+        }
+        #mynetwork {
+            width: 100%;
+            height: 100vh;
+        }
+        .ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(32, 33, 36, 0.9);
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            border: 1px solid #3c4043;
+            z-index: 100;
+            max-width: 300px;
+        }
+        h1 { margin: 0 0 10px 0; font-size: 1.25rem; color: #4285f4; }
+        p { font-size: 0.85rem; color: #9aa0a6; line-height: 1.4; }
+        .legend { margin-top: 15px; font-size: 0.8rem; }
+        .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+        .legend-color { width: 12px; height: 12px; border-radius: 50%; }
+        
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #4285f4;
+        }
+    </style>
+</head>
+<body>
+
+<div id="loading">Initializing Manifold...</div>
+
+<div class="ui-panel">
+    <h1>Root Manifold</h1>
+    <p>Visualizing semantic co-occurrence and structural centrality across the Quranic corpus.</p>
+    
+    <div class="legend">
+        <div class="legend-item">
+            <div class="legend-color" style="background: #4285f4;"></div>
+            <span>Node size = Distributional Weight</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #3c4043;"></div>
+            <span>Edge thickness = Co-occurrence count</span>
+        </div>
+    </div>
+    
+    <div style="margin-top: 20px;">
+        <button onclick="resetView()" style="background: #3c4043; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 0.8rem;">Reset View</button>
+    </div>
+</div>
+
+<div id="mynetwork"></div>
+
+<script type="text/javascript">
+    let network;
+    const loading = document.getElementById('loading');
+
+    async function init() {
+        try {
+            const response = await fetch('http://127.0.0.1:5000/manifold/data');
+            const data = await response.json();
+            
+            const nodes = data.nodes.map(n => ({
+                id: n.root_id,
+                label: n.label_ar + " (" + n.lookup_key + ")",
+                title: `Weight: ${n.distributional_weight.toFixed(4)}`,
+                value: n.distributional_weight * 50, // Scale for vis.js
+                color: {
+                    background: '#1a73e8',
+                    border: '#4285f4',
+                    highlight: { background: '#8ab4f8', border: '#4285f4' }
+                },
+                font: { color: '#e0e2e6', size: 14 }
+            }));
+
+            const edges = data.edges.map(e => ({
+                from: e.source,
+                to: e.target,
+                value: Math.log(e.weight), // Thickness based on count
+                color: { color: '#3c4043', opacity: 0.4 },
+                selectionWidth: 2
+            }));
+
+            const container = document.getElementById('mynetwork');
+            const visData = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
+            
+            const options = {
+                nodes: {
+                    shape: 'dot',
+                    scaling: { min: 10, max: 50, label: { enabled: true, min: 14, max: 30 } }
+                },
+                edges: {
+                    scaling: { min: 1, max: 10 },
+                    smooth: { type: 'continuous' }
+                },
+                physics: {
+                    forceAtlas2Based: {
+                        gravitationalConstant: -50,
+                        centralGravity: 0.01,
+                        springLength: 100,
+                        springConstant: 0.08
+                    },
+                    maxVelocity: 50,
+                    solver: 'forceAtlas2Based',
+                    timestep: 0.35,
+                    stabilization: { iterations: 150 }
+                },
+                interaction: {
+                    hover: true,
+                    tooltipDelay: 200,
+                    hideEdgesOnDrag: true
+                }
+            };
+
+            network = new vis.Network(container, visData, options);
+            
+            network.on("stabilizationProgress", function(params) {
+                loading.innerText = "Projecting Manifold: " + Math.round(params.iterations/params.total * 100) + "%";
+            });
+            
+            network.once("stabilizationIterationsDone", function() {
+                loading.style.display = 'none';
+            });
+
+        } catch (err) {
+            console.error(err);
+            loading.innerText = "Error loading manifold data. Ensure bridge server is running.";
+        }
+    }
+
+    function resetView() {
+        if (network) network.fit();
+    }
+
+    init();
+</script>
+
+</body>
+</html>
