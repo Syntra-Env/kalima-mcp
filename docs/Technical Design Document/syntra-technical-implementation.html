@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<title>Syntra: Technical Implementation</title>
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['$','$'], displayMath: [['$$','$$']] }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 2rem; }
+  h1 { font-size: 28px; margin-bottom: 0.5rem; }
+  .subtitle { font-size: 14px; color: #666; margin-bottom: 1.5rem; }
+  h2 { font-size: 20px; margin-top: 2rem; margin-bottom: 1rem; border-bottom: 2px solid #eee; padding-bottom: 0.5rem; }
+  h3 { font-size: 16px; margin-top: 1.25rem; margin-bottom: 0.75rem; }
+  p { margin-bottom: 1rem; }
+  ul, ol { margin-bottom: 1rem; padding-left: 1.5rem; }
+  li { margin-bottom: 0.5rem; }
+  blockquote { border-left: 4px solid #4a90d9; padding-left: 1rem; margin: 1rem 0; color: #555; background: #f9f9f9; padding: 1rem; }
+  pre { background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 6px; overflow-x: auto; }
+  code { font-family: "SF Mono", "Fira Code", Consolas, monospace; font-size: 13px; }
+  .comment { color: #6a9955; }
+  .keyword { color: #569cd6; }
+  .string { color: #ce9178; }
+  .function { color: #dcdcaa; }
+</style>
+</head>
+<body>
+<h1>Syntra: Technical Implementation</h1>
+<div class="subtitle">The Prime Framework & Holonomic Dynamics · UOR v3.5.0 Specification · March 2026</div>
+
+<blockquote>
+<p>Syntra aligns with <strong>UOR v3.5.0</strong>, implementing a <strong>Prime Framework</strong> for universal number representation. This ensures <strong>Observer Invariance</strong> and <strong>Geometric Consistency</strong> by encoding information through complete prime factorization.</p>
+</blockquote>
+
+<h2>1. Universal Coordinate Projection</h2>
+
+<p>Content is projected onto a triadic UOR manifold using prime-factorized Universal Numbers. Similarity is measured via <strong>Geometric Congruence</strong> across prime spectra.</p>
+
+<h3>Projection Strategy</h3>
+
+<p>Every textual unit is mapped to an address where coordinates are stored as <code>{prime: exponent}</code> factorizations. This eliminates the "floating point drift" typical of standard vector embeddings.</p>
+
+<pre><code><span class="comment"># Conceptual UOR Projection</span>
+<span class="keyword">from</span> uor <span class="keyword">import</span> triality
+
+c1 = triality.project_coordinate(<span class="string">"Hello world"</span>)
+c2 = triality.project_coordinate(<span class="string">"Goodbye world"</span>)
+
+<span class="comment"># Similarity is 'resonance' between prime factors</span>
+resonance = triality.compute_resonance(c1, c2)
+<span class="function">print</span>(<span class="string">f"Universal Resonance Fidelity: {resonance:.4f}"</span>)</code></pre>
+
+<h2>2. Holonomic Fields & Semantic Tension</h2>
+
+<p>The <strong>Holonomic Field</strong> utilizes prime factorization to compute observer-invariant congruence. <strong>Semantic Tension</strong> ($\mathcal{T}$) measures local curvature within the prime-factorized semantic lattice.</p>
+
+<h3>Manifold Proximity</h3>
+
+<p>Proximity is calculated using prime-aware distance metrics, ensuring that related concepts share a high degree of algebraic congruence.</p>
+
+<pre><code><span class="comment"># Semantic Proximity on the Manifold</span>
+<span class="keyword">from</span> uor <span class="keyword">import</span> triality, field
+
+dataset = [<span class="string">"AI"</span>, <span class="string">"Machine Learning"</span>, <span class="string">"Neural Network"</span>, <span class="string">"Recipe"</span>]
+manifold_points = [{<span class="string">'label'</span>: s, <span class="string">'coordinate'</span>: triality.project_coordinate(s)} <span class="keyword">for</span> s <span class="keyword">in</span> dataset]
+
+query = triality.project_coordinate(<span class="string">"Deep Learning training"</span>)
+neighbors = field.manifold_proximity(query, manifold_points, k=<span class="string">3</span>)</code></pre>
+
+<h2>3. Gauge Stability & Topology</h2>
+
+<p>The topology module assesses <strong>Gauge Stability</strong> by measuring resonance fidelity across edges. This ensures mathematical consistency across the manifold as the agent moves through the text (Parallel Transport).</p>
+
+<pre><code><span class="comment"># Gauge Stability Check</span>
+<span class="keyword">from</span> uor <span class="keyword">import</span> topology
+
+topology = topology.build_topology(nodes, edges)
+stability = topology.assess_gauge_stability(topology)
+
+<span class="function">print</span>(<span class="string">f"Gauge Stability: {stability['resonance_fidelity']:.4f}"</span>)</code></pre>
+
+<h2>4. Architectural Guarantees</h2>
+<ul>
+  <li><strong>Observer Invariance:</strong> The prime-factorized identity of a "glyph" is the same regardless of the context it is viewed in.</li>
+  <li><strong>Geometric Consistency:</strong> All operations on the manifold follow the $\mathfrak{su}(2)$ gauge field laws, providing hard mathematical limits on "meaning drift."</li>
+</ul>
+
+</body>
+</html>

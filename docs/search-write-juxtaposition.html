@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<title>Search-Write Juxtaposition</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 2rem; }
+  h1 { font-size: 24px; margin-bottom: 1rem; border-bottom: 2px solid #eee; padding-bottom: 0.5rem; }
+  h2 { font-size: 18px; margin-top: 1.5rem; margin-bottom: 0.75rem; }
+  h3 { font-size: 16px; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+  p { margin-bottom: 1rem; }
+  ul, ol { margin-bottom: 1rem; padding-left: 1.5rem; }
+  li { margin-bottom: 0.5rem; }
+  strong { font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Search-Write Juxtaposition</h1>
+
+<h2>Overall Interaction Model</h2>
+
+<p>Kalima should be organized around two primary display modes—Reading Mode and Writing Mode—each corresponding to a distinct attentional regime and explicitly designed to regulate cognitive load.</p>
+
+<h2>Reading Mode</h2>
+
+<p>In Reading Mode, the Quranic text is the exclusive foreground. The writing pane is fully suppressible and hidden by default, enforcing a strong minimal baseline in which no analytical information is surfaced unless explicitly requested. Writing remains one deliberate action away through a persistent affordance (for example, a toggle or keyboard shortcut), allowing interpretive intervention without navigational transitions, mode confusion, or loss of textual context.</p>
+
+<h2>Writing Mode</h2>
+
+<p>In Writing Mode, the interface resolves into two synchronized panes: the Quranic text on one side and a persistent note-writing surface on the other. Writing is treated as a first-order analytical activity rather than an auxiliary feature. The writing surface remains available across reading, navigation, and search operations, enabling the capture of observations, hypotheses, interpretive claims, and methodological reflections at the moment they arise, while maintaining a stable spatial separation between text, interpretation, and evidence.</p>
+
+<h2>Multi-Resolution Annotation Model</h2>
+
+<p>Notes are not merely attached to passages; they are attached to addressable analytical objects at multiple resolutions. At minimum, the system supports attachment to an ayah, to a token instance within an ayah, to a word-form or morphological realization, to a root or lexeme-level abstraction, and to syntactic objects at both the type level (a general construction or pattern) and the instance level (a particular occurrence of that construction in context). The interface explicitly distinguishes between type-level annotations (general claims) and instance-level annotations (context-bound claims), and never merges them implicitly. Traversal between levels is always user-initiated and scope-labeled.</p>
+
+<h2>Cognitive Load and Scoping Defaults</h2>
+
+<p>Cognitive overload is controlled through strict scoping defaults. When a user reads an ayah, the notes view surfaces only notes directly attached to that ayah. Related notes attached to contained objects (token instances, syntactic instances) are hidden by default and may be revealed only through explicit, reversible scope expansion. Expanded notes are grouped by attachment level and visually labeled so the user can always determine why a note is visible.</p>
+
+<h2>Lexical Generalization Without Loss of Specificity</h2>
+
+<p>When a user inspects a word at the root or lexeme layer, the system preserves specificity by presenting word-form annotations as subordinate, form-scoped notes within the broader root-level inspection. Generalization never collapses detail; instead, higher-level views summarize lower-level notes and allow drill-down into concrete forms and occurrences without forcing their simultaneous display.</p>
+
+<h2>Syntactic Patterns and Evidence Separation</h2>
+
+<p>For syntactic elements, the UI enforces a separation between interpretation and evidence. Opening the notes for a syntactic type (pattern) presents interpretive notes in one pane, while the adjacent pane displays a bounded, non-exhaustive list of concrete instances satisfying that pattern. Notes may be attached both to the pattern itself and to individual instances, but these attachments remain visually and structurally distinct. Instance lists are summarized, capped, or aggregated to prevent unbounded expansion.</p>
+
+<h2>Navigability Through Explicit Scope Control</h2>
+
+<p>Navigability is preserved through scoping rather than proliferation. By default, the user sees only direct notes for the currently selected object. Explicit affordances allow scope expansion upward to parent abstractions (instance → type → schema) or downward to contained refinements (root → word-forms → token instances), with each expansion clearly labeled and independently reversible.</p>
+
+<h2>Search as an Instrument of Inquiry</h2>
+
+<p>Search operates over a formally specified set of searchable elements, including lemma, root, morphological structure, syntactic annotation, phonological markers, stylistic features, and higher-order pattern signatures. Each validated search yields a stable query object that can itself be annotated and later revisited. Search results are treated as evidence sets rather than content streams, reinforcing Kalima's role as an instrument for inquiry rather than a retrieval interface. Throughout, Reading Mode preserves a distraction-free baseline, and Writing Mode exposes analytical power only through deliberate, scoped interaction.</p>
+
+</body>
+</html>
