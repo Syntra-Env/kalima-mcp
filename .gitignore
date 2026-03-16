@@ -19,7 +19,6 @@ data/
 *.mp3
 
 # Documents
-docs/
 
 # Local config
 .env
