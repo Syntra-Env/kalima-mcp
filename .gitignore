@@ -57,3 +57,5 @@ nul
 .idea/
 *.iml
 .env
+references/
+.gemini/
