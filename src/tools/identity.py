@@ -1,6 +1,6 @@
-"""Manifold Tool: Identity and Composition.
+"""Identity Tool: UOR Address Resolution and Classification.
 
-The core of the Holonomic system. Every entity is accessed via its 
+The core of the system. Every entity is accessed via its 
 UOR Content Address (SHA-256).
 """
 
@@ -8,7 +8,7 @@ import sqlite3
 from mcp.server.fastmcp import FastMCP
 from ..db import get_connection
 from ..utils.addressing import get_address, find_by_address
-from ..math.uor import hex_to_int, decompose_fibers as uor_decompose, get_stratum
+from geometer.uor import hex_to_int, decompose_fibers as uor_decompose, get_stratum
 
 mcp: FastMCP
 
@@ -17,23 +17,23 @@ def register(server: FastMCP):
     mcp = server
 
     @mcp.tool()
-    def decompose_fibers(address: str) -> dict:
-        """Decompose a UOR address into its binary fibers and stratum (P3.3)."""
+    def decompose_address(address: str) -> dict:
+        """Decompose a UOR address into its constituent properties."""
         x = hex_to_int(address)
         fibers = uor_decompose(x)
         stratum = get_stratum(x)
         return {
             "address": address,
             "stratum": stratum,
-            "fibers_hex": hex(x),
-            "active_fibers_count": bin(x).count('1')
+            "integer_value": hex(x),
+            "active_components": bin(x).count('1')
         }
 
     @mcp.tool()
-    def classify_uor_partition(address: str) -> dict:
-        """Classify a UOR element into its ontological partition (P3.7).
+    def classify_element(address: str) -> dict:
+        """Classify a UOR element into its ontological category.
 
-        Partitions:
+        Categories:
         - Irreducible: Roots (Semantic Primes)
         - Reducible: Word Types (Compound Forms)
         - Unit: Particles (Grammatically invertible units)
@@ -42,12 +42,12 @@ def register(server: FastMCP):
         conn = get_connection()
         hits = find_by_address(conn, address)
         if not hits:
-            return {"partition": "Exterior", "note": "Address not found in physical manifold."}
+            return {"category": "Exterior", "note": "Address not found in the corpus."}
 
         e_type = hits[0]['entity_type']
 
         if e_type == 'root':
-            return {"partition": "Irreducible", "type": e_type, "note": "Semantic basis vector."}
+            return {"category": "Irreducible", "type": e_type, "note": "Semantic basis vector."}
         elif e_type in ('word_type', 'morpheme_type'):
             # Check if it's a particle
             row = conn.execute("""
@@ -56,10 +56,10 @@ def register(server: FastMCP):
                 WHERE mt.id = ? AND f.lookup_key IN ('P', 'PREP', 'CONJ', 'PRON')
             """, (hits[0]['entity_id'],)).fetchone()
             if row:
-                return {"partition": "Unit", "type": "Particle", "note": "Invertible functional unit."}
-            return {"partition": "Reducible", "type": e_type, "note": "Compound linguistic manifestation."}
+                return {"category": "Unit", "type": "Particle", "note": "Invertible functional unit."}
+            return {"category": "Reducible", "type": e_type, "note": "Compound linguistic manifestation."}
         else:
-            return {"partition": "Exterior", "type": e_type}
+            return {"category": "Exterior", "type": e_type}
 
     @mcp.tool()
     def resolve_address(address: str) -> dict:
@@ -69,7 +69,7 @@ def register(server: FastMCP):
         # 1. Identify what this address represents
         hits = find_by_address(conn, address)
         if not hits:
-            return {"error": f"Address {address} not found in manifold."}
+            return {"error": f"Address {address} not found in corpus."}
             
         results = []
         for h in hits:

@@ -1,25 +1,25 @@
-"""Verse Dynamics: Emphasis, Boundaries, Drift, and Phase-Lock.
+"""Discourse Tool: Analyzing Emphasis, Boundaries, and Thematic Flow.
 
-Thin tool layer — queries DB, passes clean data to src/math/, returns results.
-All math lives in src/math/verse_dynamics.py and src/math/root_space.py.
+Thin tool layer — queries DB, passes clean data to geometer/, returns results.
+All math lives in geometer/verse_dynamics.py and geometer/root_space.py.
 """
 
 from mcp.server.fastmcp import FastMCP
 from ..db import get_connection
 from ..utils.units import compose_verse_text
-from ..math.bridge import (
+from ..utils.bridge import (
     build_root_vectors_for_verse,
     build_root_vectors_for_passage,
     get_verse_word_data,
 )
-from ..math.verse_dynamics import analyze_verse, verse_coherence
+from geometer.verse_dynamics import analyze_verse, verse_coherence
 
 
-def get_passage_drift(surah: int, start_ayah: int, end_ayah: int) -> dict:
-    """Compute drift energy across a passage to find semantically loaded positions.
+def analyze_passage_shift(surah: int, start_ayah: int, end_ayah: int) -> dict:
+    """Analyze shifts in semantic focus across a passage to find significant points.
 
-    Drift = morphological profile distance between adjacent words.
-    High drift = the text shifts semantic/grammatical gears at that point.
+    Shift = morphological profile distance between adjacent words.
+    High shift = the text changes semantic or grammatical focus at that point.
     """
     conn = get_connection()
     root_vectors = build_root_vectors_for_passage(conn, surah, start_ayah, end_ayah)
@@ -33,28 +33,28 @@ def get_passage_drift(surah: int, start_ayah: int, end_ayah: int) -> dict:
         word_data = get_verse_word_data(conn, surah, ayah)
         analysis = analyze_verse(word_data, root_vectors)
 
-        word_drifts = []
-        max_drift = 0.0
-        max_drift_word = None
+        word_shifts = []
+        max_shift = 0.0
+        max_shift_word = None
 
         for w in analysis.words:
-            word_drifts.append({
+            word_shifts.append({
                 "word_index": w.word_index,
                 "text": w.text,
                 "root": w.root_key,
-                "drift": w.drift,
+                "shift": w.drift,
                 "energy": round(w.energy, 4),
             })
-            if w.drift > max_drift:
-                max_drift = w.drift
-                max_drift_word = w.text
+            if w.drift > max_shift:
+                max_shift = w.drift
+                max_shift_word = w.text
 
         verse_results.append({
             "ayah": ayah,
             "text": verse_text[:80] + ("..." if len(verse_text) > 80 else ""),
-            "peak_drift": round(max_drift, 4),
-            "peak_word": max_drift_word,
-            "words": word_drifts,
+            "peak_shift": round(max_shift, 4),
+            "peak_word": max_shift_word,
+            "words": word_shifts,
         })
 
     return {
@@ -86,7 +86,7 @@ def register(server: FastMCP):
                 "root": w.root_key,
                 "weight": w.weight,
                 "anomaly": w.anomaly,
-                "drift": w.drift,
+                "shift": w.drift,
                 "coherence": w.coherence,
                 "energy": round(w.energy, 4),
             })
@@ -194,6 +194,6 @@ def register(server: FastMCP):
         }
 
     @server.tool()
-    def compute_passage_drift(surah: int, start_ayah: int, end_ayah: int) -> dict:
-        """Compute drift energy across a passage."""
-        return get_passage_drift(surah, start_ayah, end_ayah)
+    def analyze_passage_shift(surah: int, start_ayah: int, end_ayah: int) -> dict:
+        """Analyze shifts in semantic focus across a passage."""
+        return analyze_passage_shift(surah, start_ayah, end_ayah)

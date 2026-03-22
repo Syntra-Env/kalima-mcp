@@ -1,16 +1,15 @@
 """Bridge: DB queries → pure math objects.
 
-This is the ONLY file in src/math/ that imports from the DB layer.
-It queries the database and produces RootVectors and word_data lists
-that the pure math functions consume.
-
-The rest of src/math/ stays DB-free and independently importable.
+This is the ONLY file in Scholar that imports from the DB layer to produce 
+objects for the Geometer math library. It queries the database and produces 
+RootVectors and word_data lists that the pure math functions consume.
 """
 
 import math
 import sqlite3
-from .gauge import get_h_matrix, SIGMAS
-from .root_space import RootVector, build_root_vector
+from geometer.gauge import get_h_matrix, SIGMAS
+from geometer.root_space import RootVector, build_root_vector
+
 
 _surprisal_cache: dict[int, float] = {}
 
@@ -18,12 +17,12 @@ def get_surprisal(conn: sqlite3.Connection, feature_id: int | None) -> float:
     """Information content of a feature value: -log(p)."""
     if feature_id is None: return 0.0
     if feature_id in _surprisal_cache: return _surprisal_cache[feature_id]
-    
+
     row = conn.execute("SELECT frequency FROM features WHERE id = ?", (feature_id,)).fetchone()
     if not row or not row['frequency'] or row['frequency'] <= 0:
         _surprisal_cache[feature_id] = 0.0
         return 0.0
-        
+
     # Normalized against total corpus size ~128k morphemes
     val = math.log(max(128000 / row['frequency'], 1.0))
     _surprisal_cache[feature_id] = val
@@ -32,7 +31,7 @@ def get_surprisal(conn: sqlite3.Connection, feature_id: int | None) -> float:
 
 def _address_to_component(address: str | None) -> float:
     """Project a hex UOR address onto a real scalar [-1, 1].
-    
+
     This is the coupling constant for the root identity in the field.
     """
     if not address: return 0.0
@@ -42,33 +41,33 @@ def _address_to_component(address: str | None) -> float:
 
 def features_to_h_components(conn: sqlite3.Connection, feat_row: dict, root_addr: str | None = None) -> list[float]:
     """HUFD Mapping: Maps linguistic features to su(2) gauge components [x, y, z].
-    
+
     x: Semantic Identity (Root + Lemma Surprisal + UOR Coupling)
     y: Morphological Action (Verb Form + Aspect + Person + Gender + Number)
     z: Syntactic Position (POS + Case + Voice + Mood)
     """
     SCALE = 0.1 # Numerical stability for su(2) exponentials
-    
+
     # x-component: The 'What' (Identity)
-    raw_x = (get_surprisal(conn, feat_row.get('root_id')) + 
+    raw_x = (get_surprisal(conn, feat_row.get('root_id')) +
              get_surprisal(conn, feat_row.get('lemma_id')))
-    
+
     if root_addr:
         raw_x += _address_to_component(root_addr)
-        
+
     # y-component: The 'How' (Action/Morphology)
-    raw_y = (get_surprisal(conn, feat_row.get('verb_form_id')) + 
+    raw_y = (get_surprisal(conn, feat_row.get('verb_form_id')) +
              get_surprisal(conn, feat_row.get('aspect_id')) +
              get_surprisal(conn, feat_row.get('person_id')) +
              get_surprisal(conn, feat_row.get('gender_id')) +
              get_surprisal(conn, feat_row.get('number_id')))
-             
+
     # z-component: The 'Where' (Syntax/Function)
-    raw_z = (get_surprisal(conn, feat_row.get('pos_id')) + 
+    raw_z = (get_surprisal(conn, feat_row.get('pos_id')) +
              get_surprisal(conn, feat_row.get('case_value_id')) +
              get_surprisal(conn, feat_row.get('voice_id')) +
              get_surprisal(conn, feat_row.get('mood_id')))
-    
+
     # In a full implementation, we'd apply the Information Geometric Metric g_mu_nu here.
     # For now, we use the raw surprisal vector.
     return [raw_x * SCALE, raw_y * SCALE, raw_z * SCALE]
@@ -183,14 +182,14 @@ def build_root_vector_from_db(conn: sqlite3.Connection, root_id: int) -> RootVec
         FROM word_instances wi1
         JOIN word_type_morphemes wtm1 ON wi1.word_type_id = wtm1.word_type_id
         JOIN morpheme_types mt1 ON wtm1.morpheme_type_id = mt1.id
-        JOIN word_instances wi2 ON wi1.verse_surah = wi2.verse_surah 
-                               AND wi1.verse_ayah = wi2.verse_ayah
+        JOIN word_instances wi2 ON wi1.verse_surah = wi2.verse_surah
+                                AND wi1.verse_ayah = wi2.verse_ayah
         JOIN word_type_morphemes wtm2 ON wi2.word_type_id = wtm2.word_type_id
         JOIN morpheme_types mt2 ON wtm2.morpheme_type_id = mt2.id
         WHERE mt1.root_id = ? AND mt2.root_id != ?
         GROUP BY mt2.root_id
     """, (root_id, root_id)).fetchall()
-    
+
     cooccurrence_counts = {r["root_id"]: r["count"] for r in cooccurrences}
 
     return build_root_vector(

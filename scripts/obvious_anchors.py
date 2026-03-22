@@ -3,7 +3,7 @@ import sqlite3
 import re
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "kalima.db"
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "scholar.db"
 
 def anchor_obvious():
     conn = sqlite3.connect(str(DB_PATH))

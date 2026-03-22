@@ -1,1 +1,1 @@
-# Kalima - Quranic Research MCP Server
+# Scholar - Quranic Research MCP Server

@@ -1,28 +1,28 @@
-"""Abjadic Resonance Tool (Linguistic Interface to the Gauge Field).
+"""Hermeneutics Tool: Interpretation and Semantic Consistency.
 
 This is a thin tool layer. It queries the database, maps features to 
-physical gauge components using src.math.bridge, and analyzes the field 
-topology using src.math.gauge.
+linguistic components using the bridge, and analyzes the consistency 
+of expression.
 """
 
 import sqlite3
 import numpy as np
 from mcp.server.fastmcp import FastMCP
 from ..db import get_connection
-from ..math.gauge import (
+from geometer.gauge import (
     get_h_matrix, 
     analyze_resonance, 
     get_lyapunov_deviation, 
     get_field_tension
 )
-from ..math.root_space import concordance_distance
-from ..math.bridge import (
+from geometer.root_space import concordance_distance
+from ..utils.bridge import (
     build_root_vectors_for_verse,
     get_verse_word_data,
     build_root_vector_from_db,
     features_to_h_components
 )
-from ..math.verse_dynamics import analyze_verse
+from geometer.verse_dynamics import analyze_verse
 from ..utils.units import compose_word_text, compose_verse_text
 
 
@@ -47,12 +47,11 @@ def _get_root_instances(conn: sqlite3.Connection, root_id: int, limit: int = 500
 def register(server: FastMCP):
 
     @server.tool()
-    def compute_root_resonance(root_feature_id: int) -> dict:
-        """Compute holonomic resonance for a root across all its Quranic instances.
+    def analyze_root_consistency(root_feature_id: int) -> dict:
+        """Analyzes the consistency of a root's usage across all its Quranic instances.
 
-        Tests the holonomic closure condition: ∮H_μ dx^μ = const
-        - Low curvature (κ → 0): meaning is conserved (consistent usage)
-        - High curvature (κ → π): meaning evolves (context-dependent usage)
+        - Low variation: meaning is conserved (consistent usage)
+        - High variation: meaning evolves (context-dependent usage)
         """
         conn = get_connection()
 
@@ -82,7 +81,7 @@ def register(server: FastMCP):
             "root": root_info['lookup_key'],
             "root_ar": root_info['label_ar'],
             "total_instances": len(instances),
-            "global_curvature": round(res.global_curvature, 4),
+            "global_variation": round(res.global_curvature, 4),
             "consistency": res.consistency,
             "hotspots": res.hotspots,
         }
@@ -91,7 +90,7 @@ def register(server: FastMCP):
     def verify_root_concordance(root_feature_id: int, proposed_meaning: str) -> dict:
         """Verify a proposed meaning for a root against ALL its Quranic instances.
 
-        Returns instances sorted by Lyapunov deviation (highest first).
+        Returns instances sorted by semantic deviation (highest first).
         High-deviation instances are the potential falsifiers.
         """
         conn = get_connection()
@@ -128,7 +127,7 @@ def register(server: FastMCP):
 
     @server.tool()
     def compare_with_traditional(surah: int, ayah: int) -> dict:
-        """Compare Kalima research entries with traditional interpretations for a verse."""
+        """Compare Scholar research entries with traditional interpretations for a verse."""
         conn = get_connection()
         verse_text = compose_verse_text(conn, surah, ayah)
         
@@ -148,8 +147,8 @@ def register(server: FastMCP):
         }
 
     @server.tool()
-    def root_distance(root_feature_id_a: int, root_feature_id_b: int) -> dict:
-        """Calculate the distributional distance between two roots."""
+    def measure_root_similarity(root_feature_id_a: int, root_feature_id_b: int) -> dict:
+        """Calculate the semantic similarity between two roots based on their distribution."""
         conn = get_connection()
         rv_a = build_root_vector_from_db(conn, root_feature_id_a)
         rv_b = build_root_vector_from_db(conn, root_feature_id_b)

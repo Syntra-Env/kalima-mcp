@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 import unicodedata
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "kalima.db"
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "scholar.db"
 XML_PATH = Path(__file__).resolve().parent.parent / "data" / "quran-uthmani.xml"
 
 def run_ordered_audit():

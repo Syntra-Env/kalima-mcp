@@ -2,7 +2,7 @@
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "kalima.db"
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "scholar.db"
 
 def semantic_anchor():
     conn = sqlite3.connect(str(DB_PATH))

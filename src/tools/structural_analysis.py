@@ -1,7 +1,6 @@
-"""Analytics Tool: Resonance, Curvature, and Entanglement.
+"""Structural Analysis Tool: Tension, Topology, and Structural Mapping.
 
-FINAL VERSION: Fully compliant with HUFD Equations (R_uv, J_hol, HF) 
-and su(2) Lie Algebra as specified in Harlow (2026).
+Applies analytical methods to uncover the structural properties of the text.
 """
 
 import sqlite3
@@ -9,8 +8,8 @@ import numpy as np
 from mcp.server.fastmcp import FastMCP
 from src.db import get_connection
 from src.utils.addressing import get_holonomic_vector, get_address
-from src.math.gauge import get_h_matrix, get_discrete_curvature, get_field_tension
-from src.math.bridge import features_to_h_components
+from geometer.gauge import get_h_matrix, get_discrete_curvature, get_field_tension
+from src.utils.bridge import features_to_h_components
 
 mcp: FastMCP
 
@@ -35,20 +34,20 @@ def get_word_h_matrix(conn: sqlite3.Connection, word_instance_id: str) -> np.nda
     components = features_to_h_components(conn, dict(row), root_addr)
     return get_h_matrix(components)
 
-def measure_manifold_curvature(word_instance_id: str) -> dict:
-    """HUFD R_uv implementation: Curvature as Field Tension."""
+def measure_structural_tension(word_instance_id: str) -> dict:
+    """Measures the structural tension on a single word instance."""
     conn = get_connection()
     h_current = get_word_h_matrix(conn, word_instance_id)
     tension = get_field_tension(h_current)
     
     return {
         "instance_id": word_instance_id,
-        "curvature": round(tension, 4),
-        "stability": "stable" if tension < 5.0 else "singularity"
+        "tension": round(tension, 4),
+        "interpretation": "stable" if tension < 5.0 else "high-energy"
     }
 
-def get_surah_topology(surah_id: int) -> dict:
-    """High-Fidelity Topological Map."""
+def map_surah_structure(surah_id: int) -> dict:
+    """Creates a high-fidelity structural map of a surah."""
     conn = get_connection()
     words = conn.execute("""
         SELECT id, verse_ayah, word_index, normalized_text 
@@ -56,9 +55,9 @@ def get_surah_topology(surah_id: int) -> dict:
         ORDER BY verse_ayah, word_index
     """, (surah_id,)).fetchall()
     
-    topology = []
+    structure = []
     h_sequence = []
-    prev_curvature = 0.0
+    prev_value = 0.0
     
     for w in words:
         h_mat = get_word_h_matrix(conn, w['id'])
@@ -66,18 +65,18 @@ def get_surah_topology(surah_id: int) -> dict:
         
         kappa = get_discrete_curvature(h_sequence[-3:])
         
-        topology.append({
+        structure.append({
             "loc": f"{w['verse_ayah']}:{w['word_index']}",
             "text": w['normalized_text'],
-            "curvature": kappa,
-            "lucidity_flux": round(prev_curvature - kappa, 4)
+            "value": kappa,
+            "flux": round(prev_value - kappa, 4)
         })
-        prev_curvature = kappa
+        prev_value = kappa
         
-    return {"surah": surah_id, "topology": topology}
+    return {"surah": surah_id, "structure": structure}
 
 def compute_topology(addresses: list[str]) -> dict:
-    """Compute topological Betti numbers for a set of UOR addresses."""
+    """Compute topological properties for a set of UOR addresses."""
     from src.utils.topology import get_constraints_topology
     from src.db import get_connection
     conn = get_connection()
@@ -91,7 +90,7 @@ def compute_uor_index(addresses: list[str]) -> dict:
     return uor_index(conn, addresses)
 
 def register(server: FastMCP):
-    server.tool()(measure_manifold_curvature)
-    server.tool()(get_surah_topology)
+    server.tool()(measure_structural_tension)
+    server.tool()(map_surah_structure)
     server.tool()(compute_topology)
     server.tool()(compute_uor_index)

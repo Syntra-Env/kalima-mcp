@@ -1,4 +1,4 @@
-"""Database connection manager for Kalima.
+"""Database connection manager for Scholar.
 
 Clarified naming:
 - word_types: Unique word forms (DNA).
@@ -20,21 +20,21 @@ def get_connection() -> sqlite3.Connection:
     if _conn is not None:
         return _conn
 
-    db_path = os.environ.get('KALIMA_DB_PATH')
-    default_path = r'C:\Codex\Kalima\data\kalima.db'
+    db_path = os.environ.get('SCHOLAR_DB_PATH')
+    default_path = r'C:\Syntra\scholar\data\scholar.db'
 
     if not db_path or not Path(db_path).exists():
         db_path = default_path
 
     if not Path(db_path).exists():
         # Fallback to current directory for relative lookups
-        alt_path = Path("data/kalima.db")
+        alt_path = Path("data/scholar.db")
         if alt_path.exists():
             db_path = str(alt_path.absolute())
         else:
             raise FileNotFoundError(
                 f"Database not found at {db_path}. "
-                f"Set KALIMA_DB_PATH environment variable to the correct path."
+                f"Set SCHOLAR_DB_PATH environment variable to the correct path."
             )
 
     conn = sqlite3.connect(db_path)
