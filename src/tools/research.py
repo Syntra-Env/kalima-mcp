@@ -6,6 +6,7 @@ Handles the 'Interpretive Field'. Claims are docked to Manifold Addresses.
 import sqlite3
 import hashlib
 from datetime import datetime, timezone
+from typing import Any, List, Dict
 from mcp.server.fastmcp import FastMCP
 from ..db import get_connection, save_database
 from ..utils.addressing import find_by_address, get_address
@@ -64,14 +65,14 @@ def register(server: FastMCP):
         return dock_claim(content, anchor_address, category, phase)
 
     @mcp.tool()
-    def search_research(query: str, limit: int = 20) -> list[dict]:
+    def search_research(query: str, limit: int = 20) -> dict:
         """Search for research claims docked in the manifold."""
         conn = get_connection()
         sql = """SELECT address, content, phase, category, anchor_type, anchor_ids 
                   FROM holonomic_entries WHERE content LIKE ? 
                   ORDER BY last_activity DESC LIMIT ?"""
         rows = conn.execute(sql, (f"%{query}%", limit)).fetchall()
-        return [dict(r) for r in rows]
+        return {"results": [dict(r) for r in rows]}
 
     @mcp.tool()
     def get_entry_details(address: str) -> dict:

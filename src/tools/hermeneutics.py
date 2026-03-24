@@ -7,6 +7,7 @@ of expression.
 
 import sqlite3
 import numpy as np
+from typing import Any, List, Dict
 from mcp.server.fastmcp import FastMCP
 from ..db import get_connection
 from geometer.gauge import (
@@ -26,7 +27,7 @@ from geometer.verse_dynamics import analyze_verse
 from ..utils.units import compose_word_text, compose_verse_text
 
 
-def _get_root_instances(conn: sqlite3.Connection, root_id: int, limit: int = 500) -> list[dict]:
+def _get_root_instances(conn: sqlite3.Connection, root_id: int, limit: int = 500) -> list:
     """Get all morpheme instances of a root across the Quran."""
     rows = conn.execute("""
         SELECT wi.id as instance_id, wi.verse_surah, wi.verse_ayah, wi.word_index,
