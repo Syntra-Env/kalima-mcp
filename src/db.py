@@ -13,6 +13,36 @@ from pathlib import Path
 
 _conn: sqlite3.Connection | None = None
 
+HF_REPO_ID = "Syntra-Env/scholar-db"
+HF_FILENAME = "scholar.db"
+DEFAULT_DB_PATH = Path.home() / ".scholar" / "data" / "scholar.db"
+
+
+def _download_from_hf() -> str:
+    """Download scholar.db from HuggingFace and save locally."""
+    try:
+        from huggingface_hub import hf_hub_download
+        import shutil
+        
+        print(f"Downloading database from HuggingFace ({HF_REPO_ID})...")
+        
+        # Download to cache
+        cached_path = hf_hub_download(
+            repo_id=HF_REPO_ID,
+            filename=HF_FILENAME,
+            repo_type="dataset"
+        )
+        
+        # Save to default location
+        DEFAULT_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(cached_path, DEFAULT_DB_PATH)
+        print(f"Database saved to: {DEFAULT_DB_PATH}")
+        
+        return str(DEFAULT_DB_PATH)
+    except Exception as e:
+        print(f"Failed to download from HuggingFace: {e}")
+        return None
+
 
 def get_connection() -> sqlite3.Connection:
     """Get or create the singleton database connection."""
@@ -20,22 +50,27 @@ def get_connection() -> sqlite3.Connection:
     if _conn is not None:
         return _conn
 
+    # Priority: env var > default path > relative path > HF download
     db_path = os.environ.get('SCHOLAR_DB_PATH')
-    default_path = r'C:\Syntra\scholar\data\scholar.db'
+
+    if not db_path:
+        # Try default path
+        if DEFAULT_DB_PATH.exists():
+            db_path = str(DEFAULT_DB_PATH)
+        else:
+            # Try current directory relative path
+            alt_path = Path("data/scholar.db")
+            if alt_path.exists():
+                db_path = str(alt_path.absolute())
+            else:
+                # Download from HuggingFace
+                db_path = _download_from_hf()
 
     if not db_path or not Path(db_path).exists():
-        db_path = default_path
-
-    if not Path(db_path).exists():
-        # Fallback to current directory for relative lookups
-        alt_path = Path("data/scholar.db")
-        if alt_path.exists():
-            db_path = str(alt_path.absolute())
-        else:
-            raise FileNotFoundError(
-                f"Database not found at {db_path}. "
-                f"Set SCHOLAR_DB_PATH environment variable to the correct path."
-            )
+        raise FileNotFoundError(
+            "Database not found and could not be downloaded from HuggingFace. "
+            "Set SCHOLAR_DB_PATH environment variable to the correct path."
+        )
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
