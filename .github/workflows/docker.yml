@@ -50,12 +50,18 @@ jobs:
   test:
     needs: build
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository }}/kalima:${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: |
             .github/workflows/test_mcp.py
           sparse-checkout-cone-mode: false
-      - run: python .github/workflows/test_mcp.py
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Pull image
+        run: docker pull ghcr.io/${{ github.repository }}/kalima:${{ github.sha }}
+
+      - name: Test MCP tools
+        run: docker run --rm ghcr.io/${{ github.repository }}/kalima:${{ github.sha }} python .github/workflows/test_mcp.py
