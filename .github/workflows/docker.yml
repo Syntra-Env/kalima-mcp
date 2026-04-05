@@ -30,9 +30,11 @@ jobs:
 
       - name: Set package visibility
         if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Setting package visibility to public..."
-          gh api -X PUT "orgs/Syntra-Env/packages/container/kalima" -f "{'visibility':'public'}" || echo "Package may not exist yet or already set"
+          gh api -X PUT "orgs/Syntra-Env/packages/container/kalima" --field visibility=public || echo "Package may not exist yet or already set"
 
       - name: Extract metadata
         id: meta
