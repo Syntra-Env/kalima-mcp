@@ -6,7 +6,7 @@
       "command": ["python", "-X", "utf8", "-m", "src.server"],
       "enabled": true,
       "environment": {
-        "SCHOLAR_DB_PATH": "C:/Syntra/scholar/data/scholar.db"
+        "SCHOLAR_DB_PATH": "C:/Syntra/Kalima/data/scholar.db"
       }
     }
   }

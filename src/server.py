@@ -35,7 +35,12 @@ signal.signal(signal.SIGINT, _cleanup)
 signal.signal(signal.SIGTERM, _cleanup)
 
 def main():
-    mcp.run()
+    try:
+        mcp.run()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        close_database()
 
 if __name__ == "__main__":
     main()

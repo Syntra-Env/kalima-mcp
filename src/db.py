@@ -14,8 +14,8 @@ from pathlib import Path
 _conn: sqlite3.Connection | None = None
 
 HF_REPO_ID = "Syntra-Env/scholar-db"
-HF_FILENAME = "scholar.db"
-DEFAULT_DB_PATH = Path.home() / ".scholar" / "data" / "scholar.db"
+HF_FILENAME = "kalima.db"
+DEFAULT_DB_PATH = Path.home() / ".scholar" / "data" / "kalima.db"
 
 
 def _download_from_hf() -> str:
