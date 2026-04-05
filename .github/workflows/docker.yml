@@ -46,3 +46,16 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository }}/kalima:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/workflows/test_mcp.py
+          sparse-checkout-cone-mode: false
+      - run: python .github/workflows/test_mcp.py
