@@ -13,6 +13,11 @@ dependencies = [
     "huggingface_hub>=0.20.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
 [project.scripts]
 scholar = "src.server:main"
 

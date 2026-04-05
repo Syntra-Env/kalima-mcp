@@ -53,7 +53,11 @@ def get_connection() -> sqlite3.Connection:
     # Priority: env var > default path > relative path > HF download
     db_path = os.environ.get('SCHOLAR_DB_PATH')
 
-    if not db_path:
+    if db_path and not Path(db_path).exists():
+        # Env var set but path doesn't exist - try to create parent dirs
+        # and proceed (will create new DB at that path)
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    elif not db_path:
         # Try default path
         if DEFAULT_DB_PATH.exists():
             db_path = str(DEFAULT_DB_PATH)
@@ -66,7 +70,7 @@ def get_connection() -> sqlite3.Connection:
                 # Download from HuggingFace
                 db_path = _download_from_hf()
 
-    if not db_path or not Path(db_path).exists():
+    if not db_path:
         raise FileNotFoundError(
             "Database not found and could not be downloaded from HuggingFace. "
             "Set SCHOLAR_DB_PATH environment variable to the correct path."
@@ -166,18 +170,25 @@ def _initialize_content_addresses(conn: sqlite3.Connection):
 
 def _initialize_word_search(conn: sqlite3.Connection):
     """Ensure indexes on words and compositional tables (idempotent)."""
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_words_verse ON word_instances(verse_surah, verse_ayah, word_index)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_words_global ON word_instances(global_index)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_words_type ON word_instances(word_type_id)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_wm_type ON word_type_morphemes(morpheme_type_id)"
-    )
+    # Check if tables exist before creating indexes
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='word_instances'")
+    if cursor.fetchone():
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_words_verse ON word_instances(verse_surah, verse_ayah, word_index)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_words_global ON word_instances(global_index)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_words_type ON word_instances(word_type_id)"
+        )
+    
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='word_type_morphemes'")
+    if cursor.fetchone():
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_wm_type ON word_type_morphemes(morpheme_type_id)"
+        )
 
 
 def _initialize_traditional(conn: sqlite3.Connection):
