@@ -31,7 +31,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}/kalima
+          images: ghcr.io/syntra-env/kalima
           tags: |
             type=ref,event=branch
             type=sha,prefix=
@@ -55,14 +55,11 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Pull image
-        run: docker pull ghcr.io/${{ github.repository }}/kalima:${{ github.sha }}
+        run: docker pull ghcr.io/syntra-env/kalima:${{ github.sha }}
 
       - name: Test MCP tools
         run: |
-          docker create --name test-container ghcr.io/${{ github.repository }}/kalima:${{ github.sha }}
-          docker cp test_container:/.github/workflows/test_mcp.py /tmp/test_mcp.py 2>/dev/null || true
-          docker rm test-container
-          docker run --rm ghcr.io/${{ github.repository }}/kalima:${{ github.sha }} \
+          docker run --rm ghcr.io/syntra-env/kalima:${{ github.sha }} \
             python -c "
 import asyncio
 from mcp.client.stdio import StdioClient
