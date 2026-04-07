@@ -17,6 +17,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -24,17 +25,8 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.session import ClientSession
 
 
-@pytest.fixture
-def mcp_server_params(test_db_path):
-    """Create MCP server parameters for testing."""
-    return StdioServerParameters(
-        command=sys.executable,
-        args=["-X", "utf8", "-m", "src.server"],
-        env={
-            "KALIMA_DB_PATH": test_db_path,
-        },
-        cwd=str(Path(__file__).parent.parent),
-    )
+@pytest_asyncio.fixture
+async def mcp_session(mcp_server_params):
 
 
 @pytest.fixture
