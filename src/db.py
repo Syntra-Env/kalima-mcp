@@ -1,4 +1,4 @@
-"""Database connection manager for Scholar.
+"""Database connection manager for Kalima.
 
 Clarified naming:
 - word_types: Unique word forms (DNA).
