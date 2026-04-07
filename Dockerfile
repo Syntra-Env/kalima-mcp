@@ -11,7 +11,7 @@ RUN uv pip install --system -e .
 
 COPY src/ ./src/
 
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/src
 
 ENV MCP_TRANSPORT=http
 ENV MCP_PORT=8000
