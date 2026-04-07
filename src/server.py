@@ -35,8 +35,17 @@ signal.signal(signal.SIGINT, _cleanup)
 signal.signal(signal.SIGTERM, _cleanup)
 
 def main():
-    try:
+    import os
+    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    
+    if transport == "http":
+        port = int(os.environ.get("MCP_PORT", "8765"))
+        mcp.run(transport="streamable-http", mount_path="/mcp/")
+    else:
         mcp.run()
+    
+    try:
+        pass
     except KeyboardInterrupt:
         pass
     finally:
