@@ -10,7 +10,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-from geometer import uor
+from kalima_math import uor
 from conformance.standards import (
     RING_QUANTUM,
     MODULUS,

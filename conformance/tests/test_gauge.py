@@ -10,8 +10,8 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-from geometer import gauge
-from geometer.gauge import GAUGE_ENGINE, SIGMAS
+from kalima_math import gauge
+from kalima_math.gauge import GAUGE_ENGINE, SIGMAS
 
 
 class TestPauliMatrices:

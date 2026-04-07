@@ -13,7 +13,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-from geometer.domain import (
+from kalima_math.domain import (
     ArabicRoot, Word, Verse, MorphologicalFeatures,
     build_root, build_morpheme_features, build_word, build_verse,
     make_root_iri, make_verse_iri, derive_root_similarity,
