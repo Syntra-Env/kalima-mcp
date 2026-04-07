@@ -2,6 +2,7 @@
 
 import pytest
 import sys
+import os
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -10,7 +11,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 @pytest.fixture(scope="session")
 def hf_token():
     """Get HuggingFace token if available."""
-    import os
     return os.environ.get("HF_TOKEN")
 
 
@@ -31,16 +31,14 @@ def test_db_path(tmp_path_factory, hf_token):
                 repo_type="dataset",
                 token=hf_token
             )
-            shutil.copy(cached, db_path)
         else:
             cached = hf_hub_download(
                 repo_id="Syntra-Env/kalima-db",
                 filename="kalima.db",
                 repo_type="dataset"
             )
-            shutil.copy(cached, db_path)
-    except Exception:
-        # If download fails, tests will be skipped
-        pytest.skip("Could not download test database")
-    
-    return str(db_path)
+        shutil.copy(cached, db_path)
+        return str(db_path)
+    except Exception as e:
+        # If download fails, skip the tests that need the DB
+        pytest.skip(f"Could not download test database: {e}")
