@@ -25,11 +25,20 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.session import ClientSession
 
 
-@pytest_asyncio.fixture
-async def mcp_session(mcp_server_params):
-
-
 @pytest.fixture
+def mcp_server_params(test_db_path):
+    """Create MCP server parameters for testing."""
+    return StdioServerParameters(
+        command=sys.executable,
+        args=["-X", "utf8", "-m", "src.server"],
+        env={
+            "KALIMA_DB_PATH": test_db_path,
+        },
+        cwd=str(Path(__file__).parent.parent),
+    )
+
+
+@pytest_asyncio.fixture
 async def mcp_session(mcp_server_params):
     """Create an MCP session for testing."""
     async with stdio_client(mcp_server_params) as (read, write):
