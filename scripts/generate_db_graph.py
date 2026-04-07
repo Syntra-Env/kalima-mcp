@@ -9,7 +9,7 @@ import networkx as nx
 from pyvis.network import Network
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "data" / "scholar.db"
+DB_PATH = Path(__file__).parent.parent / "data" / "kalima.db"
 
 def get_db_graph(max_nodes_per_type=100, include_content_addresses=False):
     """Generate a NetworkX graph from the database."""

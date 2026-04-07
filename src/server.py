@@ -1,4 +1,4 @@
-"""Scholar MCP Server: Holonomic Research Environment.
+"""Kalima MCP Server: Holonomic Research Environment.
 
 Standardized on UOR Content Addressing and HUFD Field Dynamics.
 """
@@ -11,7 +11,7 @@ from .tools import identity, navigation, research, structural_analysis, context,
 # from .utils.hufd_math import compute_information_geometric_metric
 
 # Create FastMCP server
-mcp = FastMCP("scholar-holonomic-server")
+mcp = FastMCP("kalima-server")
 
 # Initialize mathematical metric
 # conn = get_connection()

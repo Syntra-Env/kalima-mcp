@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "scholar-mcp-server"
+name = "kalima-mcp-server"
 version = "2.0.0"
-description = "Quranic Research MCP Server — text analysis, morphological research, and falsification-based linguistic exploration"
+description = "Kalima MCP Server — Quranic research with HUFD field dynamics"
 requires-python = ">=3.11"
 dependencies = [
     "mcp>=1.1.0",
@@ -20,7 +20,7 @@ dev = [
 ]
 
 [project.scripts]
-scholar = "src.server:main"
+kalima = "src.server:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -41,7 +41,7 @@ class TestDatabaseConnection:
 
     def test_connection_creates_tables(self, temp_db, monkeypatch):
         """Test that connection creates core tables."""
-        monkeypatch.setenv("SCHOLAR_DB_PATH", temp_db)
+        monkeypatch.setenv("KALIMA_DB_PATH", temp_db)
         
         conn = get_connection()
         
@@ -61,7 +61,7 @@ class TestDatabaseConnection:
 
     def test_connection_sets_row_factory(self, temp_db, monkeypatch):
         """Test that rows are returned as Row objects."""
-        monkeypatch.setenv("SCHOLAR_DB_PATH", temp_db)
+        monkeypatch.setenv("KALIMA_DB_PATH", temp_db)
         
         conn = get_connection()
         cursor = conn.cursor()
@@ -81,7 +81,7 @@ class TestDatabaseConnection:
 
     def test_foreign_keys_enabled(self, temp_db, monkeypatch):
         """Test that foreign keys are enforced."""
-        monkeypatch.setenv("SCHOLAR_DB_PATH", temp_db)
+        monkeypatch.setenv("KALIMA_DB_PATH", temp_db)
         
         conn = get_connection()
         cursor = conn.cursor()
@@ -93,7 +93,7 @@ class TestDatabaseConnection:
 
     def test_wal_mode_enabled(self, temp_db, monkeypatch):
         """Test that delete journal mode is set (WAL disabled to reduce CPU overhead)."""
-        monkeypatch.setenv("SCHOLAR_DB_PATH", temp_db)
+        monkeypatch.setenv("KALIMA_DB_PATH", temp_db)
         
         conn = get_connection()
         cursor = conn.cursor()
@@ -108,7 +108,7 @@ class TestFeaturesTable:
 
     def test_insert_and_retrieve_feature(self, temp_db, monkeypatch):
         """Test inserting and retrieving a feature."""
-        monkeypatch.setenv("SCHOLAR_DB_PATH", temp_db)
+        monkeypatch.setenv("KALIMA_DB_PATH", temp_db)
         conn = get_connection()
         cursor = conn.cursor()
         
@@ -130,7 +130,7 @@ class TestFeaturesTable:
 
     def test_feature_uniqueness(self, temp_db, monkeypatch):
         """Test that feature_type/category/lookup_key is unique."""
-        monkeypatch.setenv("SCHOLAR_DB_PATH", temp_db)
+        monkeypatch.setenv("KALIMA_DB_PATH", temp_db)
         conn = get_connection()
         cursor = conn.cursor()
         
@@ -153,7 +153,7 @@ class TestHolonomicEntries:
 
     def test_insert_entry(self, temp_db, monkeypatch):
         """Test inserting a holonomic entry."""
-        monkeypatch.setenv("SCHOLAR_DB_PATH", temp_db)
+        monkeypatch.setenv("KALIMA_DB_PATH", temp_db)
         conn = get_connection()
         cursor = conn.cursor()
         
@@ -180,7 +180,7 @@ class TestHolonomicEntries:
 
     def test_entry_with_verification(self, temp_db, monkeypatch):
         """Test entry with verification status."""
-        monkeypatch.setenv("SCHOLAR_DB_PATH", temp_db)
+        monkeypatch.setenv("KALIMA_DB_PATH", temp_db)
         conn = get_connection()
         cursor = conn.cursor()
         
@@ -207,7 +207,7 @@ class TestContentAddresses:
 
     def test_insert_address_mapping(self, temp_db, monkeypatch):
         """Test inserting a content address mapping."""
-        monkeypatch.setenv("SCHOLAR_DB_PATH", temp_db)
+        monkeypatch.setenv("KALIMA_DB_PATH", temp_db)
         conn = get_connection()
         cursor = conn.cursor()
         
@@ -229,7 +229,7 @@ class TestIndexes:
 
     def test_features_indexes(self, temp_db, monkeypatch):
         """Test features table indexes."""
-        monkeypatch.setenv("SCHOLAR_DB_PATH", temp_db)
+        monkeypatch.setenv("KALIMA_DB_PATH", temp_db)
         conn = get_connection()
         cursor = conn.cursor()
         
@@ -241,7 +241,7 @@ class TestIndexes:
 
     def test_holonomic_entries_indexes(self, temp_db, monkeypatch):
         """Test holonomic_entries table indexes."""
-        monkeypatch.setenv("SCHOLAR_DB_PATH", temp_db)
+        monkeypatch.setenv("KALIMA_DB_PATH", temp_db)
         conn = get_connection()
         cursor = conn.cursor()
         
@@ -263,4 +263,4 @@ class TestHFConfig:
     def test_default_db_path(self):
         """Test default DB path is in user home."""
         assert str(DEFAULT_DB_PATH).startswith(str(Path.home()))
-        assert "scholar" in str(DEFAULT_DB_PATH)
+        assert "kalima" in str(DEFAULT_DB_PATH)

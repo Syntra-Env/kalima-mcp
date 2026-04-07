@@ -15,11 +15,11 @@ _conn: sqlite3.Connection | None = None
 
 HF_REPO_ID = "Syntra-Env/kalima-db"
 HF_FILENAME = "kalima.db"
-DEFAULT_DB_PATH = Path.home() / ".scholar" / "data" / "kalima.db"
+DEFAULT_DB_PATH = Path.home() / ".kalima" / "data" / "kalima.db"
 
 
 def _download_from_hf() -> str:
-    """Download scholar.db from HuggingFace and save locally."""
+    """Download kalima.db from HuggingFace and save locally."""
     try:
         from huggingface_hub import hf_hub_download
         import shutil
@@ -51,7 +51,7 @@ def get_connection() -> sqlite3.Connection:
         return _conn
 
     # Priority: env var > default path > relative path > HF download
-    db_path = os.environ.get('SCHOLAR_DB_PATH')
+    db_path = os.environ.get('KALIMA_DB_PATH')
 
     if db_path and not Path(db_path).exists():
         # Env var set but path doesn't exist - try to create parent dirs
@@ -63,7 +63,7 @@ def get_connection() -> sqlite3.Connection:
             db_path = str(DEFAULT_DB_PATH)
         else:
             # Try current directory relative path
-            alt_path = Path("data/scholar.db")
+            alt_path = Path("data/kalima.db")
             if alt_path.exists():
                 db_path = str(alt_path.absolute())
             else:
@@ -73,7 +73,7 @@ def get_connection() -> sqlite3.Connection:
     if not db_path:
         raise FileNotFoundError(
             "Database not found and could not be downloaded from HuggingFace. "
-            "Set SCHOLAR_DB_PATH environment variable to the correct path."
+            "Set KALIMA_DB_PATH environment variable to the correct path."
         )
 
     conn = sqlite3.connect(db_path)

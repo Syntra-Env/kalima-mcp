@@ -8,7 +8,7 @@ import networkx as nx
 from pyvis.network import Network
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "data" / "scholar.db"
+DB_PATH = Path(__file__).parent.parent / "data" / "kalima.db"
 
 def get_surah1_full_graph():
     """Generate a complete graph of Surah 1 with all details."""

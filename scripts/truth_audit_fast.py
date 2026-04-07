@@ -3,7 +3,7 @@ import sqlite3
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "scholar.db"
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "kalima.db"
 XML_PATH = Path(__file__).resolve().parent.parent / "data" / "quran-uthmani.xml"
 
 def run_fast_audit():
