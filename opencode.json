@@ -3,10 +3,9 @@
   "mcp": {
     "kalima": {
       "type": "local",
-      "command": ["python", "-X", "utf8", "-m", "src.server"],
-      "cwd": "C:/Syntra/Kalima-mcp",
+      "command": ["cmd", "/c", "cd C:\\Syntra\\Kalima-mcp && python -X utf8 -m src.server"],
       "environment": {
-        "KALIMA_DB_PATH": "C:/Syntra/Kalima-mcp/data/kalima.db"
+        "SCHOLAR_DB_PATH": "C:\\Syntra\\Kalima-mcp\\data\\kalima.db"
       },
       "enabled": true
     }
