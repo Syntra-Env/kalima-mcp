@@ -45,11 +45,13 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
       - name: Run Node.js tests (if applicable)
-        if: |
-          -f package.json || -f package-lock.json
         run: |
-          if npm run test --if-present 2>/dev/null; then
-            echo "Node.js tests passed"
+          if [ -f package.json ] || [ -f package-lock.json ]; then
+            if npm run test --if-present 2>/dev/null; then
+              echo "Node.js tests passed"
+            else
+              echo "No Node.js test script found"
+            fi
           else
-            echo "No Node.js test script found"
+            echo "No package.json found, skipping Node.js tests"
           fi
