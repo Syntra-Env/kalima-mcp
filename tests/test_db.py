@@ -92,7 +92,7 @@ class TestDatabaseConnection:
         assert result == 1, "Foreign keys should be enabled"
 
     def test_wal_mode_enabled(self, temp_db, monkeypatch):
-        """Test that WAL journal mode is set."""
+        """Test that delete journal mode is set (WAL disabled to reduce CPU overhead)."""
         monkeypatch.setenv("SCHOLAR_DB_PATH", temp_db)
         
         conn = get_connection()
@@ -100,7 +100,7 @@ class TestDatabaseConnection:
         
         cursor.execute("PRAGMA journal_mode")
         result = cursor.fetchone()[0]
-        assert result == "wal", f"Expected WAL mode, got {result}"
+        assert result == "delete", f"Expected delete mode, got {result}"
 
 
 class TestFeaturesTable:
