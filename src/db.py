@@ -79,7 +79,8 @@ def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
+    # Using DELETE journal mode instead of WAL to reduce periodic checkpoint overhead
+    # conn.execute("PRAGMA journal_mode = WAL")
 
     _initialize_features(conn)
     _initialize_holonomic_entries(conn)
