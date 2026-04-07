@@ -14,6 +14,6 @@ COPY src/ ./src/
 ENV PYTHONPATH=/app
 
 ENV MCP_TRANSPORT=http
-ENV MCP_PORT=8765
-EXPOSE 8765
+ENV MCP_PORT=8000
+EXPOSE 8000
 CMD ["python", "-m", "src.server"]

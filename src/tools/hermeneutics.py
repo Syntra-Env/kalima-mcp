@@ -10,20 +10,20 @@ import numpy as np
 from typing import Any, List, Dict
 from mcp.server.fastmcp import FastMCP
 from ..db import get_connection
-from geometer.gauge import (
+from kalima_math.gauge import (
     get_h_matrix, 
     analyze_resonance, 
     get_lyapunov_deviation, 
     get_field_tension
 )
-from geometer.root_space import concordance_distance
+from kalima_math.root_space import concordance_distance
 from ..utils.bridge import (
     build_root_vectors_for_verse,
     get_verse_word_data,
     build_root_vector_from_db,
     features_to_h_components
 )
-from geometer.verse_dynamics import analyze_verse
+from kalima_math.verse_dynamics import analyze_verse
 from ..utils.units import compose_word_text, compose_verse_text
 
 
