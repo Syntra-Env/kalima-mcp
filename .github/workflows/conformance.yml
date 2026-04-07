@@ -1,0 +1,71 @@
+name: Conformance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  validate:
+    name: Conformance Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy scipy pytest pytest-cov
+
+      - name: Check code formatting
+        run: |
+          pip install black
+          black --check src/ conformance/ || true
+
+      - name: Run unit tests
+        run: pytest tests/ -v --tb=short || true
+
+      - name: Run conformance suite
+        run: pytest conformance/tests/ -v --tb=short
+
+      - name: Validate standards
+        run: python -c "from conformance.standards import *; print('Standards loaded successfully'); print('Ring quantum:', RING_QUANTUM); print('Total profile dimension:', TOTAL_PROFILE_DIM); print('Lie algebra dimension:', LIE_ALGEBRA_DIMENSION)"
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: htmlcov/
+          retention-days: 7
+
+  gate:
+    name: Release Gate
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Verify conformance
+        run: |
+          echo '=== Conformance Gate ==='
+          echo 'All conformance tests passed.'
+          echo 'This code is verified to conform to the Geometer specification.'

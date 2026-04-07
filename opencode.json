@@ -1,13 +1,13 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "scholar": {
+    "kalima": {
       "type": "local",
-      "command": ["python", "-X", "utf8", "-m", "src.server"],
-      "enabled": true,
+      "command": ["cmd", "/c", "cd C:\\Syntra\\Kalima && python -X utf8 -m src.server"],
       "environment": {
-        "SCHOLAR_DB_PATH": "C:/Syntra/Kalima/data/scholar.db"
-      }
+        "SCHOLAR_DB_PATH": "C:\\Syntra\\Kalima\\data\\kalima.db"
+      },
+      "enabled": true
     }
   }
 }
