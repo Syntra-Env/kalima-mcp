@@ -7,8 +7,8 @@ RootVectors and word_data lists that the pure math functions consume.
 
 import math
 import sqlite3
-from kalima.gauge import get_h_matrix, SIGMAS
-from kalima.root_space import RootVector, build_root_vector
+from geometer.gauge import get_h_matrix, SIGMAS
+from geometer.root_space import RootVector, build_root_vector
 
 
 _surprisal_cache: dict[int, float] = {}

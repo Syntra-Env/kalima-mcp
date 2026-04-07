@@ -11,9 +11,9 @@ from typing import Callable, Any
 from dataclasses import dataclass
 import json
 
-from kalima.prism import UOR, Triad
-from kalima.uor import Q256, dist_hamming, dist_ring, get_stratum, get_triad, correlate
-from kalima.domain import ArabicRoot, build_root, derive_root_similarity
+from geometer.prism import UOR, Triad
+from geometer.uor import Q256, dist_hamming, dist_ring, get_stratum, get_triad, correlate
+from geometer.domain import ArabicRoot, build_root, derive_root_similarity
 
 # =============================================================================
 # Benchmark Infrastructure

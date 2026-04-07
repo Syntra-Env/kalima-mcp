@@ -5,9 +5,9 @@ This tests whether we're using PRISM correctly and identifies what
 semantic capabilities would require building on top.
 """
 
-from kalima.prism import UOR, Term, Derivation
-from kalima.uor import Q256
-from kalima.domain import ArabicRoot, build_root, derive_root_similarity
+from geometer.prism import UOR, Term, Derivation
+from geometer.uor import Q256
+from geometer.domain import ArabicRoot, build_root, derive_root_similarity
 
 # =============================================================================
 # TEST 1: Are we using PRISM correctly?

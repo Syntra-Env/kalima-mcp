@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.db import get_connection, save_database
-from kalima.bridge import build_root_vector_from_db
+from src.utils.bridge import build_root_vector_from_db
 
 def adapt_array(arr):
     """
