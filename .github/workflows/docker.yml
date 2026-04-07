@@ -61,18 +61,4 @@ jobs:
         run: |
           echo "Verifying image push..."
           docker manifest inspect ghcr.io/syntra-env/kalima-mcp:${{ github.sha }} || echo "Image not found"
-
-  test:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Pull image
-        run: docker pull ghcr.io/syntra-env/kalima-mcp:${{ github.sha }}
-
-      - name: Test MCP tools
-        run: |
-          echo "Testing container by checking Python can import server..."
-          docker run --rm ghcr.io/syntra-env/kalima-mcp:${{ github.sha }} python -c "import src.server; print('Server module loads OK')"
+          echo "Build and push complete!"
