@@ -10,7 +10,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-from kalima_math.root_space import (
+from geometer.root_space import (
     RootVector,
     build_root_vector,
     instance_anomaly,
@@ -30,7 +30,7 @@ class TestProfileDimensions:
     """Validate profile dimension conformance."""
 
     def test_profile_dim_matches_standard(self):
-        from kalima_math.root_space import POS_DIM, VF_DIM, ASP_DIM, PER_DIM, NUM_DIM, GEN_DIM, CAS_DIM
+        from geometer.root_space import POS_DIM, VF_DIM, ASP_DIM, PER_DIM, NUM_DIM, GEN_DIM, CAS_DIM
         expected = POS_DIM + VF_DIM + ASP_DIM + PER_DIM + NUM_DIM + GEN_DIM + CAS_DIM
         assert PROFILE_DIM == expected
 

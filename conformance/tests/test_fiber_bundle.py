@@ -16,13 +16,13 @@ import os
 import math
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-from kalima_math.fiber_bundle import (
+from geometer.fiber_bundle import (
     Coordinate, BaseManifold, GaugeField, GroupElement,
     PrincipalBundle, ConnectionForm, CurvatureForm,
     HolonomyComputer, HolonomicAttention,
     build_hufd_bundle, PRISMFiberBundle
 )
-from kalima_math.domain import build_root
+from geometer.domain import build_root
 
 
 class TestBaseManifold:

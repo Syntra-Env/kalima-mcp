@@ -8,7 +8,7 @@ import sqlite3
 from mcp.server.fastmcp import FastMCP
 from ..db import get_connection
 from ..utils.addressing import get_address, find_by_address
-from kalima_math.uor import hex_to_int, decompose_fibers as uor_decompose, get_stratum
+from geometer.uor import hex_to_int, decompose_fibers as uor_decompose, get_stratum
 
 mcp: FastMCP
 

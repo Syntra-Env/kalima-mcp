@@ -8,7 +8,7 @@ Run:  python examples/test_prism.py
 
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
-from kalima_math.prism import UOR, Q0, Q1, Q, CoherenceError, ClosureMode
+from geometer.prism import UOR, Q0, Q1, Q, CoherenceError, ClosureMode
 
 
 # ── Coherence ─────────────────────────────────────────────────

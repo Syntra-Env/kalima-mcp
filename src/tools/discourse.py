@@ -12,7 +12,7 @@ from ..utils.bridge import (
     build_root_vectors_for_passage,
     get_verse_word_data,
 )
-from kalima_math.verse_dynamics import analyze_verse, verse_coherence
+from geometer.verse_dynamics import analyze_verse, verse_coherence
 
 
 def analyze_passage_shift(surah: int, start_ayah: int, end_ayah: int) -> dict:

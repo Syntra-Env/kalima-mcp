@@ -19,7 +19,7 @@ import os
 import math
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-from kalima_math.semantic_axioms import (
+from geometer.semantic_axioms import (
     TadaborPosition,
     TheoreticalVerseSpace,
     FuzzyRootMeaning,
