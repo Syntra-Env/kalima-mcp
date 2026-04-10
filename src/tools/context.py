@@ -81,6 +81,107 @@ def register(server: FastMCP):
         }
 
     @mcp.tool()
+    def find_feature(feature_type: str, feature: str, limit: int = 50) -> dict:
+        """Find all Quranic instances of a linguistic feature.
+        
+        Args:
+            feature_type: One of: root, lemma, pos, verb_form, aspect, mood, voice, person, number, gender, case_value, state, derived_noun_type, role, type
+            feature: The feature value (e.g., "علق" for root, "V" for pos, "P3" for person)
+            limit: Maximum morpheme types to return (default 50)
+        
+        Examples:
+        - find_feature("root", "علق") -> all verses with root علق
+        - find_feature("lemma", "عليم") -> all verses with lemma علم
+        - find_feature("pos", "V") -> all verses with verb POS
+        - find_feature("person", "P3") -> all verses with 3rd person
+        """
+        from ..utils.features import fk_col, TERM_TYPE_TO_FEATURE
+        
+        conn = get_connection()
+        
+        # Resolve feature to database column
+        fk = fk_col(feature_type)
+        if not fk:
+            valid = ", ".join(TERM_TYPE_TO_FEATURE.keys())
+            return {"error": f"Unknown feature_type '{feature_type}'. Use: {valid}"}
+        
+        # Find the feature ID in features table
+        ft, cat = TERM_TYPE_TO_FEATURE.get(feature_type, (None, None))
+        if not ft:
+            return {"error": f"Feature_type '{feature_type}' not in TERM_TYPE_TO_FEATURE"}
+        
+        # Look up the feature value
+        if cat:
+            feat_row = conn.execute(
+                "SELECT id FROM features WHERE feature_type=? AND category=? AND lookup_key=?",
+                (ft, cat, feature)
+            ).fetchone()
+        else:
+            feat_row = conn.execute(
+                "SELECT id FROM features WHERE feature_type=? AND lookup_key=?",
+                (ft, feature)
+            ).fetchone()
+        
+        if not feat_row:
+            return {"error": f"Feature '{feature}' not found in features table"}
+        
+        fid = feat_row[0]
+        
+        # Find all morpheme types with this feature
+        rows = conn.execute(
+            f"""SELECT mt.id, mt.uthmani_text, COUNT(*) as cnt
+               FROM morpheme_types mt
+               WHERE mt.{fk} = ?
+               GROUP BY mt.id
+               ORDER BY cnt DESC
+               LIMIT ?""",
+            (fid, limit)
+        ).fetchall()
+        
+        if not rows:
+            return {"feature": feature, "instances": [], "count": 0}
+        
+        # For each morpheme, find where it appears in the Quran
+        instances = []
+        for r in rows:
+            morpheme_id = r['id']
+            word_type_rows = conn.execute(
+                f"""SELECT wi.verse_surah, wi.verse_ayah, wi.word_index, wi.normalized_text,
+                          ft.lookup_key as root
+                   FROM word_type_morphemes wtm
+                   JOIN word_instances wi ON wtm.word_type_id = wi.word_type_id
+                   LEFT JOIN morpheme_types mt ON wtm.morpheme_type_id = mt.id
+                   LEFT JOIN features ft ON mt.root_id = ft.id
+                   WHERE wtm.morpheme_type_id = ?
+                   ORDER BY wi.verse_surah, wi.verse_ayah, wi.word_index""",
+                (morpheme_id,)
+            ).fetchall()
+            
+            locations = []
+            for w in word_type_rows[:10]:  # First 10 occurrences
+                locations.append({
+                    "surah": w['verse_surah'],
+                    "ayah": w['verse_ayah'],
+                    "index": w['word_index'],
+                    "text": w['normalized_text'],
+                    "root": w['root']
+                })
+            
+            instances.append({
+                "morpheme": r['uthmani_text'],
+                "morpheme_id": morpheme_id,
+                "occurrences": r['cnt'],
+                "locations": locations
+            })
+        
+        return {
+            "feature": feature,
+            "feature_id": fid,
+            "morpheme_types_found": len(instances),
+            "instances": instances
+        }
+
+    @mcp.tool()
     def get_feature_context(feature_type: str, value: str) -> dict:
         """Get context for a linguistic feature, including related entries and occurrences."""
         conn = get_connection()
