@@ -34,13 +34,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Setting package visibility to public..."
-          gh api -X PUT "orgs/Syntra-Env/packages/container/kalima-mcp" --field visibility=public || echo "Package may not exist yet or already set"
+          gh api -X PUT "orgs/Syntra-Lab/packages/container/kalima-mcp" --field visibility=public || echo "Package may not exist yet or already set"
 
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/syntra-env/kalima-mcp
+          images: ghcr.io/syntra-lab/kalima-mcp
           tags: |
             type=ref,event=branch
             type=sha,prefix=
@@ -60,5 +60,5 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           echo "Verifying image push..."
-          docker manifest inspect ghcr.io/syntra-env/kalima-mcp:${{ github.sha }} || echo "Image not found"
+          docker manifest inspect ghcr.io/syntra-lab/kalima-mcp:${{ github.sha }} || echo "Image not found"
           echo "Build and push complete!"
