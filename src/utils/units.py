@@ -58,7 +58,10 @@ def compose_word_text(conn: sqlite3.Connection, word_type_id: int) -> str:
 
 
 def compose_verse_text(conn: sqlite3.Connection, surah: int, ayah: int) -> Optional[str]:
-    """Reconstruct verse text from word instances."""
+    """Reconstruct verse text from word instances.
+    
+    Handles hamza/ya/alif attachment: letters with no diacritics attach to previous.
+    """
     rows = conn.execute(
         """SELECT wi.word_index, wtm.position, ma.base_letter, ma.diacritics
            FROM word_instances wi
@@ -74,9 +77,26 @@ def compose_verse_text(conn: sqlite3.Connection, surah: int, ayah: int) -> Optio
 
     word_map = {}
     for r in rows:
-        word_map.setdefault(r['word_index'], []).append((r['base_letter'] or '') + (r['diacritics'] or ''))
+        word_idx = r['word_index']
+        base = r['base_letter'] or ''
+        diac = r['diacritics'] or ''
+        
+        word_map.setdefault(word_idx, []).append((base, diac))
 
-    return ' '.join(''.join(parts) for _, parts in sorted(word_map.items()))
+    # Compose each word: attach letters with no diacritics to previous
+    result_words = []
+    for word_idx in sorted(word_map.keys()):
+        atoms = word_map[word_idx]
+        composed = ""
+        for base, diac in atoms:
+            if not diac and composed:
+                # No diacritic - attach to previous letter
+                composed += base
+            else:
+                composed += base + (diac if diac else '')
+        result_words.append(composed)
+
+    return ' '.join(result_words)
 
 
 def batch_compose_verse_texts(conn: sqlite3.Connection, verse_keys: List[tuple]) -> Dict[tuple, str]:
