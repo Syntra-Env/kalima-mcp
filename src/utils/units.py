@@ -1,9 +1,10 @@
 """Location and verse text helpers.
 
-Clarified naming:
-- word_types: Unique word forms.
-- word_instances: Specific occurrences.
-- morpheme_types: Unique morpheme forms.
+Schema clarification:
+- word_types: Only contains id (dummy table)
+- word_instances: Points to morpheme_types.id via word_type_id
+- morpheme_types: Contains full word text in uthmani_text field
+- word_type_morphemes: Legacy table with incorrect mappings (unused)
 """
 
 import sqlite3
@@ -44,49 +45,37 @@ def entries_at_surah(conn: sqlite3.Connection, surah: int) -> list[str]:
 # --- Word text composition (Atomic) ---
 
 def compose_word_text(conn: sqlite3.Connection, word_type_id: int) -> str:
-    """Reconstruct text for a unique word type from its atoms.
+    """Get text for a word type from morpheme_types.
     
-    Attaches letters with no diacritics to previous.
+    Note: word_type_id in this schema is actually morpheme_type.id,
+    which stores the full word text in uthmani_text.
     """
-    rows = conn.execute(
-        """SELECT ma.position, ma.base_letter, ma.diacritics
-           FROM word_type_morphemes wtm
-           JOIN morpheme_types mt ON wtm.morpheme_type_id = mt.id
-           JOIN morpheme_atoms ma ON ma.morpheme_type_id = mt.id
-           WHERE wtm.word_type_id = ?
-           ORDER BY wtm.position, ma.position""",
+    row = conn.execute(
+        "SELECT uthmani_text FROM morpheme_types WHERE id = ?",
         (word_type_id,),
-    ).fetchall()
-    
-    if not rows:
-        return ''
-    
-    composed = ''
-    rows_sorted = sorted(rows, key=lambda r: r['position'])
-    for r in rows_sorted:
-        base = r['base_letter'] or ''
-        diac = r['diacritics'] or ''
-        if not composed:
-            composed = base + (diac if diac else '')
-        elif not diac:
-            composed += base  # Attach to previous
-        else:
-            composed += base + diac
-    
-    return composed
+    ).fetchone()
+    return row['uthmani_text'] if row else ''
 
 
 def compose_verse_text(conn: sqlite3.Connection, surah: int, ayah: int) -> Optional[str]:
-    """Get verse text from gold_standard table.
+    """Reconstruct verse text from word_instances via morpheme_types.
     
-    Note: Compositional assembly from atoms needs fixing - 
-    for now use pre-validated gold_standard text.
+    word_type_id in word_instances points to morpheme_types.id,
+    which has the correct uthmani_text for each word.
     """
-    row = conn.execute(
-        "SELECT text FROM gold_standard WHERE surah = ? AND ayah = ?",
+    words = conn.execute(
+        """SELECT mt.uthmani_text
+           FROM word_instances wi
+           JOIN morpheme_types mt ON wi.word_type_id = mt.id
+           WHERE wi.verse_surah = ? AND wi.verse_ayah = ?
+           ORDER BY wi.word_index""",
         (surah, ayah),
-    ).fetchone()
-    return row['text'] if row else None
+    ).fetchall()
+    
+    if not words:
+        return None
+    
+    return ' '.join(w['uthmani_text'] for w in words)
 
 
 def batch_compose_verse_texts(conn: sqlite3.Connection, verse_keys: List[tuple]) -> Dict[tuple, str]:
