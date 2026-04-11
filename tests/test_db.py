@@ -258,7 +258,7 @@ class TestHFConfig:
 
     def test_hf_repo_id(self):
         """Test HF repo ID is set correctly."""
-        assert HF_REPO_ID == "Syntra-Env/kalima-db"
+        assert HF_REPO_ID == "Syntra-Lab/kalima-db"
 
     def test_default_db_path(self):
         """Test default DB path is in user home."""

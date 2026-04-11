@@ -26,14 +26,14 @@ def test_db_path(tmp_path_factory, hf_token):
         # Try to download from HuggingFace
         if hf_token:
             cached = hf_hub_download(
-                repo_id="Syntra-Env/kalima-db",
+                repo_id="Syntra-Lab/kalima-db",
                 filename="kalima.db",
                 repo_type="dataset",
                 token=hf_token
             )
         else:
             cached = hf_hub_download(
-                repo_id="Syntra-Env/kalima-db",
+                repo_id="Syntra-Lab/kalima-db",
                 filename="kalima.db",
                 repo_type="dataset"
             )
